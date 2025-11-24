@@ -15,7 +15,7 @@
 
 **BebboSSH** is an SSH2 implementation for Amiga systems (68000+).  
 
-📦 **Source Code:** [https://franke.ms/git/bebbo/bebbossh](https://franke.ms/git/bebbo/bebbossh)
+📦 **Source Code:** [https://franke.ms/git/bebbo/bebbossh]
 
 It requires a server that supports the included cryptographic algorithms.
 The supported cryptographic methods are
@@ -135,7 +135,7 @@ The author shall not be liable for any damages (direct, indirect, incidental, or
 - Consolidated crypto with BebboGet  
 - Rewrote AES for speed improvements  
 - Improved ChaCha20-Poly1305 performance  
-- Source code available at: [franke.ms Git repository](https://franke.ms/git/bebbo/bebbossh)  
+- Source code available at: [https://franke.ms/git/bebbo/bebbossh]  
 
 ### Previous Versions (AmigaSSH)
 - v1.38: Added ChaCha20/Poly1305, config file support for ciphers  
