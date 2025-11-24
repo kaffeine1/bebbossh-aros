@@ -1,0 +1,83 @@
+# mul32.inc - 68000 assembly macro
+#
+# License:
+#   This file is licensed under the GNU General Public License v3.0 (GPL-3.0).
+#   You may redistribute and/or modify it under the terms of the GPL as
+#   published by the Free Software Foundation, either version 3 of the License,
+#   or (at your option) any later version.
+#
+#   This file is distributed in the hope that it will be useful,
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+#   GNU General Public License for more details.
+#
+#   You should have received a copy of the GNU General Public License
+#   along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# Purpose:
+# - Provide a reusable macro to emulate 32x32 -> 64-bit unsigned multiplication
+#   on Motorola 68000, which lacks mulu.l.
+#
+# Constraints:
+# - All macro arguments must be data registers (D0-D7).
+#
+# Inputs:
+# - op1 - 32-bit unsigned operand, restored to original at end
+# - op2 - 32-bit unsigned operand, ends swapped; caller must swap back if needed
+#
+# Outputs:
+# - result_hi - high 32 bits of product
+# - result_lo - low 32 bits of product
+#
+# Scratch:
+# - tmp - data register, clobbered
+#
+# Notes:
+# - Uses mulu.w (16x16 -> 32) since 68000 lacks mulu.l
+# - swap.w used to access high/low halves
+# - addx.l handles carry propagation from low-word additions into the high 32 bits
+#
+# Mathematical breakdown:
+# - Let op1 = a*2^16 + b   (a = high16(op1), b = low16(op1))
+#       op2 = c*2^16 + d   (c = high16(op2), d = low16(op2))
+# - Then:
+#     op1 * op2 = (a*c)*2^32 + (a*d)*2^16 + (b*c)*2^16 + (b*d)
+# - Placement:
+#     bd -> result_lo
+#     ac -> result_hi
+#     ad and bc -> added into result_lo shifted by 16, with carries propagated into result_hi
+# - Carry trick:
+#     add.w tmp,result_lo sets carry/X if overflow
+#     clr.w tmp + swap.w tmp makes tmp zero with the carry aligned for addx.l
+#     addx.l tmp,result_hi injects the carry into the high 32 bits
+# - Final:
+#     result = (ac << 32) + ((ad + bc) << 16) + bd
+
+        .macro MUL32 op1, op2, result_hi, result_lo, tmp
+        move.l  \op2,\result_lo
+        mulu.w  \op1,\result_lo        | bd
+
+        move.l  \op2,\result_hi
+        swap.w  \result_hi
+        swap.w  \op1
+        mulu.w  \op1,\result_hi        | ac
+
+        swap.w  \result_lo
+        move.l  \op2,\tmp
+        mulu.w  \op1,\tmp              | ad
+        add.w   \tmp,\result_lo
+        clr.w   \tmp
+        swap.w  \tmp
+        addx.l  \tmp,\result_hi
+
+        swap.w  \op2
+        swap.w  \op1
+        move.l  \op2,\tmp
+        mulu.w  \op1,\tmp              | bc
+
+        add.w   \tmp,\result_lo
+        clr.w   \tmp
+        swap.w  \tmp
+        addx.l  \tmp,\result_hi
+        swap.w  \result_lo
+        .endm

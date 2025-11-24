@@ -1,0 +1,44 @@
+
+# get revision
+major=$(grep MAJOR include/revision.h)
+major=${major#*\"}
+major=${major%%\"*}
+
+minor=$(grep MINOR include/revision.h)
+minor=${minor#*\"}
+minor=${minor%%\"*}
+
+echo $major.$minor
+
+sed -i.bak -e "s/Version:.*/Version:      $major.$minor/g" bebbossh.readme
+
+rm -rf dist
+mkdir -p dist/bebbossh
+
+tic -xsv9 -o dist src/xterm-amiga.src
+
+make Release=1 clean
+make CPU=-m68020 MAJOR=$major MINOR=$minor STRIP=-s Release=1 -j1 all
+cp Release/libcryptossh.library dist/bebbossh/libcryptossh.library020
+
+make Release=1 clean
+make MAJOR=$major MINOR=$minor STRIP=-s Release=1 -j1 all
+cp Release/bebbossh dist/bebbossh
+cp Release/bebbosshd dist/bebbossh
+cp Release/bebbosshkeygen dist/bebbossh
+cp Release/bebboscp dist/bebbossh
+cp Release/libcryptossh.library dist/bebbossh
+
+cp bebbossh.readme dist/bebbossh
+cp bebbossh.info dist/bebbossh
+cp COPYING dist/bebbossh
+cp src/xterm-amiga.src dist/bebbossh
+cp dist/x/xterm-amiga dist/bebbossh
+cp -r template dist/bebbossh/
+
+cd dist
+lha a bebbossh.lha bebbossh 
+cd ..
+cp bebbossh.readme dist
+
+cp dist/bebbossh.lha versions/bebbossh.${major}-${minor}.lha

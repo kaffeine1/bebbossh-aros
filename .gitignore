@@ -1,0 +1,12 @@
+.settings
+.cproject
+.project
+amigassh.readme.bak
+Debug/
+Release/
+dist/
+*.log
+/Profile/
+/versions/
+/bebbossh.readme.bak
+/.clang-format

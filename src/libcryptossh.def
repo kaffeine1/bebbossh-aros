@@ -1,0 +1,87 @@
+.text _malloc 
+.text _free
+.text _realloc
+
+.text __Z11fillKexInitPhPKc
+
+.text __ZN21ChaCha20Poly1305_SSH26setKeyEPKvj
+.direct __ZN21ChaCha20Poly1305_SSH24initEPKvi
+.text __ZN21ChaCha20Poly1305_SSH2C1Ev
+.text __ZN21ChaCha20Poly1305_SSH2D1Ev
+.direct __ZN21ChaCha20Poly1305_SSH28calcHashEPv
+.direct __ZN21ChaCha20Poly1305_SSH210updateHashEPKvi
+.direct __ZN21ChaCha20Poly1305_SSH27encryptEPvPKvi
+.direct __ZN21ChaCha20Poly1305_SSH27decryptEPvPKvi
+
+.text __ZN8ChaCha206setKeyEPKvj
+.direct __ZN8ChaCha208setNonceEPKvj
+.direct __ZN8ChaCha209nextBlockEv
+.text __ZN8ChaCha20D1Ev
+.text __ZN8ChaCha20C1Ev
+.direct __ZN8ChaCha206chachaEPvPKvi
+
+.text __ZN8Poly13056setKeyEPKvi
+.direct __ZN8Poly13056digestEPv
+.direct __ZN8Poly13056updateEPKvi
+
+.direct _fe_scalarmult_x25519
+.text _fe_new_key_pair
+.direct  _ed25519_from64bytes
+
+.text _ge_sign_ed25519
+.text _ge_verify_ed25519
+.text _ge_new_keypair_ed25519
+
+.text _randfill
+.direct _mimeEncode
+.direct _mimeDecode
+
+.text __dump
+.text _assertArrayEquals
+.direct _unhexlify
+
+.text _logme
+.text _parseLogLevel
+.text _isLogLevel
+.text _setLogLevel
+
+.text _loadEd25519Key
+
+.text __ZN3GCMC1EP11BlockCipher
+.text  __ZN3AES6setKeyEPKvj
+.text  __ZN3AES7encryptEPvPKv
+.text  __ZN3AES7decryptEPvPKv
+
+.text  __ZN3AESC1Ei
+.text  __ZN3AESD1Ev
+
+.text    __ZN3GCMD1Ev
+
+.direct  __ZN3GCM5initMEv
+.text    __ZN3GCM7encryptEPvPKvi
+.text    __ZN3GCM7decryptEPvPKvi
+.text    __ZN3GCM4initEPKvi
+.direct  __ZN3GCM10updateHashEPKvi
+.direct  __ZN3GCM8calcHashEPv
+.text    __ZN3GCM6setKeyEPKvj
+
+.text __ZN11BlockCipher10decryptCBCEPvS0_PKvm
+.text __ZN11BlockCipher10encryptCBCEPvS0_PKvm
+
+.direct __ZN13MessageDigest6digestEPv
+.text __ZN13MessageDigest6updateEPKvj
+.direct __ZN6SHA256C2Ev 
+
+.direct __ZN6SHA256C1Ev
+.direct __ZN6SHA2569transformEv
+.direct __ZN6SHA25611__getDigestEPh
+.direct __ZN6SHA512C2Ev
+.direct __ZN6SHA512C1Ev
+.direct __ZN6SHA51211__getDigestEPh
+
+.text __Z9sshStringRPh
+.text __Z10deriveKeysP11KeyMaterialP12SharedSecretPhb
+
+.data _DEBUG_LEVEL
+
+.text __Z9splitLineRPc
