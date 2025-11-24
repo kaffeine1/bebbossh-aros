@@ -52,7 +52,7 @@ Example timings on an Amiga 3000:
 Use `-v5` for DEBUG logs with timing info  
 
 Expected SCP transfer speeds (kB/s):
-``
+```
 | Cipher       | UAE-A500/68000 | UAE-1200/68020 | A3000/68030 | V4SA/68080 |
 |--------------|----------------|----------------|-------------|------------|
 | AES-GCM      | 6.6            | 35.6           | –           | 317        |
