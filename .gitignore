@@ -8,5 +8,5 @@ dist/
 *.log
 /Profile/
 /versions/
-/bebbossh.readme.bak
+*.bak
 /.clang-format

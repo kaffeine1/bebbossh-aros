@@ -1,5 +1,5 @@
 #define __VERSION_MAJOR "1"
-#define __VERSION_MINOR "39"
+#define __VERSION_MINOR "40"
 #define __V__ __VERSION_MAJOR "." __VERSION_MINOR
 
 

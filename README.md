@@ -1,11 +1,11 @@
 # BebboSSH
 
-**Short:** BebboSSH – SSH2 suite (client/server, scp/sftp) with modern ciphers  
+**Short:** BebboSSH – SSH2 suite (client/server, sftp) with modern ciphers  
 **Author:** s.franke@bebbosoft.de  
 **Uploader:** s.franke@bebbosoft.de  
 **Architecture:** m68k-amigaos  
 **Type:** comm/net  
-**Version:** 1.39  
+**Version:** 1.40
 **Required:** bsdsocket.library (e.g. AmiTCP)  
 **Replaces:** amigassh  
 
