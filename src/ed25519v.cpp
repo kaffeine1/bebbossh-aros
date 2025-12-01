@@ -16,13 +16,19 @@
  * Derived from SUPERCOP public domain sources, adapted to use 16-bit integers
  * and modified for Amiga-specific requirements.
  */
-
+#ifdef __AMIGA__
 #include <amistdio.h>
+#include <stabs.h>
+#else
+#include <stdio.h>
+
+#define AllocVec(s,t) malloc(s)
+#define FreeVec(p) free(p)
+#endif
 #include <string.h>
 #include "ed25519.h"
 #include "ed25519i.h"
 #include "sha512.h"
-#include <stabs.h>
 #include "test.h"
 
 #ifdef __cplusplus
@@ -30,12 +36,16 @@ extern "C" {
 #endif
 
 /* d */
+#ifdef __AMIGA__
 __attribute((section(".text")))
+#endif
 static const ed25519 ge25519_ecd = {EDX(0x78A3, 0x1359), EDX(0x4DCA, 0x75EB), EDX(0xD8AB, 0x4141), EDX(0x0A4D, 0x0070), EDX(0xE898, 0x7779), EDX(0x4079, 0x8CC7), EDX(0xFE73, 0x2B6F), EDX(0x6CEE, 0x5203), };
 
 /* sqrt(-1) */
 
+#ifdef __AMIGA__
 __attribute((section(".text")))
+#endif
 const ed25519 ge25519_sqrtm1 = {EDX(0xA0B0, 0x4A0E), EDX(0x1B27, 0xC4EE), EDX(0xE478, 0xAD2F), EDX(0x1806, 0x2F43), EDX(0xD7A7, 0x3DFB), EDX(0x0099, 0x2B4D), EDX(0xDF0B, 0x4FC1), EDX(0x2480, 0x2B83), };
 
 static int fe25519_iseq_vartime(const ed25519 x, const ed25519 y) {
@@ -117,13 +127,10 @@ int ge25519_unpackneg_vartime(ge25519 *r, const uint8_t p[32]) {
 int ge_verify_ed25519(uint8_t *m, unsigned mlen, uint8_t const *sm, uint8_t const *pk) {
 	ge25519 pkPoint;
 	uint16_t schram[32], scs[32];
-#if 0
-	__dump("m ", m, mlen);
-	__dump("sm", sm, 32);
-	__dump("pk", pk, 32);
-#endif
+
 	if (ge25519_unpackneg_vartime(&pkPoint, pk))
 		return 0;
+
 
 	ed25519_from32bytes(scs, sm + 32);
 	{
@@ -133,21 +140,24 @@ int ge_verify_ed25519(uint8_t *m, unsigned mlen, uint8_t const *sm, uint8_t cons
 		sha512.update(pk, 32);
 		sha512.update(m, mlen);
 		sha512.digest(hram);
-//		__dump("hram", hram, 64);
 
 		ed25519_from64bytes(schram, hram);
-
-//		__dump("hrami", schram, 64);
 	}
-
 	uint8_t rcheck[32];
 	{
-		ge25519 sumPoint;
-		ge25519_scalarmult_vartime2(&sumPoint, &pkPoint, schram, scs);
+	ge25519 sumPoint;
+	ge25519_scalarmult_vartime2(&sumPoint, &pkPoint, schram, scs);
 
-
-		ge25519_pack(rcheck, &sumPoint);
+	ge25519_pack(rcheck, &sumPoint);
 	}
+
+#if 0
+	_dump("pkPoint", &pkPoint, 32*4);
+	_dump("scs", scs, 64);
+	_dump("hram", hram, 64);
+	_dump("schram", schram, 64);
+	_dump("sumPoint", &sumPoint, 32*4);
+#endif
 
 //	_dump("sm", sm, 32);
 //	_dump("rcheck", rcheck, 32);

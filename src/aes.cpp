@@ -37,7 +37,7 @@
 
 #include "aes.h"
 
-#ifdef __AMIGA__
+#ifdef __mc68000__
 #define PACK(A,B,C,D,T,Y) \
 	asm volatile ("move.b %1,%0" : "=d"(t) : "m"(T[Y.b[A]])); \
 	asm volatile ("lsl.w #8,%0" : "+d"(t)); \
@@ -296,7 +296,11 @@ uint32_t T1[256], T2[256], T3[256], T4[256],
  * Initialize AES T-tables for MixColumns and InvMixColumns.
  * Precomputes forward and inverse tables for optimized round transformations.
  */
-extern "C" void initMixTables() {
+extern "C"
+#ifdef __AMIGA__
+__attribute__((externally_visible))
+#endif
+void initMixTables() {
     for (int i = 0; i < 256; ++i) {
         uint8_t sb = SBOX[i];
         uint8_t m2 = gf_mul(2, sb);
@@ -312,7 +316,7 @@ extern "C" void initMixTables() {
         T4[i] = roty(t, 24);
     }
 
-#ifdef __AMIGA__
+#ifdef __mc68000__
     const uint8_t * INVSBOX;
 	asm volatile ("lea %1,%0" : "=a"(INVSBOX) : "m"(::INVSBOX));
 #endif
@@ -339,9 +343,6 @@ extern "C" void initMixTables() {
     }
 }
 
-// Static initializer ensures T-tables are built before first AES use
-static struct __ {	__() { if (!Tinv1[0]) initMixTables(); }} __;
-
 /**
  * Encrypt a single 128-bit block using AES.
  * Performs initial AddRoundKey, main rounds, and final round.
@@ -359,7 +360,7 @@ void AES::encrypt(void* output_, void const* input_) {
     state.d[3] = *rk++ ^ input[3];
 
     {
-#ifdef __AMIGA__
+#ifdef __mc68000__
 		uint32_t * T1, *T2, *T3, *T4;
 		asm volatile ("lea %1,%0" : "=a"(T1) : "m"(::T1));
 		asm volatile ("lea %1,%0" : "=a"(T2) : "m"(::T2));
@@ -394,7 +395,7 @@ void AES::encrypt(void* output_, void const* input_) {
     	ONE(12,  1,  6, 11, T, temp, state, 3);
     }
 
-#ifdef __AMIGA__
+#ifdef __mc68000__
     const uint8_t * SBOX;
 	asm volatile ("lea %1,%0" : "=a"(SBOX) : "m"(::SBOX));
 #endif
@@ -428,7 +429,7 @@ void AES::decrypt(void* output_, const void* input_) {
     state.d[3] = *rk++ ^ input[3];
 
 	{
-#ifdef __AMIGA__
+#ifdef __mc68000__
 		uint32_t * Tinv1, *Tinv2, *Tinv3, *Tinv4;
 		asm volatile ("lea %1,%0" : "=a"(Tinv1) : "m"(::Tinv1));
 		asm volatile ("lea %1,%0" : "=a"(Tinv2) : "m"(::Tinv2));
@@ -459,7 +460,7 @@ void AES::decrypt(void* output_, const void* input_) {
 		ONE( 8,  5,  2, 15, Tinv, temp, state, 2);
 		ONE(12,  9,  6,  3, Tinv, temp, state, 3);
 	}
-#ifdef __AMIGA__
+#ifdef __mc68000__
     const uint8_t * INVSBOX;
 	asm volatile ("lea %1,%0" : "=a"(INVSBOX) : "m"(::INVSBOX));
 #endif
@@ -478,7 +479,19 @@ void AES::decrypt(void* output_, const void* input_) {
 	*output++ = t ^ *rk++;
 }
 
-AES::AES(int dummy) : rounds(0), ckey(0), invckey(0) {}
+#ifdef __AMIGA__
+#include <stabs.h>
+ADD2INIT(initMixTables, -21);
+#endif
+
+
+AES::AES(int dummy) : rounds(0), ckey(0), invckey(0) {
+#ifndef __AMIGA__
+	if (!Tinv1[0]) {
+		initMixTables();
+	}
+#endif	
+}
 
 /**
  * AES destructor (no dynamic cleanup required).

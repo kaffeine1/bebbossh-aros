@@ -33,7 +33,9 @@
  * ----------------------------------------------------------------------
  */
 
+#ifdef __AMIGA__
 __attribute((section(".text")))
+#endif
 const static unsigned char encodeTable[66] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
 		
 void mimeEncode(void * to_, void const * x_, unsigned length) {

@@ -21,6 +21,7 @@
 #include "ed25519.h"
 #include "ed25519i.h"
 #include "sha512.h"
+#include "test.h"
 
 /* create the secret key + randomizer from seed. */
 void secret_expand(uint8_t *az, uint8_t const *sk) {
@@ -93,7 +94,7 @@ int ge_sign_ed25519(void *sm_, void const *m_, unsigned mlen, uint8_t const *sec
 	uint8_t *sm = (uint8_t *)sm_;
 	uint8_t const *m = (uint8_t *)m_;
 	uint8_t a[64];
-	uint8_t r[32];
+	uint8_t r[64];
 	uint8_t Rs[32];
 	uint8_t hram[64];
 	uint16_t rS[32], hramS[32], aS[32];

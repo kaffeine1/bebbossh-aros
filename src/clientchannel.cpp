@@ -71,26 +71,25 @@ uint32_t ClientChannel::updateWindowSize(uint32_t length) {
 
 void ClientChannel::closeChannel(uint16_t flag) {
 	// channelNo == 0 does not use open/eof/close
-	if (!channelNo)
-		return;
-	uint8_t * p;
-	if ((flag & ClientChannel::CLIENT_EOF) && !(getState() & ClientChannel::CLIENT_EOF)) {
-		logme(L_DEBUG, "send eof for channel %ld/%ld", channelNo, getRemoteChannelNo());
-		// send eof if not sent
-		p = buffer + 5;
-		*p++ = SSH_MSG_CHANNEL_EOF;
-		putInt32(p, getRemoteChannelNo());
-		sendEncrypted(buffer + 5, 5);
+	if (channelNo) {
+		uint8_t * p;
+		if ((flag & ClientChannel::CLIENT_EOF) && !(getState() & ClientChannel::CLIENT_EOF)) {
+			logme(L_DEBUG, "send eof for channel %ld/%ld", channelNo, getRemoteChannelNo());
+			// send eof if not sent
+			p = buffer + 5;
+			*p++ = SSH_MSG_CHANNEL_EOF;
+			putInt32AndInc(p, getRemoteChannelNo());
+			sendEncrypted(buffer + 5, 5);
+		}
+		if ((flag & ClientChannel::CLIENT_CLOSE) && !(getState() & ClientChannel::CLIENT_CLOSE)) {
+			logme(L_DEBUG, "send close for channel %ld/%ld", channelNo, getRemoteChannelNo());
+			// send close if not sent
+			p = buffer + 5;
+			*p++ = SSH_MSG_CHANNEL_CLOSE;
+			putInt32AndInc(p, getRemoteChannelNo());
+			sendEncrypted(buffer + 5, 5);
+		}
 	}
-	if ((flag & ClientChannel::CLIENT_CLOSE) && !(getState() & ClientChannel::CLIENT_CLOSE)) {
-		logme(L_DEBUG, "send close for channel %ld/%ld", channelNo, getRemoteChannelNo());
-		// send close if not sent
-		p = buffer + 5;
-		*p++ = SSH_MSG_CHANNEL_CLOSE;
-		putInt32(p, getRemoteChannelNo());
-		sendEncrypted(buffer + 5, 5);
-	}
-
 	addState(flag);
 	checkChannelFinished(this);
 	return;
@@ -118,8 +117,8 @@ bool ClientChannel::handleMessage(uint8_t msg, uint8_t * p, uint32_t maxLen) {
 					0, 1 };
 
 			uint8_t * p = &CHANNEL_WINDOW_ADJUST[6];
-			putInt32(p, getRemoteChannelNo());
-			putInt32(p, toAdd);
+			putInt32AndInc(p, getRemoteChannelNo());
+			putInt32AndInc(p, toAdd);
 
 			sendEncrypted(CHANNEL_WINDOW_ADJUST, sizeof(CHANNEL_WINDOW_ADJUST));
 		}

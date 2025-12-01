@@ -37,6 +37,8 @@
 #ifndef __BC_H__
 #define __BC_H__
 
+#include <stdint.h>
+
 /**
  * @class BlockCipher
  * @brief Abstract interface for block cipher implementations.

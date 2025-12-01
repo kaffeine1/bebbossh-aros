@@ -30,11 +30,17 @@
  *  - Contributions must preserve author attribution and GPL licensing
  * ----------------------------------------------------------------------
  */
-
 #include <string.h>
 #include "bc.h"
-#include "chacha20poly1305.h"
+#include "poly1305.h"
 #include "fastmath32.h"
+
+#ifdef __AMIGA__
+#include <amistdio.h>
+#else
+#include <stdio.h>
+#include <endian.h>
+#endif
 
 #undef DEBUG
 #ifdef DEBUG
@@ -86,7 +92,7 @@ int Poly1305::setKey(void const* k, int klen) {
     return true;
 }
 
-#ifdef __mc68020__
+#if defined(__mc68020__) && !defined(__mc68060__)
 extern "C" {
 extern void addmodmul(uint32_t* a, uint32_t const* n, uint32_t const* r);
 };
@@ -126,7 +132,6 @@ static inline void mod5(uint32_t* t) {
 #define addmodmul caddmodmul
 
 void caddmodmul(uint32_t* a, uint32_t const* n, uint32_t const* r) {
-    static uint32_t const p[5] = { 0xfffffffb, 0xffffffff, 0xffffffff, 0xffffffff, 3 };
     uint32_t t[5];
 
     uint64_t c = a[0]; c += n[0]; t[0] = c;
@@ -145,24 +150,26 @@ void Poly1305::update(void const* d, int len) {
 #ifdef DEBUG
     _dump("poly update", d, len);
 #endif
-#if (BYTE_ORDER == BIG_ENDIAN)
-    uint8_t bn[20]; // 16 data bytes + 4 marker bytes
-    // marker word = 1 for full block
-    *(uint32_t*)&bn[16] = 0x1;
-    uint32_t* n = reinterpret_cast<uint32_t*>(bn);
-#else
     uint32_t n[5];
+    n[4] = 1;
+#if (BYTE_ORDER == BIG_ENDIAN)
+    uint8_t * nb = (uint8_t *)n;
 #endif
     for (int nn = len / 16; nn > 0; --nn) {
 #if (BYTE_ORDER == BIG_ENDIAN)
         // pack 16 bytes into 4 words
-        bn[0]  = b[3];  bn[1]  = b[2];  bn[2]  = b[1];  bn[3]  = b[0];
-        bn[4]  = b[7];  bn[5]  = b[6];  bn[6]  = b[5];  bn[7]  = b[4];
-        bn[8]  = b[11]; bn[9]  = b[10]; bn[10] = b[9];  bn[11] = b[8];
-        bn[12] = b[15]; bn[13] = b[14]; bn[14] = b[13]; bn[15] = b[12];
+        nb[0]  = b[3];  nb[1]  = b[2];  nb[2]  = b[1];  nb[3]  = b[0];
+        nb[4]  = b[7];  nb[5]  = b[6];  nb[6]  = b[5];  nb[7]  = b[4];
+        nb[8]  = b[11]; nb[9]  = b[10]; nb[10] = b[9];  nb[11] = b[8];
+        nb[12] = b[15]; nb[13] = b[14]; nb[14] = b[13]; nb[15] = b[12];
         addmodmul(a, n, r);
 #else
-        addmodmul(a, (uint32_t *)b, r);
+        uint32_t const * bl = (uint32_t const*)b;
+        n[0] = bl[0];
+        n[1] = bl[1];
+        n[2] = bl[2];
+        n[3] = bl[3];
+        addmodmul(a, n, r);
 #endif
         b += 16;
     }

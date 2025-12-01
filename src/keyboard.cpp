@@ -33,6 +33,7 @@
  *  for integration into bebbossh client/server components.
  * ----------------------------------------------------------------------
  */
+#ifdef __AMIGA__
 #include <exec/types.h>
 #include <exec/memory.h>
 #include <exec/libraries.h>
@@ -150,3 +151,4 @@ __stdargs struct IORequest* CreateExtIO(CONST struct MsgPort *port, LONG iosize)
 	}
 	return ioreq;
 }
+#endif

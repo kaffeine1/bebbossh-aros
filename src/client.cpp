@@ -41,12 +41,18 @@
 #include <sys/stat.h>
 #include <netinet/in.h>
 
+#ifdef __AMIGA__
 #include <amistdio.h>
 
 #include <proto/dos.h>
 #include <proto/exec.h>
 #include <proto/intuition.h>
 #include <proto/socket.h>
+
+#else
+#include <stdio.h>
+#include "amiemul.h"
+#endif
 
 #include <log.h>
 #include <ssh.h>
@@ -65,6 +71,8 @@
 #include "clientchannel.h"
 #include "revision.h"
 
+// #define DUMP_PACKETS 1
+
 #if defined(DUMP_HASH)
 static uint8_t * hsd;
 static uint8_t * hsdp;
@@ -74,6 +82,8 @@ static uint8_t * hsdp;
 #else
 #define HSU(a,b,c)
 #endif
+
+extern "C" { void xfree(void * ptr); }
 
 err error = NO_ERROR;
 
@@ -103,14 +113,17 @@ struct Library *SocketBase = 0;
 
 static uint8_t server_version[24] = "SSH-2.0-" _VNAME "\r\n";
 
+extern char const * sshDir;
+extern char const * sshDotDir;
+char const * configFile;
+char const * knownHosts;
+
 int port = 22;
 char const * hostname;
 char const * username;
 short stopped;
 
 uint32_t maxBuffer;
-
-char const * keyFile = "envarc:.ssh/id_ed25519";
 
 // the client's channels
 Stack<ClientChannel> clientChannels(33);
@@ -136,8 +149,8 @@ uint8_t *buffer;
 unsigned buffersize = 35000;
 
 // set if console was grabbed
-BPTR stdinBptr;
-BPTR stdoutBptr;
+extern BPTR stdinBptr;
+extern BPTR stdoutBptr;
 
 short escape;
 // the window...
@@ -155,7 +168,6 @@ static ChaCha20 *readCounterBc;
 static ChaCha20 * writeCounterBc;
 
 char hostnameSet, portSet, usernameSet, consoleSet, termSet, keyfileSet, loglevelSet;
-char const * configFile = "envarc:.ssh/ssh_config";
 
 // 1 = aes128-gcm@openssh.com, 2 = chacha20poly1305@openssh.com
 char const * encOrder = "12";
@@ -202,13 +214,13 @@ bool mysend(int fd, void const *data, int len) {
 	for (uint8_t * p = (uint8_t *)data;;) {
 		int sent = send(fd, p, len, 0);
 		if (sent < 0) {
-			int _errno = Errno();
-			if (_errno == EAGAIN) {
-				logme(L_DEBUG, "failed to send %ld bytes on socket %ld: sent %ld, errno=%ld, retrying", len, fd, sent, _errno);
+			int lerrno = Errno();
+			if (lerrno == EAGAIN) {
+				logme(L_DEBUG, "failed to send %ld bytes on socket %ld: sent %ld, errno=%ld, retrying", len, fd, sent, lerrno);
 				Delay(100);
 				continue;
 			}
-			logme(L_ERROR, "failed to send %ld bytes on socket %ld: sent %ld, errno=%ld", len, fd, sent, _errno);
+			logme(L_ERROR, "failed to send %ld bytes on socket %ld: sent %ld, errno=%ld", len, fd, sent, lerrno);
 			return false;
 		}
 		len -= sent;
@@ -243,7 +255,7 @@ static bool ensureBufferSize(unsigned nsize) {
 		nb[1] = buffer[1];
 		nb[2] = buffer[2];
 		nb[3] = buffer[3];
-		free(buffer);
+		xfree(buffer);
 		buffer = nb;
 		buffersize = nsize;
 	}
@@ -278,19 +290,17 @@ bool sendEncrypted(uint8_t const *data, int len) {
 	len += 1 + padLen;
 	buffer[4] = padLen;
 	outlen += padLen;
-	0[(int*) buffer] = len;
+	putInt32Aligned(buffer, len);
 
 	randfill(buffer + outlen - 16 - padLen, padLen);
 #ifdef DUMP_PACKETS
-	dump("writeIV", keyMat.encIvWrite, 12);
-	dump("clearText", buffer, offset + len);
+	_dump("writeIV", keyMat.encIvWrite, 12);
+	_dump("clearText", buffer, outlen);
 #endif
 	if (writeCounterBc) {
 		writeCounterBc->setNonce(keyMat.encIvWrite, 12);
 		writeCounterBc->zeroCounter();
-//		_dump("b0", buffer, 4);
 		writeCounterBc->chacha(buffer, buffer, 4);
-//		_dump("b1", buffer, 4);
 		writeAead->init(keyMat.encIvWrite, 12);
 		writeAead->encrypt(buffer + 4, buffer + 4, len);
 		writeAead->updateHash(buffer, 4 + len);
@@ -302,7 +312,7 @@ bool sendEncrypted(uint8_t const *data, int len) {
 	writeAead->calcHash(buffer + 4 + len);
 	increment(keyMat.encIvWrite);
 #ifdef DUMP_PACKETS
-	dump("cipherText", buffer, outlen);
+	_dump("cipherText", buffer, outlen);
 #endif
 	logme(L_FINE, "sending encrypted packet of length %ld to socket %ld", outlen, sockfd);
 
@@ -315,16 +325,36 @@ bool sendEncrypted(uint8_t const *data, int len) {
 }
 
 static unsigned waitFor(unsigned usecs) {
-	ULONG signales = 0;
-	struct timeval tv;
-	tv.tv_secs = 0;
-	tv.tv_usec = usecs;
-	FD_ZERO(&readfds);
-	FD_SET(sockfd, &readfds);
+    struct timeval tv;
+    tv.tv_sec  = 0;
+    tv.tv_usec = usecs;
+    struct timeval *ptv = usecs ? &tv : 0;
 
-	WaitSelect(sockfd + 1, &readfds, NULL, NULL, usecs ? &tv : 0, &signales);
-	return signales;
+    FD_ZERO(&readfds);
+    FD_SET(sockfd, &readfds);
+
+#ifdef __AMIGA__
+    ULONG signals = 0;
+    WaitSelect(sockfd + 1, &readfds, NULL, NULL, ptv, &signals);
+    return signals;
+
+#elif defined(__linux__) || defined(__unix__)
+    int r = select(sockfd + 1, &readfds, NULL, NULL, ptv);
+    if (r > 0 && FD_ISSET(sockfd, &readfds))
+        return 1;   // data ready
+    return 0;
+
+#elif defined(_WIN32)
+    int r = select(0, &readfds, NULL, NULL, ptv);
+    if (r > 0 && FD_ISSET(sockfd, &readfds))
+        return 1;
+    return 0;
+
+#else
+    return 0;
+#endif
 }
+
 
 /**
  * Receive wrapper.
@@ -353,7 +383,8 @@ int receivePacket(ptype packetType) {
 	// read the packet length
 	int n4 = recv(sockfd, buffer, 4, 0);
 	if (n4 != 4) {
-		logme(L_ERROR, "can't read 4 uint8_t header, got %ld", n4);
+		if (n4)
+			logme(L_ERROR, "can't read 4 byte header, got %ld", n4);
 		error = ERROR_READ;
 		return 0;
 	}
@@ -362,8 +393,9 @@ int receivePacket(ptype packetType) {
 		readCounterBc->setNonce(keyMat.encIvRead, 12);
 		readCounterBc->zeroCounter();
 		readCounterBc->chacha(&packetSize, buffer, 4);
+		packetSize = htonl(packetSize);
 	} else {
-		packetSize = *(uint32_t*) buffer;
+		packetSize = getInt32Aligned(buffer);
 	}
 //	printf("%08lx\n", packetSize);
 	int nsize = packetSize + 4;
@@ -405,8 +437,8 @@ int receiveEncryptedPacket() {
 		return 0;
 
 #ifdef DUMP_PACKETS
-	dump("readIV", keyMat.encIvRead, 12);
-	dump("cipherText", buffer, 4 + len);
+	_dump("readIV", keyMat.encIvRead, 12);
+	_dump("cipherText", buffer, 4 + len);
 #endif
 	readAead->init(keyMat.encIvRead, 12);
 	if (readCounterBc) {
@@ -417,7 +449,7 @@ int receiveEncryptedPacket() {
 	uint8_t * p = buffer + 4;
 	readAead->decrypt(p, p, len);
 #ifdef DUMP_PACKETS
-	dump("clearText", p, len);
+	_dump("clearText", p, len);
 #endif
 
 	unsigned pad1 = *p + 1;
@@ -452,10 +484,13 @@ static void makeKexEcdhInit() {
 }
 
 static bool verifyHost(uint8_t * hostBase64) {
-	BPTR f = Open("ENVARC:.ssh/known_hosts", MODE_READWRITE);
+	if (!sshDotDir) sshDotDir = concat(sshDir, ".ssh", NULL);
+	if (!knownHosts) knownHosts = concat(sshDotDir, "/known_hosts", NULL);
+
+	BPTR f = Open(knownHosts, MODE_READWRITE);
 	if (!f) {
-		mkdir("ENVARC:.ssh", 0777);
-		f = Open("ENVARC:.ssh/known_hosts", MODE_NEWFILE);
+		mkdir(sshDotDir, 0755);
+		f = Open(knownHosts, MODE_NEWFILE);
 		if (!f)
 			return false;
 	}
@@ -516,7 +551,7 @@ static bool verifyHost(uint8_t * hostBase64) {
 		printf("do you trust host %s with ssh-ed25519 key %s? Then enter: yes\n", hostname, hostBase64);
 		fflush(stdout);
 		*buffer = 0;
-		gets((char *)buffer, 5);
+		fgets((char *)buffer, 5, stdin);
 		if (0 == strncmp("yes", (char *)buffer, 3)) {
 			r = true;
 			fprintf(f, "%s ssh-ed25519 %s\n", hostname, hostBase64);
@@ -547,8 +582,9 @@ static bool handleKexEcdhReply(SHA256 &handshakeMD, unsigned long packetSize) {
 		return false;
 	}
 
-	handshakeMD.update(&length, 4);
-	HSU(&length, 0, 4);
+	uint32_t len_be = htonl(length);
+	handshakeMD.update(&len_be, 4);
+	HSU(&len_be, 0, 4);
 	p += 4;
 	handshakeMD.update(p, length);
 	HSU(p, 0, length);
@@ -601,19 +637,21 @@ static bool handleKexEcdhReply(SHA256 &handshakeMD, unsigned long packetSize) {
 	p += 4;
 
 	// add server public key to hash
-	handshakeMD.update(&length, 4);
-	HSU(&length, 0, 4);
+	len_be = htonl(length);
+	handshakeMD.update(&len_be, 4);
+	HSU(&len_be, 0, 4);
 	handshakeMD.update(cpk, 32);
 	HSU(cpk, 0, 32);
+
 	// add server public key to hash
-	handshakeMD.update(&length, 4);
-	HSU(&length, 0, 4);
+	handshakeMD.update(&len_be, 4);
+	HSU(&len_be, 0, 4);
 	handshakeMD.update(p, 32);
 	HSU(p, 0, 32);
 
-	logme(L_DEBUG, "calulating shared secret using X25519 START");
+	logme(L_DEBUG, "calculating shared secret using X25519 START");
 	fe_scalarmult_x25519(sharedSecret.data, csk, p);
-	logme(L_DEBUG, "calulating shared secret using X25519 STOP");
+	logme(L_DEBUG, "calculating shared secret using X25519 STOP");
 	p += length;
 	if ((int8_t)sharedSecret.data[0] < 0) {
 		sharedSecret.size = 33;
@@ -623,9 +661,16 @@ static bool handleKexEcdhReply(SHA256 &handshakeMD, unsigned long packetSize) {
 		sharedSecret.size = 32;
 	}
 
-
+#if (BYTE_ORDER == BIG_ENDIAN)
 	handshakeMD.update(&sharedSecret, sharedSecret.size + 4);
 	HSU(&sharedSecret, 0, sharedSecret.size + 4);
+#else
+	len_be = htonl(sharedSecret.size);
+	handshakeMD.update(&len_be, 4);
+	handshakeMD.update(&sharedSecret.data, sharedSecret.size);
+	HSU(&len_be, 0, 4);
+	HSU(&sharedSecret.data, 0, sharedSecret.size);
+#endif
 
 	handshakeMD.digest(hash);
 #if defined(DUMP_HASH)
@@ -657,9 +702,12 @@ static bool handleKexEcdhReply(SHA256 &handshakeMD, unsigned long packetSize) {
 	p += 4;
 
 	logme(L_DEBUG, "verifying server signature ed25519 START");
-	bool r = ge_verify_ed25519(hash, 32, p, hpk);
+	int r = ge_verify_ed25519(hash, 32, p, hpk);
 	logme(L_DEBUG, "verifying server signature ed25519 STOP");
 	if (!r) {
+//_dump("hash", hash, 32);
+//_dump("p   ", p, 64);
+//_dump("hpk ", hpk, 32);
 		logme(L_ERROR, "failed to verify the host");
 		error = ERROR_HOST_VERIFY;
 	}
@@ -693,31 +741,99 @@ static bool waitForService() {
 	return true;
 }
 
-static void freeConsole() {
-	if (stdinBptr) {
-		struct FileHandle * fh = (struct FileHandle *)BADDR(stdinBptr);
-		if (IsInteractive(stdinBptr) == DOSTRUE) {
-			Write(stdinBptr, "\x1b[2;11;12}", 10);
-			SetMode(stdinBptr, 0);
-		}
-		stdinBptr = 0;
-	}
+// keep originals around
+#if defined(__linux__) || defined(__unix__)
+static struct termios origTermios;
+#elif defined(_WIN32)
+static DWORD origMode;
+#endif
 
-	if (theWindow && orgWindowTitle) {
-		SetWindowTitles(theWindow, orgWindowTitle, 0);
-		theWindow = 0;
-	}
+static void freeConsole(void) {
+#ifdef __AMIGA__
+    if (stdinBptr) {
+        struct FileHandle * fh = (struct FileHandle *)BADDR(stdinBptr);
+        if (IsInteractive(stdinBptr) == DOSTRUE) {
+            Write(stdinBptr, "\x1b[2;11;12}", 10);
+            SetMode(stdinBptr, 0);
+        }
+        stdinBptr = 0;
+    }
+
+    if (theWindow && orgWindowTitle) {
+        SetWindowTitles(theWindow, orgWindowTitle, 0);
+        theWindow = 0;
+    }
+
+#elif defined(__linux__) || defined(__unix__)
+    if (stdinBptr) {
+        tcsetattr(fileno(stdinBptr), TCSANOW, &origTermios);
+        stdinBptr = NULL;
+    }
+
+#elif defined(_WIN32)
+    if (stdinBptr) {
+        HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
+        SetConsoleMode(hIn, origMode);
+        stdinBptr = NULL;
+    }
+#endif
 }
 
-static bool grabConsole() {
-	stdinBptr = Input();
-	if (IsInteractive(stdinBptr) != DOSTRUE)
-		return false;
+static bool grabConsole(void) {
+#ifdef __AMIGA__
+    stdinBptr = Input();
+    if (IsInteractive(stdinBptr) != DOSTRUE)
+        return false;
 
-	SetMode(stdinBptr, 1);
+    SetMode(stdinBptr, 1);   // raw console mode
+    stdoutBptr = Output();
+    return true;
 
-	stdoutBptr = Output();
-	return true;
+#elif defined(__linux__) || defined(__unix__)
+    if (isatty(fileno(stdout))) {
+        // disable buffering if stdout is a terminal
+        setvbuf(stdout, NULL, _IONBF, 0);
+    }
+
+    stdinBptr = stdin;
+    if (!isatty(fileno(stdinBptr)))
+        return false;
+
+    if (tcgetattr(fileno(stdinBptr), &origTermios) == -1)
+        return false;
+    struct termios t = origTermios;
+    cfmakeraw(&t);
+    if (tcsetattr(fileno(stdinBptr), TCSANOW, &t) == -1)
+        return false;
+
+    stdoutBptr = stdout;
+    return true;
+
+#elif defined(_WIN32)
+    if (isatty(fileno(stdout))) {
+        // disable buffering if stdout is a terminal
+        setvbuf(stdout, NULL, _IONBF, 0);
+    }
+
+    stdinBptr = stdin;
+    if (!_isatty(_fileno(stdinBptr)))
+        return false;
+
+    HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
+    if (!GetConsoleMode(hIn, &origMode))
+        return false;
+    DWORD mode = origMode;
+    mode &= ~(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT);
+    mode |= ENABLE_PROCESSED_INPUT;
+    if (!SetConsoleMode(hIn, mode))
+        return false;
+
+    stdoutBptr = stdout;
+    return true;
+
+#else
+    return false;
+#endif
 }
 
 static bool loginPK() {
@@ -736,7 +852,7 @@ static bool loginPK() {
 	putString(p, "ssh-ed25519");
 
 	// server pk blob
-	putInt32(p, 0x33);
+	putInt32AndInc(p, 0x33);
 	putString(p, "ssh-ed25519");
 	putAny(p, userPK, 0x20);
 
@@ -763,12 +879,12 @@ static bool loginPK() {
 	putString(p, "ssh-ed25519");
 
 	// server pk blob
-	putInt32(p, 0x33);
+	putInt32AndInc(p, 0x33);
 	putString(p, "ssh-ed25519");
 	putAny(p, userPK, 0x20);
 
 // server pk blob - only if publickey-hostbound-v00@openssh.com is used
-//	putInt32(p, 0x33);
+//	putInt32AndInc(p, 0x33);
 //	putString(p, "ssh-ed25519");
 //	putAny(p, hostPK, 0x20);
 
@@ -781,9 +897,9 @@ static bool loginPK() {
 //	_dump("hash", msg, msgLen);
 
 	// add signature
-	putInt32(p, 0x53);
+	putInt32AndInc(p, 0x53);
 	putString(p, "ssh-ed25519");
-	putInt32(p, 0x40);
+	putInt32AndInc(p, 0x40);
 
 	logme(L_DEBUG, "signing auth message START");
 	ge_sign_ed25519(p, msg, msgLen, userSK);
@@ -823,42 +939,44 @@ static bool loginPass() {
 	if (stdoutBptr) {
 		uint8_t * start = p;
 		for(;;) {
+#ifdef __AMIGA__
 			signed l = Read(stdinBptr, p, 100);
 			if(SetSignal(0L,SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
 				exit(0);
+#else
+			signed l = Read(stdinBptr, p, 1);
+			if (l <= 0)
+				continue;
+#endif
 			if (l > 1 && *p == '\x1b')
 				continue;
 			for (int i = 0; i < l; ++i) {
 				if (*p == '\r' || *p == '\n')
-					break;
+					goto Outer;
+				if (*p <= 4)
+					exit(0);
 				if (*p == '\b') {
 					if (p > start) {
-//						printf("\b \b");
-//						fflush(stdout);
 						--p;
 					}
 					continue;
 				}
-//				putchar('*');
-//				fflush(stdout);
 				++p;
 			}
-			if (*p <= 4)
-				return false;
-			if (*p == '\r' || *p == '\n')
-				break;
 		}
-		puts("");
+		Outer:;
 	} else {
 		*p = 0;
-		gets((char *)p, buffersize - 1000);
+		fgets((char *)p, buffersize - 1000, stdin);
 		p += strlen((char *)p);
 		while (p > q + 5 && p[-1] < 32)
 			--p;
 	}
 
 	unsigned plen = p - q - 4;
-	putInt32(q, plen);
+	putInt32AndInc(q, plen);
+
+	printf("\r\n");
 
 	if (!sendEncrypted(buffer + 5, p - buffer - 5))
 		return false;
@@ -880,7 +998,8 @@ static bool authenticate() {
 			return false;
 		if (buffer[5] != SSH_MSG_USERAUTH_BANNER)
 			break;
-		len = *(uint32_t*)(buffer + 6); // even
+
+		len = getInt32Aligned(buffer + 6); // even
 		buffer[10 + len] = 0;
 		puts((char *)buffer + 10);
 	}
@@ -941,8 +1060,15 @@ void cleanup() {
 	if (sockfd != 0)
 		CloseSocket(sockfd);
 
-	if (SocketBase != 0)
-		CloseLibrary(SocketBase);
+#ifdef __AMIGA__
+    if (SocketBase != 0)
+        CloseLibrary(SocketBase);
+#elif defined(_WIN32)
+    WSACleanup();   // after successful WSAStartup()
+#else
+    // Linux/Unix: nothing to do, sockets are always available
+#endif
+
 }
 
 
@@ -1005,6 +1131,7 @@ bool connectClient() {
 
 	atexit(cleanup);
 
+#ifdef __AMIGA__
 	// see DOS RKRM: converted to a buffered stream before flushing!
 	FGetC(stdin);
 	fflush(stdin);
@@ -1013,6 +1140,7 @@ bool connectClient() {
 		theWindow = IntuitionBase->ActiveWindow;
 		orgWindowTitle = theWindow->Title;
 	}
+#endif
 
 	do { // while (0);
 		buffer = (uint8_t*) malloc(buffersize + 512);
@@ -1044,6 +1172,7 @@ bool connectClient() {
 		fe_new_key_pair(cpk, csk);
 		logme(L_DEBUG, "created new X25519 key pair");
 
+#ifdef __AMIGA__
 		SocketBase = OpenLibrary("bsdsocket.library", 4);
 		logme(L_FINE, "opened bsdsocket.library %08lx", SocketBase);
 		if (SocketBase == 0) {
@@ -1052,6 +1181,26 @@ bool connectClient() {
 		}
 
 		SocketBaseTags(SBTM_SETVAL(SBTC_BREAKMASK), 0, TAG_DONE);
+
+#elif defined(__linux__) || defined(__unix__)
+		// No library to open: sockets are part of libc/kernel
+		logme(L_FINE, "using BSD sockets via libc");
+		// nothing to configure; just ensure you can call socket(), bind(), etc.
+
+#elif defined(_WIN32)
+		WSADATA wsa;
+		int rc = WSAStartup(MAKEWORD(2,2), &wsa);
+		if (rc != 0) {
+			error = ERROR_BSDSOCKET;
+			break;
+		}
+		logme(L_FINE, "initialized Winsock version %d.%d", LOBYTE(wsa.wVersion), HIBYTE(wsa.wVersion));
+		// no breakmask equivalent; Winsock handles signals internally
+
+#else
+		error = ERROR_BSDSOCKET;
+		break;
+#endif
 
 		sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -1078,7 +1227,7 @@ bool connectClient() {
 		logme(L_FINE, "bound socket");
 
 		sinRemote.sin_family = host->h_addrtype;
-		sinRemote.sin_port = port;
+		sinRemote.sin_port = htons(port);
 		sinRemote.sin_addr.s_addr = *(unsigned*) host->h_addr;
 
 		if (0 != connect(sockfd, (struct sockaddr* )&sinRemote, sizeof(sinRemote))) {
@@ -1109,8 +1258,9 @@ bool connectClient() {
 		hsdp = hsd;
 #endif
 		SHA256 handshakeMD;
-		handshakeMD.update(&len, 4);
-		HSU(&len, 0, 4);
+		uint32_t len_be = htonl(len);
+		handshakeMD.update(&len_be, 4);
+		HSU(&len_be, 0, 4);
 		handshakeMD.update(server_version, len);
 		HSU(server_version, 0, len);
 
@@ -1128,8 +1278,9 @@ bool connectClient() {
 		printf("recv: %s\n", buffer);
 #endif
 
-		handshakeMD.update(&len, 4);
-		HSU(&len, 0, 4);
+		len_be = htonl(len);
+		handshakeMD.update(&len_be, 4);
+		HSU(&len_be, 0, 4);
 		handshakeMD.update(buffer, len);
 		HSU(buffer, 0, len);
 
@@ -1139,8 +1290,9 @@ bool connectClient() {
 		}
 
 		len = kexLen - 5 - KEX_INIT[4]; // minus header, padding
-		handshakeMD.update(&len, 4);
-		HSU(&len, 0, 4);
+		len_be = htonl(len);
+		handshakeMD.update(&len_be, 4);
+		HSU(&len_be, 0, 4);
 		handshakeMD.update(&KEX_INIT[0] + 5, len);
 		HSU(&KEX_INIT[0], 5, len);
 		logme(L_FINE, "sent server SSH_MSG_KEX_INIT");
@@ -1157,14 +1309,15 @@ bool connectClient() {
 		}
 
 		len = packetSize - 1 - buffer[4];
-		handshakeMD.update(&len, 4);
-		HSU(&len, 0, 4);
+		len_be = htonl(len);
+		handshakeMD.update(&len_be, 4);
+		HSU(&len_be, 0, 4);
 		handshakeMD.update(buffer + 5, len);
 		HSU(buffer, 5, len);
 		logme(L_FINE, "got server SSH_MSG_KEX_ECDH_INIT");
 
 		makeKexEcdhInit();
-		len = *(long*) buffer + 4;
+		len =  getInt32Aligned(buffer) + 4;
 		if (!mysend(sockfd, buffer, len)) {
 			error = ERROR_WRITE;
 			break;
@@ -1299,13 +1452,14 @@ void checkChannelFinished(ClientChannel * cc) {
 	clientChannels.remove(cc->getChannelNo());
 	delete cc;
 
+	stopped |= !clientChannels.getCount();
 	logme(L_DEBUG, "closed channel %ld/%ld, ccsize=%ld", cc->getChannelNo(), cc->getRemoteChannelNo(), clientChannels.getCount());
 }
 
 void eventLoop() {
 	ULONG signales = 0;
 	struct timeval tv;
-	tv.tv_secs = 0;
+	tv.tv_sec = 0;
 	tv.tv_usec = 100 * 1000; // 100ms
 
 	int noop = 0;
@@ -1345,8 +1499,29 @@ void eventLoop() {
 
 //		logme(L_DEBUG, "waitselect max=%ld listeners=%ld acceptors=%ld", maxFd, listeners.getCount(), acceptors.getCount());
 
+#ifdef __AMIGA__
 		if (0 == WaitSelect(maxFd + 1, &readfds, NULL, NULL, &tv, &signales))
 			continue;
+
+#elif defined(__linux__) || defined(__unix__)
+		int r = select(maxFd + 1, &readfds, NULL, NULL, &tv);
+		if (r == 0)   // timeout, no descriptors ready
+			continue;
+		if (r < 0) {
+			perror("select");
+			break;
+		}
+
+#elif defined(_WIN32)
+		int r = select(0, &readfds, NULL, NULL, &tv);
+		if (r == 0)   // timeout
+			continue;
+		if (r == SOCKET_ERROR) {
+			fprintf(stderr, "select() failed: %d\n", WSAGetLastError());
+			break;
+		}
+
+#endif
 
 		for (int i = 0; i < acceptors.getMax(); ++i) {
 			Acceptor * a = acceptors[i];
@@ -1445,9 +1620,10 @@ bool startAcceptors() {
 extern bool addForwardAcceptor(char const *s);
 
 void parseConfigFile(int ssh) {
+	if (!configFile) configFile = concat(sshDir, ".ssh/ssh_config", NULL);
 	BPTR ini = Open(configFile, MODE_OLDFILE);
 	if (!ini) {
-		logme(L_INFO, "can't open `%s`", configFile);
+		logme(L_DEBUG, "can't open `%s`", configFile);
 		return;
 	}
 
@@ -1534,8 +1710,10 @@ void parseConfigFile(int ssh) {
 	return;
 }
 
-
 void runClient() {
+#ifdef __AMIGA__
+#else
+#endif
 	if (connectClient()) {
 		if (openChannels()) {
 			logme(L_FINE, "opened ssh channels");

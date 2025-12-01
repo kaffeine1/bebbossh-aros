@@ -14,16 +14,28 @@ sed -i.bak -E "s/Version:.*/Version:      $major.$minor/g" bebbossh.readme
 sed -i.bak -E "s/\*\*Version:\*\*.*/**Version:** $major.$minor/" README.md
 
 rm -rf dist
-mkdir -p dist/bebbossh
+mkdir -p dist/bebbossh/linux
 
 tic -xsv9 -o dist src/xterm-amiga.src
 
+make linux=1 clean
+make MAJOR=$major MINOR=$minor STRIP=-s linux=1 -j8 all
+
+cp linux/bebbossh dist/bebbossh/linux
+cp linux/bebbosshd dist/bebbossh/linux
+cp linux/bebbosshkeygen dist/bebbossh/linux
+cp linux/bebboscp dist/bebbossh/linux
+
 make Release=1 clean
-make CPU=-m68020 MAJOR=$major MINOR=$minor STRIP=-s Release=1 -j1 all
+make CPU=-m68020 MAJOR=$major MINOR=$minor STRIP=-s Release=1 -j8 all
 cp Release/libcryptossh.library dist/bebbossh/libcryptossh.library020
 
 make Release=1 clean
-make MAJOR=$major MINOR=$minor STRIP=-s Release=1 -j1 all
+make CPU=-m68060 MAJOR=$major MINOR=$minor STRIP=-s Release=1 -j8 all
+cp Release/libcryptossh.library dist/bebbossh/libcryptossh.library060
+
+make Release=1 clean
+make MAJOR=$major MINOR=$minor STRIP=-s Release=1 -j8 all
 cp Release/bebbossh dist/bebbossh
 cp Release/bebbosshd dist/bebbossh
 cp Release/bebbosshkeygen dist/bebbossh

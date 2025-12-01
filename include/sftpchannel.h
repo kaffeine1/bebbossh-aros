@@ -47,11 +47,11 @@ struct Handle {
 	struct FileInfoBlock fib;
 	char * filename;
 	BPTR file;
-	BPTR dir;
+	DPTR dir;
 	bool first;
 	bool eof;
 
-	Handle(char const * name, BPTR file, BPTR dir, uint32_t id);
+	Handle(char const * name, BPTR file, DPTR dir, uint32_t id);
 	~Handle();
 };
 
@@ -65,7 +65,7 @@ class SftpChannel : public Channel {
 	void * queue;
 	int queueLen;
 
-	void newHandle(uint8_t * &q, uint8_t const * path, BPTR file, BPTR dir);
+	void newHandle(uint8_t * &q, uint8_t const * path, BPTR file, DPTR dir);
 	Handle * findHandle(uint8_t * hdata) const;
 	void makeStatus(uint8_t * &q, uint32_t result);
 	void sendPacket(uint8_t *q, uint8_t * &out);

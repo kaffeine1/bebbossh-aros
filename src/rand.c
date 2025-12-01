@@ -36,11 +36,19 @@
 #include <stdlib.h>
 
 #ifdef __AMIGA__
-#include <hardware/custom.h>
-#include <proto/dos.h>
+  #include <hardware/custom.h>
+  #include <proto/dos.h>
+#elif defined(__unix__)
+  #include <unistd.h>
+  #include <sys/random.h>
+  #include <fcntl.h>
+  #include <sys/stat.h>
+#elif defined(_WIN32)
+  #include <windows.h>
+  #include <bcrypt.h>
 #endif
 
-//#define FAKERAND
+// #define FAKERAND 1
 
 #ifndef FAKERAND
 void randfill(void * _to, unsigned len) {
@@ -57,10 +65,16 @@ void randfill(void * _to, unsigned len) {
 		t = (t >> 31) | (t << 1);
 		*to++ = x;
 	}
+#elif defined(__unix__)
+    unsigned char *to = (unsigned char *)_to;
+    if (getrandom(to, len, 0) < 0) {
+        int fd = open("/dev/urandom", O_RDONLY);
+        if (fd >= 0) { read(fd, to, len); close(fd); }
+    }
+#elif defined(_WIN32)
+    BCryptGenRandom(NULL, (PUCHAR)_to, len, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
 #else
-	char * to = (char *)_to;
-	for (int i = 0; i < len; ++i)
-		*to++ = i + random();
+    #error "randfill not implemented for this platform"
 #endif
 }
 #else

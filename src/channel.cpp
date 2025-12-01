@@ -35,7 +35,10 @@
  */
 #include <sys/socket.h>
 #include <arpa/inet.h> //inet_addr
+
+#ifdef __AMIGA__
 #include <proto/socket.h>
+#endif
 
 #include <log.h>
 #include <sshsession.h>

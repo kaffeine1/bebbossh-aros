@@ -40,7 +40,7 @@ extern "C" {
 #endif
 
 // Platform-dependent limb type and size
-#ifdef __AMIGA__
+#ifdef __mc68000__
 typedef uint32_t ed_t;
 #define EDX(a,b) ((uint32_t)((b<<16)|a))
 #define EDSIZE 8   // 8 × 32-bit limbs
@@ -111,9 +111,19 @@ void secret_expand(uint8_t *az, uint8_t const *sk);
 
 // Inline helpers
 static inline void setone(ed_t *r) {
-    r[0] = 1;
+	r[0] = 1;
+#if (EDSIZE == 8)
+	r[1] = 0;
+	r[2] = 0;
+	r[3] = 0;
+	r[4] = 0;
+	r[5] = 0;
+	r[6] = 0;
+	r[7] = 0;
+#else
     for (short i = 1; i < EDSIZE; i++)   // Fixed: loop to EDSIZE, not hardcoded 16
         r[i] = 0;
+#endif
 }
 
 static inline uint8_t fe25519_getparity(const ed25519 x) {

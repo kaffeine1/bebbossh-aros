@@ -3,7 +3,7 @@ Author:       s.franke@bebbosoft.de
 Uploader:     s.franke@bebbosoft.de
 Architecture: m68k-amigaos
 Type:         comm/net
-Version:      1.40
+Version:      1.410
 Required:     bsdsocket.library (e.g AmiTCP)
 
 ===============================================================================
@@ -11,7 +11,7 @@ NAME
 
 BebboSSH
 
-BebboSSH is a SSH2 implementation for Amiga systems (68000+).  
+BebboSSH is a portable SSH2 implementation for Amiga(68000+) and Linux(any).  
 
 Source Code: https://franke.ms/git/bebbo/bebbossh
 
@@ -33,6 +33,7 @@ It provides the following tools and libraries:
 - bebbosshkeygen
 - libcryptossh.library
 - libcryptossh.library020   (rename and use this on 68020-68040 or 68080)
+- libcryptossh.library060   (rename and use this on 68060)
 
 ===============================================================================
 PERFORMANCE
@@ -63,11 +64,11 @@ For a good terminal experience install the terminfo `xterm-amiga`
 on the remote system! On many systems you have to copy `xterm-amiga`
 as root into `/usr/share/terminfo/x`
 
-Pimp your `.bash_profile` to unset `LANG` since the Amiga doesn't like UTF8...
+Pimp your `.bash_profile` to set `LANG=C` since the Amiga doesn't like UTF8...
 A convenient way is to add this to `.bash_profile`:
   ```
     if [ "$TERM" == "xterm-amiga" ]; then
-      unset LANG
+      export LANG=C
     fi
   ```
 
@@ -216,6 +217,13 @@ SOFTWARE, EVEN IF I HAVE ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
 
 ===============================================================================
 HISTORY
+
+bebbossh V1.40
+* fix nasty bug that caused sig-verify to fail
+* add libcryptossh.library060
+* modified code to be more portable
+* support linux with x86/amd64/arm
+* add binaries for Linux amd64
 
 bebbossh V1.39
 * name change to bebbossh

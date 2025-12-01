@@ -34,7 +34,6 @@
  */
 #include <stdint.h>
 
-#include <amistdio.h>
 #include <stdlib.h>
 #include <signal.h>
 
@@ -45,6 +44,8 @@
 #include <sys/stat.h>
 #include <netinet/in.h>
 
+#ifdef __AMIGA__
+#include <amistdio.h>
 #include <dos/dostags.h>
 #include <exec/execbase.h>
 #include <intuition/intuitionbase.h>
@@ -60,15 +61,25 @@
 
 #include <stabs.h>
 
+#include "keyboard.h"
+#else
+#include <stdio.h>
+
+#include "amiemul.h"
+
+#endif
+
+
 #include <log.h>
 #include <stack.h>
 #include <test.h>
 
 #include "revision.h"
-#include "keyboard.h"
 #include "ssh.h"
 #include "client.h"
 #include "clientchannel.h"
+
+extern char const * sshDir;
 
 //#define LOG_KEYS
 #if defined LOG_KEYS
@@ -90,9 +101,13 @@ static uint8_t CHANNEL_PTY[17] = {
 SSH_MSG_CHANNEL_REQUEST, 0x00, 0x00, 0x00, 0x00, // channel 0
 		0x00, 0x00, 0x00, 0x07, 'p', 't', 'y', '-', 'r', 'e', 'q', 0x01, // want reply
 		};
+#ifdef __AMIGA__
 static const char *TERM = "xterm-amiga";
-static uint32_t numCols;
-static uint32_t numRows;
+#else
+static const char *TERM = "xterm";
+#endif
+extern uint32_t numCols;
+extern uint32_t numRows;
 static uint8_t TERMCAPS[43] = { 0x00, 0x00, 0x00, 0x0, // terminal width, pixels
 		0x00, 0x00, 0x00, 0x0, // terminal height, pixels
 		0x00, 0x00, 0x00, 6 * 5 + 1, // length of the options
@@ -106,7 +121,8 @@ static uint8_t TERMCAPS[43] = { 0x00, 0x00, 0x00, 0x0, // terminal width, pixels
 		0x00 // end of options
 		};
 
-static bool getConsoleSize();
+bool getConsoleSize();
+
 static bool sendNewPty() {
 	getConsoleSize();
 	uint8_t *p = buffer + 5;
@@ -115,8 +131,8 @@ static bool sendNewPty() {
 
 	putString(p, TERM);
 
-	putInt32(p, numCols);
-	putInt32(p, numRows);
+	putInt32AndInc(p, numCols);
+	putInt32AndInc(p, numRows);
 
 	memcpy(p, TERMCAPS, sizeof(TERMCAPS));
 	int len = p - (buffer + 5) + sizeof(TERMCAPS);
@@ -124,13 +140,33 @@ static bool sendNewPty() {
 	return sendEncrypted(buffer + 5, len);
 }
 
-static uint8_t EXEC[14] = {
-SSH_MSG_CHANNEL_REQUEST, 0x00, 0x00, 0x00, 0x00, // channel 0
-		0x00, 0x00, 0x00, 0x04, 'e', 'x', 'e', 'c', 0x01 };
+static uint8_t ENV_LANG_C[] = {
+    SSH_MSG_CHANNEL_REQUEST,              // 98
+    0x00, 0x00, 0x00, 0x00,               // channel 0
+    0x00, 0x00, 0x00, 0x03, 'e','n','v',  // "env"
+    0x00,                                 // want_reply = FALSE
+    0x00, 0x00, 0x00, 0x04, 'L','A','N','G', // variable_name
+    0x00, 0x00, 0x00, 0x01, 'C'           // variable_value = "C"
+};
 
+
+// "exec" channel request packet
+static uint8_t EXEC[14] = {
+    SSH_MSG_CHANNEL_REQUEST,              // Packet type = 98 (SSH_MSG_CHANNEL_REQUEST)
+    0x00, 0x00, 0x00, 0x00,               // recipient_channel = 0
+    0x00, 0x00, 0x00, 0x04,               // length of request_type string = 4
+    'e', 'x', 'e', 'c',                   // request_type = "exec"
+    0x01                                  // want_reply = TRUE
+};
+
+// "shell" channel request packet
 static uint8_t SHELL[15] = {
-SSH_MSG_CHANNEL_REQUEST, 0x00, 0x00, 0x00, 0x00, // channel 0
-		0x00, 0x00, 0x00, 0x05, 's', 'h', 'e', 'l', 'l', 0x01 };
+    SSH_MSG_CHANNEL_REQUEST,              // Packet type = 98 (SSH_MSG_CHANNEL_REQUEST)
+    0x00, 0x00, 0x00, 0x00,               // recipient_channel = 0
+    0x00, 0x00, 0x00, 0x05,               // length of request_type string = 5
+    's', 'h', 'e', 'l', 'l',              // request_type = "shell"
+    0x01                                  // want_reply = TRUE
+};
 
 class ConsoleChannel: public ClientChannel {
 	bool pty;
@@ -169,11 +205,13 @@ int ConsoleChannel::processChannelData(void *data, int length) {
 
 			*end++ = 0;
 			length -= end - title + 4;
+#ifdef __AMIGA__
 			if (theWindow) {
 				free(myWindowTitle);
 				myWindowTitle = strdup(title);
 				SetWindowTitles(theWindow, myWindowTitle, 0);
 			}
+#endif
 			c = end;
 		}
 	}
@@ -197,6 +235,11 @@ bool ConsoleChannel::start() {
 
 	}
 	remoteChannelNo = 0;
+
+#ifdef __AMIGA__
+	if (!sendEncrypted(ENV_LANG_C, sizeof(ENV_LANG_C)))
+		return false;
+#endif
 
 	if (command) {
 		uint8_t *b5 = buffer + 5;
@@ -237,14 +280,14 @@ static bool sendWindowResize() {
 	uint8_t *b5 = buffer + 5;
 	memcpy(b5, RESIZE, sizeof(RESIZE));
 	uint8_t *p = b5 + sizeof(RESIZE);
-	putInt32(p, numCols);
-	putInt32(p, numRows);
-	putInt32(p, 0);
-	putInt32(p, 0);
+	putInt32AndInc(p, numCols);
+	putInt32AndInc(p, numRows);
+	putInt32AndInc(p, 0);
+	putInt32AndInc(p, 0);
 
 	return sendEncrypted(b5, p - b5);
 }
-
+#ifdef __AMIGA__
 static uint8_t* makeMouseClick(uint8_t *c) {
 	unsigned x = -1;
 	unsigned y = 0;
@@ -302,43 +345,16 @@ static uint8_t* makeMouseClick(uint8_t *c) {
 	*p++ = (flags & 128) ? 'm' : 'M';
 	return p;
 }
+#endif
 
-static bool getConsoleSize() {
-	uint8_t tmp[16];
-	if (!stdoutBptr)
-		return false;
-	Write(stdinBptr, "\x9b\x30\x20\x71", 4);
-	uint8_t *p = &tmp[0];
-	while (WaitForChar(stdinBptr, 200) == DOSTRUE) {
-		Read(stdinBptr, p, 1);
-		++p;
-		if (p > &tmp[15])
-			break;
-	}
-	uint8_t *q = &tmp[5];
-	numRows = 0;
-	for (; q < p; ++q) {
-		if (*q == ';')
-			break;
-		numRows = numRows * 10;
-		numRows += *q - '0';
-	}
-	++q;
-	numCols = 0;
-	for (; q < p; ++q) {
-		if (*q == ' ')
-			break;
-		numCols = numCols * 10;
-		numCols += *q - '0';
-	}
-	return true;
-}
+#include <stdbool.h>
 
 void handleKeyboard() {
 	uint8_t *b5 = buffer + 5;
 	uint8_t *c = b5 + 9; // chars
 
 	uint8_t *p = c;
+#ifdef __AMIGA__
 	if (!stdoutBptr) {
 		int sz = 512;
 
@@ -447,13 +463,32 @@ void handleKeyboard() {
 		} else
 			++p;
 	}
+#else
+	{
+		fd_set set;
+		struct timeval timeout;
+		int rv;
+		FD_ZERO(&set);
+		FD_SET(STDIN_FILENO, &set);
+
+		timeout.tv_sec = 0;
+		timeout.tv_usec = 10000; // 0.01 seconds
+
+		rv = select(STDIN_FILENO+1, &set, NULL, NULL, &timeout);
+		if (rv > 0) {
+			read(STDIN_FILENO, p, 1);
+			++p;
+		}
+	}
+#endif
 	unsigned len = p - c;
 	if (len) {
 		uint8_t *p = b5;
 		*p++ = SSH_MSG_CHANNEL_DATA;  // 1
 		*(uint32_t*) p = 0; // channel // 5
 		p += 4;
-		*(uint32_t*) p = len; // 9 bytes
+
+		putInt32AndInc(p, len);
 
 #if defined LOG_KEYS
 		for (unsigned i = 0; i < len; ++i)
@@ -586,10 +621,8 @@ int ClientForwardChannel::innerProcessSocketData(void *data, int len) {
 	uint8_t *b5 = buffer + 5;
 	uint8_t *p = b5;
 	*p++ = SSH_MSG_CHANNEL_DATA;  // 1
-	*(uint32_t*) p = getRemoteChannelNo(); // channel // 5
-	p += 4;
-	*(uint32_t*) p = len; // 9 bytes
-	p += 4;
+	putInt32AndInc(p, getRemoteChannelNo()); // channel // 5
+	putInt32AndInc(p, len); // 9 bytes
 	if (data != p) {
 		memmove(p, data, len);
 	}
@@ -677,11 +710,11 @@ public:
 		*p++ = SSH_MSG_CHANNEL_OPEN;
 		putString(p, "direct-tcpip");
 
-		putInt32(p, no);
-		putInt32(p, 0x7fffffff); // windowsize
-		putInt32(p, MAXPACKET); // maxsize
+		putInt32AndInc(p, no);
+		putInt32AndInc(p, 0x7fffffff); // windowsize
+		putInt32AndInc(p, MAXPACKET); // maxsize
 		putString(p, dest);
-		putInt32(p, destPort);
+		putInt32AndInc(p, destPort);
 
 		struct sockaddr_in sin;
 		socklen_t len = sizeof(sin);
@@ -690,11 +723,11 @@ public:
 			snprintf(buf, 3 * 4 + 3 + 1, "%ld.%ld.%ld.%ld", (0xff & (sin.sin_addr.s_addr >> 24)), (0xff & (sin.sin_addr.s_addr >> 16)),
 					(0xff & (sin.sin_addr.s_addr >> 8)), (0xff & sin.sin_addr.s_addr));
 			putString(p, buf);
-			putInt32(p, sin.sin_port);
+			putInt32AndInc(p, sin.sin_port);
 			logme(L_DEBUG, "accept on %ld, %s:%ld -> %s:%ld", sockFd_, buf, sin.sin_port, dest, destPort);
 		} else {
 			putString(p, src);
-			putInt32(p, srcPort);
+			putInt32AndInc(p, srcPort);
 			logme(L_DEBUG, "accept on %ld -> %s:%ld", sockFd_, dest, destPort);
 		}
 
@@ -711,7 +744,7 @@ public:
 
 bool addForwardAcceptor(char const *s) {
 	char *listenAddress = strdup(s);
-	char *listenPort = strchr(s, ':');
+	char *listenPort = (char *)strchr(s, ':');
 	if (!listenPort)
 		return false;
 	*listenPort++ = 0;
@@ -752,9 +785,9 @@ static void printUsage() {
 	puts("USAGE: amigassh [options] [user@]host[:port] [command [args...]]");
 	puts("    -?            display this help");
 	puts("    -c <file>     select the config file");
-	puts("                  defaults to envarc:.ssh/ssh_config");
+	printf("                  defaults to %s.ssh/ssh_config\n", sshDir);
 	puts("    -i <file>     select the private key file for public key authentication");
-	puts("                  defaults to envarc:.ssh/id_ed25519");
+	printf("                  defaults to %s.ssh/id_ed25519\n", sshDir);
 	puts("    -L [bind_address:]port:host:hostport");
 	puts("                  listen at bind_address:port and forward to host:hostport");
 	puts("    -p <port>     connect to the host at port <port>");
@@ -911,11 +944,14 @@ static void parseParams(unsigned argc, char **argv) {
 	invalid: printf("invalid option %s\n", arg);
 	exit(10);
 }
-
+#ifdef __AMIGA__
 struct Library *IconBase = 0;
 char __stdiowin[128] = "CON://///AUTO/CLOSE/WAIT";
 extern struct WBStartup *_WBenchMsg;
-extern "C" void __parseIcon(void) {
+
+extern "C" 
+__attribute__((externally_visible))
+void __parseIcon(void) {
 	char buff[256];
 	struct WBStartup *wbstartup = _WBenchMsg;
 	if (!wbstartup)
@@ -982,7 +1018,9 @@ extern "C" void __parseIcon(void) {
 	}
 	CloseLibrary(IconBase);
 }
+//static struct __ {	__() { __parseIcon(); }} __;
 ADD2INIT(__parseIcon, -41);
+#endif
 
 extern void parseConfigFile(int ssh);
 

@@ -35,6 +35,7 @@
  */
 #include <sys/socket.h>
 #include <arpa/inet.h> //inet_addr
+#ifdef __AMIGA__
 #include <amistdio.h>
 
 #include <dos/dosextens.h>
@@ -44,12 +45,57 @@
 #include <proto/socket.h>
 #include <proto/timer.h>
 
+#define DPTR BPTR
+
+#else
+#include "amiemul.h"
+
+#endif
+
 #include <log.h>
 #include <sshsession.h>
 #include <test.h>
 
 #include "channel.h"
 #include "shellchannel.h"
+
+ShellChannel::ShellChannel(SshSession * server, uint32_t channel, ChannelType type)
+: Channel(server, channel, type),
+		pty(false), shell(false), exec(false),
+		running(false), done(false),
+		rows(0), cols(0),
+#ifdef __AMIGA__
+		localEcho(false),
+		stackSize(::stackSize), dir(0),
+		breakPort1(0), breakPort2(0), pending(0), waiting(0),
+		xpos(line), xend(line),
+		inBufferLen(0), inBuffer(0),
+		history(32)
+{
+	*xend = 0;
+	if (homeDir)
+		dir = Lock(homeDir, SHARED_LOCK);
+	if (!dir)
+		dir = Lock("RAM:", SHARED_LOCK);
+	logme(L_DEBUG, "@%ld:%ld opening shell channel", server->getSockFd(), channel);
+}
+#else
+	pid(0), master(0)
+{
+}
+#endif
+
+ShellChannel::~ShellChannel() {
+#ifdef __AMIGA__
+	xfree(inBuffer);
+	if (dir)
+		UnLock(dir);
+#endif
+	logme(L_DEBUG, "@%ld:%ld terminating shell channel", server->getSockFd(), channel);
+}
+
+
+#ifdef __AMIGA__
 
 extern void handleMsg(struct Message * msg);
 
@@ -64,36 +110,6 @@ extern long theInputSize;
 extern struct FileHandle *theOutput;
 
 extern int stopped;
-
-static inline struct DosPacket * getDosPacket (struct Message * m){
-	return (struct DosPacket*) m->mn_Node.ln_Name;
-}
-
-ShellChannel::ShellChannel(SshSession * server, uint32_t channel, ChannelType type)
-: Channel(server, channel, type),
-		pty(false), shell(false), exec(false), localEcho(false),
-		stackSize(::stackSize),
-		running(false), done(false),
-		breakPort1(0), breakPort2(0), pending(0), waiting(0),
-		xpos(line), xend(line),
-		inBufferLen(0), inBuffer(0),
-		history(32), rows(0), cols(0)
-{
-	*xend = 0;
-	if (homeDir)
-		dir = Lock(homeDir, SHARED_LOCK);
-	if (!dir)
-		dir = Lock("RAM:", SHARED_LOCK);
-	logme(L_DEBUG, "@%ld:%ld opening shell channel", server->getSockFd(), channel);
-}
-
-
-ShellChannel::~ShellChannel() {
-	free(inBuffer);
-	if (dir)
-		UnLock(dir);
-	logme(L_DEBUG, "@%ld:%ld terminating shell channel", server->getSockFd(), channel);
-}
 
 struct MsgPort * ShellChannel::setBreakPort(struct MsgPort * pnew, struct MsgPort * pold) {
 	struct MsgPort * r = 0;
@@ -113,7 +129,6 @@ struct MsgPort * ShellChannel::setBreakPort(struct MsgPort * pnew, struct MsgPor
 	}
 	return r;
 }
-
 
 int ShellChannel::read(char * to, int toReadIn) {
 	int avail = getAvail();
@@ -917,4 +932,249 @@ bool ShellChannel::endCommand(){
 
 	return handleData(inBuffer, len);
 }
+#else
+// linux
 
+#include <pty.h>       // declares openpty()
+#include <utmp.h>      // for struct utmp if needed
+#include <termios.h>   // for struct termios
+#include <sys/ioctl.h> // for ioctl, TIOCSCTTY
+#include <unistd.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+#include <signal.h>
+#include <sys/wait.h>
+#include <pwd.h>
+#include <grp.h>
+
+
+// helper to dump a file to stdout if it exists
+static void show_file(const char *path) {
+    int fd = open(path, O_RDONLY);
+    if (fd >= 0) {
+        char buf[1024];
+        ssize_t n;
+        while ((n = read(fd, buf, sizeof(buf))) > 0) {
+            write(STDOUT_FILENO, buf, n);
+        }
+        close(fd);
+    }
+}
+
+bool ShellChannel::startCommand(char const * cmd){
+    int slave;
+
+    const char *username = server->getUser();
+    struct passwd *pw = getpwnam(username);
+    if (!pw)
+    	return false;
+
+    // make a writable copy of cmd
+    char *copy = strdup(cmd);
+    if (!copy) return false;
+
+    // argv array (fixed size for simplicity)
+    char *argv[64];
+    int argc = 0;
+
+    // tokenize on whitespace
+    char *token = strtok(copy, " \t\r\n");
+    while (token && argc < 63) {
+        argv[argc++] = token;
+        token = strtok(NULL, " \t\r\n");
+    }
+    argv[argc] = NULL;
+
+    if (argc == 0) {
+        xfree(copy);
+        return false;
+    }
+
+    const char *program = argv[0];
+
+    // If this is a shell, mark it as a login shell
+    if (strcmp(program, "bash") == 0 ||
+        strcmp(program, "/bin/bash") == 0 ||
+        strcmp(program, "sh") == 0 ||
+        strcmp(program, "/bin/sh") == 0) {
+        argv[0] = concat("-", argv[0], 0);   // prepend dash
+    } else {
+    	argv[0] = strdup(argv[0]);
+    }
+
+    if (openpty(&master, &slave, NULL, NULL, NULL) == -1) {
+        return false;
+    }
+
+    pid = fork();
+    if (pid < 0) {
+        close(master);
+        close(slave);
+        return false;
+    }
+
+	if (pid == 0) {
+		// child
+		close(master);
+
+		// Optionally set PTY size before attaching
+		struct winsize ws = {24, 80, 0, 0};
+		ioctl(slave, TIOCSWINSZ, &ws);
+
+		// Make slave the controlling terminal and hook up stdin/out/err
+		if (login_tty(slave) < 0) {
+			perror("login_tty");
+			_exit(1);
+		}
+
+		// --- switch to user uid/gid ---
+		if (initgroups(pw->pw_name, pw->pw_gid) == 0) {
+			setgid(pw->pw_gid);
+		}
+		setuid(pw->pw_uid);
+
+	    // --- display MOTD ---
+	    show_file("/etc/motd");
+
+		clearenv();
+
+		// set environment variables
+		setenv("HOME", pw->pw_dir, 1);
+		setenv("USER", pw->pw_name, 1);
+		setenv("LOGNAME", pw->pw_name, 1);
+		setenv("SHELL", pw->pw_shell, 1);
+		setenv("TMPDIR", "/tmp", 1);
+
+		setenv("LINES", "24", 1);
+		setenv("COLUMNS", "80", 1);
+
+		// TERM comes from the client side; set a default if missing
+		if (!getenv("TERM")) {
+			setenv("TERM", "xterm-256color", 1);
+		}
+
+		// set working directory to user's home
+		if (chdir(pw->pw_dir) == 0) {
+			setenv("PWD", pw->pw_dir, 1);
+		}
+
+		execvp(program, argv);
+		_exit(127);
+	}
+
+    // parent
+    close(slave);
+    xfree(argv[0]);
+    return true;
+}
+
+void ShellChannel::prompt() {
+    const char *username = server->getUser();
+    const char *shell = "/bin/sh"; // fallback
+
+    if (username && username[0] != '\0') {
+        struct passwd *pw = getpwnam(username);
+        if (pw && pw->pw_shell && pw->pw_shell[0] != '\0') {
+            shell = pw->pw_shell;
+        }
+    }
+
+    startCommand(shell);
+}
+
+static int waitpid_timeout(pid_t pid, int *status, int timeout_ms) {
+    int elapsed = 0;
+    const int step = 50; // check every 50ms
+    while (elapsed < timeout_ms) {
+        pid_t r = waitpid(pid, status, WNOHANG);
+        if (r == pid) {
+            // child exited
+            return 1;
+        } else if (r == 0) {
+            // still running
+            usleep(step * 1000);
+            elapsed += step;
+            continue;
+        } else {
+            // error
+            return -1;
+        }
+    }
+    // timeout reached, child still running
+    return 0;
+}
+
+void ShellChannel::abort() {
+    if (pid) {
+        kill(pid, SIGTERM);
+
+        int status;
+        int r = waitpid_timeout(pid, &status, 500);
+        if (r == 1) {
+            // child exited cleanly
+        } else if (r == 0) {
+            // timeout: child still running, you may escalate (SIGKILL)
+            kill(pid, SIGKILL);
+            waitpid(pid, &status, 0); // reap after kill
+        } else {
+            // error case
+        }
+
+        pid = 0;
+    }
+}
+
+void ShellChannel::sendBreak() {
+	if (pid) {
+		kill(pid, SIGINT);
+		pid = 0;
+	}
+}
+void ShellChannel::checkTimeout(timeval*) {
+
+}
+
+int ShellChannel::handleData(char* buffer, unsigned sz) {
+    size_t off = 0;
+    while (off < sz) {
+        ssize_t n = write(master, buffer + off, sz - off);
+        if (n > 0) {
+            off += n;
+        } else if (n < 0 && errno == EINTR) {
+            continue; // retry
+        } else if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+            // partial write, return how many bytes are left
+            return sz - off;
+        } else {
+            // fatal error
+            return -1;
+        }
+    }
+    // all bytes written
+    return 0;
+}
+
+
+bool ShellChannel::endCommand() {
+	return false;
+
+}
+
+bool ShellChannel::isPending() const {
+	if (pid <= 0) return false;
+	return (kill(pid, 0) == 0 || errno == EPERM);
+}
+
+int ShellChannel::handleRead() {
+	char * out = &server->outdata[14];
+	int n = read(master, out, CHUNKSIZE);
+	if (n > 0) {
+		server->channelWrite(channel, out, n);
+	} else if (n < 0) {
+		abort();
+	}
+	return n;
+}
+
+#endif

@@ -2,6 +2,8 @@
 .text _free
 .text _realloc
 
+.direct __Z9putStringRPhPKc
+
 .text __Z11fillKexInitPhPKc
 
 .text __ZN21ChaCha20Poly1305_SSH26setKeyEPKvj

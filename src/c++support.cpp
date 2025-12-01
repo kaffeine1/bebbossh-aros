@@ -32,13 +32,27 @@
  */
 
 #include <stdlib.h>
+#include <string.h>
 
 #ifdef __AMIGA__
 #include <proto/dos.h>
 #include <amistdio.h>
 #else
 #include <stdio.h>
+#include <malloc.h>
 #endif
+
+extern "C" {
+void xfree(void * ptr) {
+#ifdef __AMIGA__ // should be libnix
+	unsigned long sz = ((unsigned long *)ptr)[-1];
+	memset(ptr, 0, sz);
+#elif defined(__linux__)
+	unsigned long sz = malloc_usable_size(ptr);
+	memset(ptr, 0, sz);
+#else
+#endif
+}}
 
 // Provide global symbols for operator new/delete variants
 asm("__Znaj: .globl __Znaj");
@@ -57,22 +71,23 @@ asm("__ZdaPvm: .globl __ZdaPvm");
 
 /// Operator delete mapped to free
 void operator delete(void* p) {
-    free(p);
+    xfree(p);
 }
 
 #ifndef __AMIGA__
+
 /// Array new/delete for non-Amiga builds
 void* operator new[](unsigned long s) {
     return malloc(s);
 }
 void operator delete(void* p, unsigned long) {
-    free(p);
+    xfree(p);
 }
 void operator delete[](void* p) {
-    free(p);
+    xfree(p);
 }
 void operator delete[](void* p, unsigned long) {
-    free(p);
+    xfree(p);
 }
 
 // Optional exception handler stub
@@ -97,5 +112,4 @@ int __cxa_guard_acquire(int* o) {
 int __cxa_guard_release(int* o) {
     return *o = 1;
 }
-
 } // extern "C"

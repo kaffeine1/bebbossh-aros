@@ -94,6 +94,8 @@ struct SshSession : public Listener {
 
 	uint32_t kexLen;
 
+	char * username;
+
 	SshSession(int _sock);
 	virtual ~SshSession();
 
@@ -143,6 +145,13 @@ struct SshSession : public Listener {
 	}
 
 	virtual void noop();
+
+	char const * getUser() const { return username; }
+
+#ifdef __linux__
+	int getHandle() const;
+	int readHandle();
+#endif
 };
 
 

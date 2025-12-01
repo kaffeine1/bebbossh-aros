@@ -48,7 +48,7 @@
 #include <ssh.h>
 #include <sha256.h>
 #include <chacha20poly1305.h>
-#include <fastmath.h>
+#include <fastmath32.h>
 
 int testChaCha20() {
 	puts("testChaCha20");
@@ -379,18 +379,50 @@ int testPoly1305() {
 	return r;
 }
 
-void mkKey(uint8_t * buffer, SHA256 &sha256, SharedSecret * sharedSecret, uint8_t * hash, uint8_t c) {
-	sha256.update(sharedSecret, sharedSecret->size + 4);
-	sha256.update(hash, 32);
-	sha256.update(&c, 1);
-	sha256.update(hash, 32); // sessionId
-	sha256.digest(buffer);
+static void update_mpint(SHA256 &sha256, const SharedSecret *ss) {
+    const uint8_t *s = ss->data;
+    size_t len = ss->size;
 
-	sha256.update(sharedSecret, sharedSecret->size + 4);
-	sha256.update(hash, 32); // hash
-	sha256.update(buffer, 32); // last result
-	sha256.digest(buffer + 32);
+    // strip leading zeros
+    while (len > 0 && *s == 0) { ++s; --len; }
+
+    bool need_pad = (len > 0 && (s[0] & 0x80));
+    uint32_t be_len = (uint32_t)(len + (need_pad ? 1 : 0));
+
+    uint8_t lenbuf[4] = {
+        (uint8_t)(be_len >> 24),
+        (uint8_t)(be_len >> 16),
+        (uint8_t)(be_len >> 8),
+        (uint8_t)(be_len)
+    };
+    sha256.update(lenbuf, 4);
+    if (need_pad) {
+        uint8_t zero = 0;
+        sha256.update(&zero, 1);
+    }
+    sha256.update(s, len);
 }
+
+void mkKey(uint8_t *buffer,
+           SHA256 &sha256,
+           SharedSecret *sharedSecret,
+           const uint8_t *hash,
+           char c)
+{
+    // First digest: HASH(K || H || c || session_id)
+    update_mpint(sha256, sharedSecret);
+    sha256.update(hash, 32);       // H
+    sha256.update(&c, 1);          // char
+    sha256.update(hash, 32);       // session_id == H in your test
+    sha256.digest(buffer);
+
+    // Second digest: HASH(K || H || previous)
+    update_mpint(sha256, sharedSecret);
+    sha256.update(hash, 32);       // H
+    sha256.update(buffer, 32);     // previous digest
+    sha256.digest(buffer + 32);
+}
+
 
 bool testSSH2() {
 	puts("testSSH2");
@@ -708,7 +740,11 @@ int testChaCha20Poly1305() {
 	return r;
 }
 
-
 int main() {
-	return testSSH2() & testChaCha20() & testPoly1305() & testChaCha20Poly1305() ? 0 : 10;
+	return
+			testSSH2() &
+			testChaCha20() &
+			testPoly1305()
+			& testChaCha20Poly1305()
+			? 0 : 10;
 }

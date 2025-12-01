@@ -4,13 +4,22 @@
 #include <sys/socket.h>
 #include <arpa/inet.h> //inet_addr
 #include <forwardchannel.h>
+#ifdef __AMIGA__
 #include <proto/exec.h>
 #include <proto/socket.h>
+
+extern struct SignalSemaphore theLock;
+
+#else
+#include "amiemul.h"
+
+extern pthread_mutex_t theLock;
+
+#endif
 #include <sshsession.h>
 #include "channel.h"
 #include "log.h"
 
-extern struct SignalSemaphore theLock;
 extern Stack<Listener> listeners;
 
 ForwardChannel::ForwardChannel(SshSession * server, uint32_t channel)

@@ -41,6 +41,8 @@
 
 #include "channel.h"
 
+extern "C" void xfree(void *);
+
 /**
  * A ring buffer to maintain the command history of a shell.
  */
@@ -57,7 +59,7 @@ public:
 	}
 	~History() {
 		for (int i = 0; i < max; ++i)
-			free(data[i]);
+			xfree(data[i]);
 		delete [] data;
 	}
 	char * getNext() {
@@ -80,12 +82,12 @@ public:
 		int endm1 = end ? end - 1 : max - 1;
 		if (endm1 == top || strcmp(t, data[endm1])) {
 			if (end == top)
-				free(data[end]);
+				xfree(data[end]);
 			data[end] = t;
 			if (++end == max)
 				end = 0;
 		} else
-			free(t);
+			xfree(t);
 		pos = end;
 	}
 	void toEnd() {
@@ -101,13 +103,17 @@ class ShellChannel : public Channel {
 	bool shell;
 	bool exec;
 
+	volatile bool running;
+	volatile bool done;
+
+	unsigned rows, cols;
+
+#ifdef __AMIGA__
 	bool localEcho;
 
 	unsigned stackSize;
-	BPTR dir;
+	DPTR dir;
 
-	volatile bool running;
-	volatile bool done;
 	struct MsgPort * breakPort1, *breakPort2;
 	struct Message * pending;
 	struct Message * waiting;
@@ -124,38 +130,50 @@ class ShellChannel : public Channel {
 
 	History history;
 
-	unsigned rows, cols;
+#else
+	pid_t pid;
+	int master;
+#endif
 public:
 	ShellChannel(SshSession * server, uint32_t channel, ChannelType type);
 	~ShellChannel();
 
-	void cmdCD(char * q);
 	bool startCommand(char const *);
-	bool startCommand();
-	bool endCommand();
-	bool isDone() const { return done;}
-	void prompt();
-	void autocomplete();
 	int handleData(char * data, unsigned len);
 
-	char * redrawRestOfLine(char *);
-	char * cursorLeft(char * out, int slen);
-	char * cursorRight(char * out, int slen);
+	virtual void sendBreak();
+	virtual void checkTimeout(struct timeval * tv);
+	virtual void abort();
 
 	bool hasPty() const { return pty; }
 	void setPty(bool p) { pty = p;}
-	void setDimension(unsigned cols, unsigned rows) {
-		this->cols = cols;
-		this->rows = rows;
-	}
 	bool hasShell() const { return shell; }
 	void setShell(bool s) { shell = s; }
 	bool hasExec() const { return exec; }
 	void setExec(bool e) { exec = e; }
+
+	bool isDone() const { return done;}
+	bool endCommand();
+
+	void setDimension(unsigned cols, unsigned rows) {
+		this->cols = cols;
+		this->rows = rows;
+	}
+	void prompt();
+
+#ifdef __AMIGA__
 	bool isPending() const { return pending != 0;}
 	void setPending(struct Message * m) { pending = m;}
 	bool isWaiting() const { return waiting != 0;}
 	void setWaiting(struct Message * m) { waiting = m;}
+
+	void cmdCD(char * q);
+	bool startCommand();
+	void autocomplete();
+	char * redrawRestOfLine(char *);
+	char * cursorLeft(char * out, int slen);
+	char * cursorRight(char * out, int slen);
+
 	struct MsgPort * setBreakPort(struct MsgPort * p1, struct MsgPort * p2);
 	bool hasBreakPort(struct MsgPort * p) const { return breakPort1 == p || breakPort2 == p; }
 	int getAvail() const { return xend - line;}
@@ -166,11 +184,19 @@ public:
 
 	int read(char * to, int len);
 	int write(char * from, int len);
-
-	virtual void sendBreak();
-	virtual void checkTimeout(struct timeval * tv);
-	virtual void abort();
+#else
+	int handleRead();
+	bool isPending() const;
+	bool isWaiting() const { return isPending(); }
+	int getHandle() const { return master; }
+#endif
 };
+
+#ifdef __AMIGA__
+static inline struct DosPacket * getDosPacket (struct Message * m){
+	return (struct DosPacket*) m->mn_Node.ln_Name;
+}
+#endif
 
 
 #endif /* SHELLCHANNEL_H_ */

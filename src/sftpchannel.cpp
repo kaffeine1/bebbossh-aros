@@ -34,15 +34,48 @@
  */
 #include <sys/socket.h>
 #include <arpa/inet.h> //inet_addr
-#include <amistdio.h>
 #include <time.h>
 
-#undef printf
-#define printf(...)
-
+#ifdef __AMIGA__
+#include <amistdio.h>
 #include <dos/dos.h>
 #include <proto/dos.h>
 #include <proto/exec.h>
+
+typedef BPTR DPTR;
+#define IS_FILE(fib) ((fib).fib_DirEntryType <= 0)
+#define IS_DIR(fib) ((fib).fib_DirEntryType > 0)
+#define IS_LINK(fib) ((fib).fib_DirEntryType == 3)
+
+typedef BPTR FPTR;
+#define ExamineF(l,f) Examine(l,f)
+#define LockF(f,m) Lock(f,m)
+#define UnLockF(f) UnLock(f)
+
+#define DateStampF DateStamp
+static inline long delta_ms(const struct DateStamp &now,
+                            const struct DateStamp &then) {
+    /* convert both to total ticks since epoch */
+    long ticks_now  = now.ds_Tick
+                    + now.ds_Minute * 50
+                    + now.ds_Days * 24 * 60 * 50;
+    long ticks_then = then.ds_Tick
+                    + then.ds_Minute * 50
+                    + then.ds_Days * 24 * 60 * 50;
+
+    long diff_ticks = ticks_now - ticks_then;
+
+    /* each tick = 20 ms */
+    return diff_ticks * 20;
+}
+
+extern "C" { void xfree(void * ptr); }
+#else
+#include "amiemul.h"
+#endif
+
+#undef printf
+#define printf(...)
 
 #include <log.h>
 #include <rand.h>
@@ -56,6 +89,7 @@
 
 #define NAMEWIDTH 24
 
+#ifdef __AMIGA__
 static inline int flags2mode(int flags) {
 	if (flags & SSH2_FXF_CREAT)
 		return MODE_NEWFILE;
@@ -63,6 +97,15 @@ static inline int flags2mode(int flags) {
 		return MODE_READWRITE;
 	return MODE_OLDFILE;
 }
+#else
+static inline char const * flags2mode(int flags) {
+	if (flags & SSH2_FXF_CREAT)
+		return MODE_NEWFILE;
+	if (flags & SSH2_FXF_WRITE)
+		return MODE_READWRITE;
+	return MODE_OLDFILE;
+}
+#endif
 
 #if 0
 static uint8_t sftp_ssh_fxp_version[13] = { 0, 0, 0, 9, // size
@@ -89,7 +132,7 @@ static uint8_t no_such_path_msg[7] = { 0, 0, 0, 3, 'n', 'i', 'x' };
 static uint8_t uhm[7] = { 0, 0, 0, 3, 'u', 'h', 'm' };
 
 
-Handle::Handle(char const* name, BPTR file_, BPTR dir_, uint32_t id_)
+Handle::Handle(char const* name, BPTR file_, DPTR dir_, uint32_t id_)
 : filename(strdup(name)), file(file_), dir(dir_), idx(id_),
   first(true), eof(false)
 {
@@ -129,14 +172,14 @@ void SftpChannel::close() {
 	server->closeChannel(this);
 }
 
-void SftpChannel::newHandle(uint8_t * &q, uint8_t const * path, BPTR file, BPTR dir) {
+void SftpChannel::newHandle(uint8_t * &q, uint8_t const * path, BPTR file, DPTR dir) {
 	Handle * h = new Handle((char *)path, file, dir, handles.getFreeIndex());
 
 	*q++ = SSH_FXP_HANDLE;
-	putInt32(q, requestId);
+	putInt32AndInc(q, requestId);
 
 	// copy random handle + counted ID
-	putInt32(q, sizeof(h->handle) + 4);
+	putInt32AndInc(q, sizeof(h->handle) + 4);
 	memcpy(q, h->handle, sizeof(h->handle) + 4);
 	q += sizeof(h->handle) + 4;
 
@@ -161,8 +204,8 @@ int SftpChannel::processSocketData(void *data, int len) {
 
 void SftpChannel::makeStatus(uint8_t * &q, uint32_t result) {
 	*q++ = SSH_FXP_STATUS;
-	putInt32(q, requestId);
-	putInt32(q, result);
+	putInt32AndInc(q, requestId);
+	putInt32AndInc(q, result);
 //	logme(L_DEBUG, "status=%ld", result);
 	switch (result) {
 	case SSH_FX_OK:
@@ -182,7 +225,7 @@ void SftpChannel::makeStatus(uint8_t * &q, uint32_t result) {
 		q += sizeof(uhm);
 		break;
 	}
-	putInt32(q, 0); // error message lang
+	putInt32AndInc(q, 0); // error message lang
 }
 
 bool sanitize(char * path) {
@@ -199,6 +242,7 @@ bool sanitize(char * path) {
 	}
 
 	if (colon && colon > path) {
+#ifdef __AMIGA__
 		struct DosList * dl = AttemptLockDosList(LDF_ALL | LDF_READ);
 		if (!dl)
 			return false;
@@ -214,6 +258,7 @@ bool sanitize(char * path) {
 		UnLockDosList(LDF_ALL | LDF_READ);
 		*colon = x;
 		if (!dl)
+#endif
 			return false;
 	}
 	return true;
@@ -251,47 +296,43 @@ bool normalize(uint8_t * path_) {
 void putFib(uint8_t * & q, struct FileInfoBlock * fib) {
 	uint32_t flags = SSH2_FILEXFER_ATTR_ACMODTIME | SSH_FILEXFER_ATTR_PERMISSIONS | SSH2_FILEXFER_ATTR_UIDGID;
 	uint32_t mode = a2sshmode(fib->fib_Protection);
-	if (fib->fib_DirEntryType < 0) { // file
+	if (IS_FILE(*fib)) { // file
 		flags |= SSH_FILEXFER_ATTR_SIZE;
 		mode |= 0100000;
-	} else if (fib->fib_DirEntryType == 3) { // link
+	} else if (IS_LINK(*fib)) { // link
 		flags |= SSH_FILEXFER_ATTR_SIZE;
 		mode |= 0120000;
-	} else if (fib->fib_DirEntryType > 0) { // folder
-		mode |= fib->fib_DirEntryType > 2 ? 0120000 : 040000;
+	} else if (IS_DIR(*fib)) { // folder
+		mode |= 040000;
 	}
 	// put attrs
-	putInt32(q, flags); // flags
+	putInt32AndInc(q, flags); // flags
 
 	if (flags & SSH_FILEXFER_ATTR_SIZE) {
-		putInt32(q, 0);
-		putInt32(q, fib->fib_Size);
+		putInt32AndInc(q, 0);
+		putInt32AndInc(q, fib->fib_Size);
 	}
 
 	// fake uid gid
-	putInt32(q, fib->fib_OwnerUID);
-	putInt32(q, fib->fib_OwnerGID);
+	putInt32AndInc(q, fib->fib_OwnerUID);
+	putInt32AndInc(q, fib->fib_OwnerGID);
 
-	putInt32(q, mode);
+	putInt32AndInc(q, mode);
 
 	struct timeval nowtime;
+#ifdef __AMIGA__
 	struct DateStamp *stamp = &fib->fib_Date;
 	long s = stamp->ds_Tick/ TICKS_PER_SECOND;
-	nowtime.tv_secs = (stamp->ds_Days * 24 * 60 + stamp->ds_Minute) * 60 + _timezone + s + 252460800;
+	nowtime.tv_sec = (stamp->ds_Days * 24 * 60 + stamp->ds_Minute) * 60 + _timezone + s + 252460800;
 	nowtime.tv_usec = stamp->ds_Tick * (1000000 / TICKS_PER_SECOND) - s * 1000000;
-	// modtime
-	putInt32(q, nowtime.tv_usec);
-	putInt32(q, nowtime.tv_secs);
-
-#if 0
-	time_t tnowtime = ((stamp->ds_Days + 2922)* 24 * 60 + stamp->ds_Minute ) * 60
-			+ stamp->ds_Tick/ TICKS_PER_SECOND;
-	struct tm tm;
-	gmtime_r(&tnowtime, &tm);
-	char to[36];
-	strftime(to, 32, "%d-%h-%Y %H:%M:%S", &tm);
-	logme(L_ERROR, "<- %s %s", to, fib->fib_FileName);
+#else
+	// fill timeval from stat
+	nowtime.tv_sec  = fib->st.st_mtime;                  // modification time in seconds
+	nowtime.tv_usec = fib->st.st_mtim.tv_nsec / 1000;    // convert nanoseconds -> microseconds
 #endif
+	// modtime
+	putInt32AndInc(q, nowtime.tv_usec);
+	putInt32AndInc(q, nowtime.tv_sec);
 }
 
 void setAttrs(uint8_t * p, uint8_t * path) {
@@ -318,15 +359,17 @@ void setAttrs(uint8_t * p, uint8_t * path) {
 	if (flags & SSH2_FILEXFER_ATTR_ACMODTIME) {
 		tv.tv_usec = getInt32(p);
 		p += 4;
-		tv.tv_secs = getInt32(p);
+		tv.tv_sec = getInt32(p);
 		p += 4;
 
-		struct DateStamp date;
-
+	    // normalize overflow
 		unsigned long u = tv.tv_usec / 1000000; // get overflow micros
 		tv.tv_usec -= u * 1000000;
-
 		tv.tv_sec += u;
+
+#ifdef __AMIGA__
+		struct DateStamp date;
+
 		tv.tv_sec -= 252460800;        // amiga offset in seconds
 		tv.tv_sec -= _timezone;
 
@@ -337,6 +380,15 @@ void setAttrs(uint8_t * p, uint8_t * path) {
 		date.ds_Tick = tv.tv_usec / (1000000 / TICKS_PER_SECOND) + tv.tv_secs * TICKS_PER_SECOND;
 
 		SetFileDate((char* )path, &date);
+#else
+		struct timespec times[2];
+		times[0].tv_sec  = tv.tv_sec;
+		times[0].tv_nsec = tv.tv_usec * 1000;
+		times[1].tv_sec  = tv.tv_sec;
+		times[1].tv_nsec = tv.tv_usec * 1000;
+
+		utimensat(AT_FDCWD, (char *)path, times, 0);
+#endif
 #if 0
 		struct DateStamp * stamp = &date;
 		time_t nowtime = ((stamp->ds_Days + 2922)* 24 * 60 + stamp->ds_Minute ) * 60
@@ -355,7 +407,7 @@ void SftpChannel::makeNameResponse(uint8_t * &q, char const * path, struct FileI
 //	logme(L_FINE, "@%ld:%ld SSH_FXP_NAME %s", server->getSockFd(), channel, path);
 
 	short l = strlen(path);
-	putInt32(q, l);
+	putInt32AndInc(q, l);
 	memcpy(q, path, l);
 	q += l;
 
@@ -381,20 +433,39 @@ void SftpChannel::makeNameResponse(uint8_t * &q, char const * path, struct FileI
 		to += snprintf(to, 16, "%10ld", fib->fib_Size);
 	}
 	*to ++= ' ';
-	*to ++= (fib->fib_Protection & FIBF_HOLD) ? 'h' : '-';
-	*to ++= (fib->fib_Protection & FIBF_SCRIPT) ? 's' : '-';
-	*to ++= (fib->fib_Protection & FIBF_PURE) ? 'p' : '-';
-	*to ++= (fib->fib_Protection & FIBF_ARCHIVE) ? 'a' : '-';
-	*to ++= !(fib->fib_Protection & FIBF_READ) ? 'r' : '-';
-	*to ++= !(fib->fib_Protection & FIBF_WRITE) ? 'w' : '-';
-	*to ++= !(fib->fib_Protection & FIBF_EXECUTE) ? 'e' : '-';
-	*to ++= !(fib->fib_Protection & FIBF_DELETE) ? 'd' : '-';
-	*to ++= ' ';
+#ifdef __AMIGA__
+    // Amiga protection bits
+    *to++ = (fib->fib_Protection & FIBF_HOLD)    ? 'h' : '-';
+    *to++ = (fib->fib_Protection & FIBF_SCRIPT)  ? 's' : '-';
+    *to++ = (fib->fib_Protection & FIBF_PURE)    ? 'p' : '-';
+    *to++ = (fib->fib_Protection & FIBF_ARCHIVE) ? 'a' : '-';
+    *to++ = !(fib->fib_Protection & FIBF_READ)    ? 'r' : '-';
+    *to++ = !(fib->fib_Protection & FIBF_WRITE)   ? 'w' : '-';
+    *to++ = !(fib->fib_Protection & FIBF_EXECUTE) ? 'e' : '-';
+    *to++ = !(fib->fib_Protection & FIBF_DELETE)  ? 'd' : '-';
+#else
+    // Linux: map POSIX mode bits
+    mode_t m = fib->fib_Protection; // mapped from st_mode
+    *to++ = (m & S_ISUID) ? 'h' : '-'; // placeholder for Amiga "hold"
+    *to++ = (m & S_IXUSR) ? 's' : '-'; // exec bit ~ script
+    *to++ = (m & S_ISVTX) ? 'p' : '-'; // sticky ~ pure
+    *to++ = (m & S_IFMT)  ? 'a' : '-'; // archive flag not present, placeholder
+    *to++ = (m & S_IRUSR) ? 'r' : '-';
+    *to++ = (m & S_IWUSR) ? 'w' : '-';
+    *to++ = (m & S_IXUSR) ? 'e' : '-';
+    *to++ = (m & S_IFMT)  ? 'd' : '-'; // delete not present, placeholder
+#endif
+    *to ++= ' ';
 
+#ifdef __AMIGA__
+    struct DateStamp *stamp = &fib->fib_Date;
+    time_t nowtime = ((stamp->ds_Days + 2922) * 24 * 60 + stamp->ds_Minute) * 60
+                   + stamp->ds_Tick / TICKS_PER_SECOND;
+#else
+    // Linux: use st_mtime directly
+    time_t nowtime = fib->fib_Date; // mapped to st.st_mtime in amiemul.h
+#endif
 
-	struct DateStamp *stamp = &fib->fib_Date;
-	time_t nowtime = ((stamp->ds_Days + 2922)* 24 * 60 + stamp->ds_Minute ) * 60
-			+ stamp->ds_Tick/ TICKS_PER_SECOND;
 	struct tm tm;
 	gmtime_r(&nowtime, &tm);
 
@@ -402,7 +473,7 @@ void SftpChannel::makeNameResponse(uint8_t * &q, char const * path, struct FileI
 	to += strlen(to);
 
 	l = to - ln;
-	putInt32(q, l);
+	putInt32AndInc(q, l);
 	q += l;
 
 	putFib(q, fib);
@@ -412,7 +483,7 @@ void SftpChannel::sendPacket(uint8_t *end, uint8_t * &out) {
 
 	int innerLen = end - out - 4;
 	uint8_t * q = out;
-	putInt32(q, innerLen);
+	putInt32AndInc(q, innerLen);
 
 	uint8_t * const outer = (uint8_t*) server->outdata + 5;
 	int packetLen = end - outer - 9; // SSH_MSG_CHANNEL_DATA + channelNo + packetLen
@@ -432,12 +503,12 @@ void SftpChannel::sendPacket(uint8_t *end, uint8_t * &out) {
 	}
 
 	uint8_t * g = outer + 5;
-	putInt32(g, packetLen); // outer length
+	putInt32AndInc(g, packetLen); // outer length
 
 	if (rest) {
 		// keep the data - copy needed since send trashes it
 		if (queueLen < rest) {
-			free(queue);
+			xfree(queue);
 			queue = malloc(rest);
 			queueLen = rest;
 		}
@@ -450,7 +521,7 @@ void SftpChannel::sendPacket(uint8_t *end, uint8_t * &out) {
 
 	out = outer;
 	*out++ = SSH_MSG_CHANNEL_DATA;
-	putInt32(out, channel);
+	putInt32AndInc(out, channel);
 	out += 4; // skip outer len
 
 	if (rest) {
@@ -461,7 +532,7 @@ void SftpChannel::sendPacket(uint8_t *end, uint8_t * &out) {
 		if (rest + 100 > limit) {
 			flush(out);
 			*out++ = SSH_MSG_CHANNEL_DATA;
-			putInt32(out, channel);
+			putInt32AndInc(out, channel);
 			out += 4; // skip outer len
 		}
 	}
@@ -483,7 +554,7 @@ int SftpChannel::handleData(char *data, unsigned outerLen) {
 
 	uint8_t * out = (uint8_t*) server->outdata + 5;
 	*out++ = SSH_MSG_CHANNEL_DATA;
-	putInt32(out, channel);
+	putInt32AndInc(out, channel);
 	out += 4; // skip outer len
 
 	// handle all requests
@@ -572,12 +643,12 @@ int SftpChannel::handleData(char *data, unsigned outerLen) {
 
 			flags = getInt32(p);
 			p += 4;
-			int mode = flags2mode(flags);
+			auto mode = flags2mode(flags);
 
 			if (flags & SSH2_FXF_EXCL) {
-				BPTR lock = Lock((char* )path, SHARED_LOCK);
+				FPTR lock = LockF((char* )path, SHARED_LOCK);
 				if (lock) {
-					UnLock(lock);
+					UnLockF(lock);
 					result =  SSH_FX_FILE_ALREADY_EXISTS;
 					goto Status;
 				}
@@ -616,7 +687,7 @@ int SftpChannel::handleData(char *data, unsigned outerLen) {
 
 			logme(L_DEBUG, "@%ld:%ld sftp SSH_FXP_OPENDIR for %s", server->getSockFd(), channel, path);
 
-			BPTR dir = Lock((char *)path, SHARED_LOCK);
+			DPTR dir = Lock((char *)path, SHARED_LOCK);
 printf("locked dir %s = %08lx\n", path, dir);
 
 			if (dir == 0) {
@@ -643,7 +714,7 @@ printf("locked dir %s = %08lx\n", path, dir);
 			}
 
 			*q++ = SSH_FXP_NAME;
-			putInt32(q, requestId);
+			putInt32AndInc(q, requestId);
 
 			// count
 			uint8_t * countPos = q;
@@ -667,7 +738,7 @@ printf("locked dir %s = %08lx\n", path, dir);
 			// send a SSH_FXP_NAME if there are handles
 			if (count) {
 				logme(L_DEBUG, "@%ld:%ld sftp SSH_FXP_READDIR with %ld names", server->getSockFd(), channel, count);
-				putInt32(countPos, count);
+				putInt32AndInc(countPos, count);
 				break;
 			}
 
@@ -699,7 +770,7 @@ printf("locked dir %s = %08lx\n", path, dir);
 
 			// create a data response
 			*q++ = SSH_FXP_DATA;
-			putInt32(q, requestId);
+			putInt32AndInc(q, requestId);
 
 			// test for EOF
 			uint32_t oldPos = Seek(handle->file, 0, OFFSET_END);
@@ -719,7 +790,7 @@ printf("locked dir %s = %08lx\n", path, dir);
 			}
 
 			logme(L_FINE, "@%ld:%ld sftp SSH_FXP_READ len=%ld", server->getSockFd(), channel, len);
-			putInt32(q, len); // full length, rest is sent in next packet
+			putInt32AndInc(q, len); // full length, rest is sent in next packet
 
 			q += read;
 			break;
@@ -791,16 +862,16 @@ printf("locked dir %s = %08lx\n", path, dir);
 
 			logme(L_DEBUG, "@%ld:%ld sftp SSH_FXP_STAT for %s", server->getSockFd(), channel, path);
 
-			BPTR lock = Lock((char* )path, SHARED_LOCK);
+			FPTR lock = LockF((char* )path, SHARED_LOCK);
 //			logme(L_ERROR, "lock = %08lx", lock);
 
 			if (lock) {
 				D_S(struct FileInfoBlock, fib);
-				Examine(lock, fib);
-				UnLock(lock);
+				ExamineF(lock, fib);
+				UnLockF(lock);
 
 				*q++ = SSH_FXP_ATTRS;
-				putInt32(q, requestId); // request-id
+				putInt32AndInc(q, requestId); // request-id
 
 				putFib(q, fib);
 				break;
@@ -821,7 +892,7 @@ printf("locked dir %s = %08lx\n", path, dir);
 
 			logme(L_DEBUG, "@%ld:%ld sftp SSH_FXP_MKDIR for %s", server->getSockFd(), channel, path);
 
-			BPTR lock = CreateDir((char *)path);
+			DPTR lock = CreateDir((char *)path);
 			if (lock) {
 				UnLock(lock);
 				setAttrs(p, path);
@@ -861,20 +932,20 @@ printf("locked dir %s = %08lx\n", path, dir);
 			logme(L_DEBUG, "@%ld:%ld sftp SSH_FXP_REALPATH for %s", server->getSockFd(), channel, path);
 
 			D_S(struct FileInfoBlock, fib);
-			BPTR lock = Lock((char *)path, SHARED_LOCK);
+			FPTR lock = LockF((char *)path, SHARED_LOCK);
 			printf("Lock %s %08lx\n", path, lock);
 			if (lock) {
 				printf("Examine %08lx\n", lock);
-				Examine(lock, fib);
+				ExamineF(lock, fib);
 				printf("UnLock %08lx\n", lock);
-				UnLock(lock);
+				UnLockF(lock);
 			} else
 				memset(fib, 0, sizeof(*fib));
 
 
 			*q++ = SSH_FXP_NAME;
-			putInt32(q, requestId);
-			putInt32(q, 1); // count of responses
+			putInt32AndInc(q, requestId);
+			putInt32AndInc(q, 1); // count of responses
 
 			makeNameResponse(q, (char*)path, fib);
 			*q++ = 1; // EOL
@@ -893,6 +964,8 @@ printf("locked dir %s = %08lx\n", path, dir);
 				result =  SSH_FX_NO_SUCH_PATH;
 				goto Status;
 			}
+
+#ifdef __AMIGA__
 			struct DevProc * dp = GetDeviceProc((CONST_STRPTR)link, NULL);
 			while (dp) {
 				uint8_t * path = q + 256;
@@ -907,8 +980,8 @@ printf("locked dir %s = %08lx\n", path, dir);
 					} else
 						memset(fib, 0, sizeof(*fib));
 					*q++ = SSH_FXP_NAME;
-					putInt32(q, requestId);
-					putInt32(q, 1); // count of responses
+					putInt32AndInc(q, requestId);
+					putInt32AndInc(q, 1); // count of responses
 
 					makeNameResponse(q, (char*)path, fib);
 					*q++ = 1; // EOL
@@ -927,6 +1000,25 @@ printf("locked dir %s = %08lx\n", path, dir);
 				FreeDeviceProc(dp);
 				break;
 			}
+#else
+		    char path[PATH_MAX];
+		    ssize_t len = readlink((const char*)link, path, sizeof(path)-1);
+		    if (len > 0) {
+		        path[len] = '\0';
+		        struct stat st;
+		        struct FileInfoBlock fib;
+		        if (lstat(path, &fib.st) != 0) {
+		            memset(&fib, 0, sizeof(fib));
+		        }
+		        *q++ = SSH_FXP_NAME;
+		        putInt32AndInc(q, requestId);
+		        putInt32AndInc(q, 1);
+		        makeNameResponse(q, path, &fib);
+		        *q++ = 1;
+		    } else {
+		        result = SSH_FX_NO_SUCH_PATH;
+		    }
+#endif
 
 			goto Status;
 		}
@@ -948,7 +1040,7 @@ printf("locked dir %s = %08lx\n", path, dir);
 				goto Status;
 			}
 
-			if (MakeLink((CONST_STRPTR)to, (LONG)link, LINK_SOFT))
+			if (MakeLink((char const *)to, (size_t)link, LINK_SOFT))
 				result = SSH_FX_OK;
 			else
 				logme(L_ERROR, "can't create soft link from %s to %s", link, to);
@@ -963,17 +1055,17 @@ printf("locked dir %s = %08lx\n", path, dir);
 			*p = 0;
 			if (0 == strcmp((char *)name, "limits@openssh.com")) {
 				*q++ = SSH_FXP_EXTENDED_REPLY;
-				putInt32(q, 1);
+				putInt32AndInc(q, 1);
 
-				putInt32(q, 0);
-				putInt32(q, 34006); // max packet
+				putInt32AndInc(q, 0);
+				putInt32AndInc(q, 34006); // max packet
 
-				putInt32(q, 0);
-				putInt32(q, 32768 - 32); // max read
-				putInt32(q, 0);
-				putInt32(q, 32768 - 32); // max write
-				putInt32(q, 0);
-				putInt32(q, 32); // max handles
+				putInt32AndInc(q, 0);
+				putInt32AndInc(q, 32768 - 32); // max read
+				putInt32AndInc(q, 0);
+				putInt32AndInc(q, 32768 - 32); // max write
+				putInt32AndInc(q, 0);
+				putInt32AndInc(q, 32); // max handles
 				break;
 			}
 			goto Status;
@@ -1025,7 +1117,7 @@ void SftpChannel::flush(uint8_t * out) {
 	if (rest > 0) {
 		logme(L_FINE, "FLUSH %ld", rest);
 		uint8_t * l = (uint8_t*)server->outdata + 10;
-		putInt32(l, rest);
+		putInt32AndInc(l, rest);
 //		_dump("FLUSH", server->outdata + 5, rest + 9);
 		server->write(server->outdata + 5, rest + 9);
 	}

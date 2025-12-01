@@ -32,8 +32,12 @@
  *  and auditability across platforms.
  * ----------------------------------------------------------------------
  */
+#ifdef __AMIGA__
 #include <proto/dos.h>
 #include <amistdio.h>
+#else
+#include <stdio.h>
+#endif
 #include <stdint.h>
 #include <string.h>
 

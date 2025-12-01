@@ -18,13 +18,17 @@
  */
 
 #define REPLACE_STDIO
+#ifdef __AMIGA__
 #include <amistdio.h>
 #include <proto/dos.h>
 #include <proto/exec.h>
+#include <stabs.h>
+#else
+#include "amiemul.h"
+#endif
 #include <string.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <stabs.h>
 
 #include "test.h"
 #include "rand.h"
@@ -36,14 +40,20 @@
 extern "C" {
 #endif
 
+#ifdef __AMIGA__
 __attribute((section(".text")))
+#endif
 const uint8_t fe_basePoint[32] = { 9 };
 
 
+#ifdef __AMIGA__
 __attribute((section(".text")))
+#endif
 const ed25519 zero = {};
 
+#ifdef __AMIGA__
 __attribute((section(".text")))
+#endif
 const ge25519 ge25519_base = {
 		{EDX(0xD51A, 0x8F25), EDX(0x2D60, 0xC956), EDX(0xA7B2, 0x9525), EDX(0xC760, 0x692C), EDX(0xDC5C, 0xFDD6), EDX(0xE231, 0xC0A4), EDX(0x53FE, 0xCD6E), EDX(0x36D3, 0x2169), },
 		{EDX(0x6658, 0x6666), EDX(0x6666, 0x6666), EDX(0x6666, 0x6666), EDX(0x6666, 0x6666), EDX(0x6666, 0x6666), EDX(0x6666, 0x6666), EDX(0x6666, 0x6666), EDX(0x6666, 0x6666), },
@@ -52,20 +62,28 @@ const ge25519 ge25519_base = {
 	};
 
 /* 2*d */
+#ifdef __AMIGA__
 __attribute((section(".text")))
+#endif
 const ed25519 ge25519_ec2d = {EDX(0xF159, 0x26B2), EDX(0x9B94, 0xEBD6), EDX(0xB156, 0x8283), EDX(0x149A, 0x00E0), EDX(0xD130, 0xEEF3), EDX(0x80F2, 0x198E), EDX(0xFCE7, 0x56DF), EDX(0xD9DC, 0x2406), };
 
 /*Arithmetic modulo the group order m = 2^252 +  27742317777372353535851937790883648493 = 7237005577332262213973186563042994240857116359379907606001950938285454250989 */
+#ifdef __AMIGA__
 __attribute((section(".text")))
+#endif
 static const uint16_t ed25519_m[32] = { 0xED, 0xD3, 0xF5, 0x5C, 0x1A, 0x63, 0x12, 0x58, 0xD6, 0x9C, 0xF7, 0xA2, 0xDE, 0xF9, 0xDE, 0x14, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10 };
 
+#ifdef __AMIGA__
 __attribute((section(".text")))
+#endif
 static const uint16_t ed25519_mu[33] = { 0x1B, 0x13, 0x2C, 0x0A, 0xA3, 0xE5, 0x9C, 0xED, 0xA7, 0x29, 0x63, 0x08, 0x5D, 0x21, 0x06, 0x21, 0xEB, 0xFF, 0xFF, 0xFF,
 		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x0F };
 
 
+#ifdef __AMIGA__
 __attribute((section(".text")))
+#endif
 const ge25519 base_pre[16]
 = {{
   {EDX(0x0000, 0x0000), EDX(0x0000, 0x0000), EDX(0x0000, 0x0000), EDX(0x0000, 0x0000), EDX(0x0000, 0x0000), EDX(0x0000, 0x0000), EDX(0x0000, 0x0000), EDX(0x0000, 0x0000), },
@@ -150,8 +168,19 @@ const ge25519 base_pre[16]
 }};
 
 static void setzero(ed_t *r) {
+#if (EDSIZE == 8)
+	r[0] = 0;
+	r[1] = 0;
+	r[2] = 0;
+	r[3] = 0;
+	r[4] = 0;
+	r[5] = 0;
+	r[6] = 0;
+	r[7] = 0;
+#else
 	for (short i = 0; i < EDSIZE; i++)
-		r = 0;
+		r[i] = 0;
+#endif
 }
 
 void ed25519_from32bytes(uint16_t r[32], const uint8_t x[32]) {
@@ -358,6 +387,7 @@ void precalc(ge25519 pre[16], ge25519 const *p1) {
 	ge25519 tp1p1;
 	/* precomputation                                                         s2 s1 */
 	setneutral(pre); /* 00 00 */
+//_dump("pre", pre, sizeof(ge25519));
 	pre[1] = *p1; /* 00 01 */
 	dbl_p1p1(&tp1p1, (ge25519_p2*) p1);
 	p1p1_to_p3(&pre[2], &tp1p1); /* 00 10 */
@@ -405,8 +435,13 @@ void ge25519_scalarmult_vartime_pre2(ge25519 *r, const ge25519 pre1[16], const u
 		--pos;
 	}
 
+//	_dump("pre1[mask1],", &pre1[mask1], sizeof(ge25519));
+//	_dump("pre2[mask2])", &pre2[mask2], sizeof(ge25519));
+
 	add_p1p1(&tp1p1, &pre1[mask1], &pre2[mask2]);
 	p1p1_to_p2((ge25519_p2*)r, &tp1p1);
+
+//	_dump("p1p1_to_p2", r, sizeof(ge25519_p2));
 
 	while (pos >= 0) {
 		mask1 = (s1[pos / 8] >> (pos & 7)) & 1;
@@ -442,11 +477,24 @@ void ge25519_scalarmult_vartime_pre2(ge25519 *r, const ge25519 pre1[16], const u
 
 //perform mult + add in one step
 void ge25519_scalarmult_vartime2(ge25519 *r, const ge25519 *p1, const uint16_t s1[32], const uint16_t s2[32]) {
+#ifdef __AMIGA__
+	// to work without a valid A4 register
 	struct ExecBase * SysBase = *(struct ExecBase **)4;
-	ge25519 * pre1 = (ge25519 *)AllocVec(sizeof(ge25519) * 16, MEMF_ANY | MEMF_CLEAR);
+#endif
+
+	ge25519 * pre1 = (ge25519 *)AllocVec(sizeof(ge25519) * 16, MEMF_ANY);
 	if (pre1) {
 		precalc(pre1, p1);
+//		_dump("pre[0]", &pre1[0], 32 * 4);
+
 		ge25519_scalarmult_vartime_pre2(r, pre1, s1, base_pre, s2);
+#if 0
+		dump_ed25519(r->x);
+		dump_ed25519(r->y);
+		dump_ed25519(r->z);
+		dump_ed25519(r->t);
+#endif
+		memset(pre1, 0, sizeof(ge25519) * 16);
 		FreeVec(pre1);
 	}
 }

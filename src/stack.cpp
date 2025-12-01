@@ -33,7 +33,11 @@
  *  with robust memory handling and predictable socket lifecycle.
  * ----------------------------------------------------------------------
  */
+#ifdef __AMIGA__
 #include <proto/socket.h>
+#else
+#include "amiemul.h"
+#endif
 
 #include <inttypes.h>
 #include <stdlib.h>

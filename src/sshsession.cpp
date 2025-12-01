@@ -37,11 +37,55 @@
 #include <arpa/inet.h> //inet_addr
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef __AMIGA__
 #include <amistdio.h>
 
 #include <proto/dos.h>
 #include <proto/exec.h>
 #include <proto/socket.h>
+
+#define DPTR BPTR
+extern struct SignalSemaphore theLock;
+
+#else
+#include "amiemul.h"
+
+extern pthread_mutex_t  theLock;
+
+// --- PAM authentication ---
+#include <security/pam_appl.h>
+#include <security/pam_misc.h>
+
+#include <security/pam_appl.h>
+#include <stdlib.h>
+#include <string.h>
+
+static int conv_func(int num_msg,
+                     const struct pam_message **msg,
+                     struct pam_response **resp,
+                     void *appdata_ptr)
+{
+    if (num_msg <= 0) return PAM_CONV_ERR;
+
+    *resp = (struct pam_response*)calloc(num_msg, sizeof(struct pam_response));
+    if (!*resp) return PAM_CONV_ERR;
+
+    const char *password = (const char*)appdata_ptr;
+
+    for (int i = 0; i < num_msg; ++i) {
+        if (msg[i]->msg_style == PAM_PROMPT_ECHO_OFF) {
+            // supply password
+            (*resp)[i].resp = strdup(password);
+        } else {
+            // ignore other prompts
+            (*resp)[i].resp = strdup("");
+        }
+    }
+    return PAM_SUCCESS;
+}
+
+#endif
 
 #include <ed25519.h>
 #include <forwardchannel.h>
@@ -57,10 +101,9 @@
 
 #include "revision.h"
 
-char const * const AES128 = "aes128-gcm@openssh.com";
-char const * const CHACHA20 = "chacha20-poly1305@openssh.com";
+char const * AES128 = "aes128-gcm@openssh.com";
+char const * CHACHA20 = "chacha20-poly1305@openssh.com";
 
-extern struct SignalSemaphore theLock;
 extern Stack<Listener> listeners;
 extern char* splitLine(char *&s);
 
@@ -179,6 +222,7 @@ bool SshSession::isAlive() const {
 }
 
 ShellChannel* SshSession::findShellChannelByBreakPort(struct MsgPort *mp) const {
+#ifdef __AMIGA__
 	for (int i = 0; i < channels.getMax(); ++i) {
 		Channel *c = channels[i];
 		if (c && c->isSession()) {
@@ -187,6 +231,7 @@ ShellChannel* SshSession::findShellChannelByBreakPort(struct MsgPort *mp) const 
 				return sc;
 		}
 	}
+#endif
 	return 0;
 }
 
@@ -194,8 +239,9 @@ SshSession::SshSession(int _sock) :
 		state(HELLO),
 		readAead(0), readBc(0), readCounterBc(0),
 		writeAead(0), writeBc(0), writeCounterBc(0),
-		channels(10), windowsize(CHUNKSIZE), maxsize(CHUNKSIZE), inpos(
-				indatax), inChannelUse(0), inChannelSize(0), inChannelBuf(0), kexLen(0)
+		channels(10), windowsize(CHUNKSIZE), maxsize(CHUNKSIZE),
+		inpos(indatax), inChannelUse(0), inChannelSize(0), inChannelBuf(0),
+		kexLen(0), username(0)
 {
 	sockFd = _sock;
 	open = true;
@@ -215,7 +261,8 @@ SshSession::~SshSession() {
 	if (writeBc) delete writeBc;
 	if (readCounterBc) delete readCounterBc;
 	if (writeCounterBc) delete writeCounterBc;
-	free(inChannelBuf);
+	xfree(inChannelBuf);
+	if (username) xfree(username);
 }
 
 void SshSession::start() {
@@ -245,8 +292,8 @@ void SshSession::close() {
 int SshSession::channelWrite(uint32_t channel, void const *data, int len) {
 	logme(L_FINE, "@%ld send SSH_MSG_CHANNEL_DATA %ld", sockFd, len);
 	outdata[5] = SSH_MSG_CHANNEL_DATA;
-	*(uint32_t*) &outdata[6] = channel;
-	*(uint32_t*) &outdata[10] = len;
+	putInt32Aligned(&outdata[6], channel);
+	putInt32Aligned(&outdata[10] , len);
 	if (data != &outdata[14])
 		memcpy(&outdata[14], data, len);
 	return write(outdata + 5, len + 9) - 9;
@@ -255,20 +302,20 @@ int SshSession::channelWrite(uint32_t channel, void const *data, int len) {
 void SshSession::closeChannel(Channel *channel) {
 	logme(L_FINE, "@%ld:%ld send SSH_MSG_CHANNEL_REQUEST exit status", sockFd, channel->getChannel());
 	outdata[5] = SSH_MSG_CHANNEL_REQUEST;
-	*(uint32_t*) &outdata[6] = channel->getChannel();
-	*(uint32_t*) &outdata[10] = 11;
+	putInt32Aligned(&outdata[6] , channel->getChannel());
+	putInt32Aligned(&outdata[10] , 11);
 	strcpy(&outdata[14], "exit-status");
 	memset(&outdata[25], 0, 5);
 	write(outdata + 5, 25);
 
 	logme(L_FINE, "@%ld:%ld send SSH_MSG_CHANNEL_EOF", sockFd, channel->getChannel());
 	outdata[5] = SSH_MSG_CHANNEL_EOF;
-	*(uint32_t*) &outdata[6] = channel->getChannel();
+	putInt32Aligned(&outdata[6] , channel->getChannel());
 	write(outdata + 5, 5);
 
 	logme(L_FINE, "@%ld:%ld send SSH_MSG_CHANNEL_CLOSE", sockFd, channel->getChannel());
 	outdata[5] = SSH_MSG_CHANNEL_CLOSE;
-	*(uint32_t*) &outdata[6] = channel->getChannel();
+	putInt32Aligned(&outdata[6] , channel->getChannel());
 	write(outdata + 5, 5);
 
 	ObtainSemaphore(&theLock);
@@ -285,8 +332,8 @@ void SshSession::noop() {
 	if (isOpen() && channels.getCount() > 0) {
 		logme(L_FINE, "@%ld sending noop", sockFd);
 		outdata[5] = SSH_MSG_CHANNEL_DATA;
-		*(uint32_t*) &outdata[6] = channels[0]->getChannel();
-		*(uint32_t*) &outdata[10] = 0;
+		putInt32Aligned(&outdata[6] , channels[0]->getChannel());
+		putInt32Aligned(&outdata[10] , 0);
 		write(outdata + 5, 9);
 	}
 }
@@ -317,7 +364,7 @@ int SshSession::write(void const *data, int len) {
 		len += sub;
 		outdata[4] = padLen;
 		outlen += padLen;
-		0[(int*) outdata] = len;
+		putInt32Aligned(outdata, len);
 
 		randfill(outdata + outlen - 16 - padLen, padLen);
 #ifdef DUMP_PACKETS
@@ -326,9 +373,7 @@ int SshSession::write(void const *data, int len) {
 		if (writeCounterBc) {
 			writeCounterBc->setNonce(keyMat.encIvWrite, 12);
 			writeCounterBc->zeroCounter();
-	//		_dump("b0", buffer, 4);
 			writeCounterBc->chacha(outdata, outdata, 4);
-	//		_dump("b1", buffer, 4);
 			writeAead->init(keyMat.encIvWrite, 12);
 			writeAead->encrypt(outdata + 4, outdata + 4, len);
 			writeAead->updateHash(outdata, 4 + len);
@@ -503,15 +548,17 @@ int SshSession::consumeSocketData(char *indata, int len) {
 #endif
 		// server hello
 		uint32_t len = lf - indata;
-		handshakeMD.update(&len, 4);
-		HSU(&len, 0, 4);
+		uint32_t len_be = htonl(len);
+		handshakeMD.update(&len_be, 4);
+		HSU(&len_be, 0, 4);
 		handshakeMD.update(indata, len);
 		HSU(indata, 0, len);
 
 		// server hello
 		int slen = strlen(hello) - 2;
-		handshakeMD.update(&slen, 4);
-		HSU(&slen, 0, 4);
+		len_be = htonl(slen);
+		handshakeMD.update(&len_be, 4);
+		HSU(&len_be, 0, 4);
 		handshakeMD.update(hello, slen);
 		HSU(hello, 0, slen);
 
@@ -519,11 +566,14 @@ int SshSession::consumeSocketData(char *indata, int len) {
 		return clen;
 	}
 
-	uint32_t packetSize = *(uint32_t*) indata;
+	uint32_t packetSize;
 	if (readCounterBc) {
 		readCounterBc->setNonce(keyMat.encIvRead, 12);
 		readCounterBc->zeroCounter();
 		readCounterBc->chacha(&packetSize, indata, 4);
+		packetSize = htonl(packetSize);
+	} else {
+		packetSize = getInt32Aligned((uint8_t *)indata);
 	}
 
 	if (packetSize > CHUNKSIZE)
@@ -601,15 +651,17 @@ int SshSession::consumeSocketData(char *indata, int len) {
 
 		// server KEX_INIT
 		int clen = packetSize - 1 - indata[4];
-		handshakeMD.update(&clen, 4);
-		HSU(&clen, 0, 4);
+		uint32_t len_be = htonl(clen);
+		handshakeMD.update(&len_be, 4);
+		HSU(&len_be, 0, 4);
 		handshakeMD.update(indata + 5, clen);
 		HSU(indata, 5, clen);
 
 		// server KEX_INIT
 		clen = kexLen - 5 - outdata[4]; // minus header, padding
-		handshakeMD.update(&clen, 4);
-		HSU(&clen, 0, 4);
+		len_be = htonl(clen);
+		handshakeMD.update(&len_be, 4);
+		HSU(&len_be, 0, 4);
 		handshakeMD.update(outdata + 5, clen); // sent packet is in buffer
 		HSU(outdata, 5, clen);
 
@@ -623,7 +675,7 @@ int SshSession::consumeSocketData(char *indata, int len) {
 		}
 		logme(L_FINE, "@%ld got SSH_MSG_KEX_ECDH_INIT", sockFd);
 
-		uint32_t keyLen = getInt32((uint8_t*) indata + 6);
+		uint32_t keyLen = getInt32(indata + 6);
 		if (keyLen != 32) {
 			logme(L_INFO, "@%ld expected key length 32 - got %ld", sockFd, keyLen);
 			return -1;
@@ -631,7 +683,7 @@ int SshSession::consumeSocketData(char *indata, int len) {
 		memcpy(clientPK_aka_E, indata + 10, 32);
 
 		createKexEcdhReply();
-		write(outdata, *(uint32_t*) outdata + 4);
+		write(outdata, getInt32Aligned(outdata) + 4);
 		logme(L_FINE, "@%ld sent SSH_MSG_KEX_ECDH_REPLY", sockFd);
 
 		write(newKeys, sizeof(newKeys));
@@ -736,6 +788,7 @@ int SshSession::consumeSocketData(char *indata, int len) {
 }
 
 bool SshSession::login(uint8_t *user, uint8_t *pass) {
+#ifdef __AMIGA__
 	BPTR pwd = Open(passwords, MODE_READWRITE);
 	if (!pwd) {
 		logme(L_ERROR, "can't open `%s`", passwords);
@@ -787,7 +840,7 @@ bool SshSession::login(uint8_t *user, uint8_t *pass) {
 				// copy line by line
 				int readPos = Seek(pwd, 0, OFFSET_CURRENT);
 				for (;;) {
-					Seek(pwd, readPos, OFFSET_BEGINING);
+					Seek(pwd, readPos, OFFSET_BEGINNING);
 					s = FGets(pwd, q, 256);
 					if (!s)
 						break;
@@ -795,11 +848,11 @@ bool SshSession::login(uint8_t *user, uint8_t *pass) {
 						strcat(q, "\r\n");
 
 					readPos = Seek(pwd, 0, OFFSET_CURRENT);
-					Seek(pwd, writePos, OFFSET_BEGINING);
+					Seek(pwd, writePos, OFFSET_BEGINNING);
 					FPuts(pwd, q);
 					writePos = Seek(pwd, 0, OFFSET_CURRENT);
 				}
-				Seek(pwd, writePos, OFFSET_BEGINING);
+				Seek(pwd, writePos, OFFSET_BEGINNING);
 				FPuts(pwd, x);
 				logme(L_INFO, "@%ld user `%s` replaced password with hash", sockFd, user);
 			}
@@ -812,6 +865,24 @@ bool SshSession::login(uint8_t *user, uint8_t *pass) {
 	else
 		logme(L_INFO, "@%ld login failed for user `%s`", sockFd, user);
 	return r;
+#else
+    pam_handle_t *pamh = NULL;
+    struct pam_conv conv = { conv_func, (void*)pass };
+
+    int retval = pam_start("sshd", (const char*)user, &conv, &pamh);
+    if (retval != PAM_SUCCESS) return false;
+
+    retval = pam_authenticate(pamh, 0);
+    if (retval != PAM_SUCCESS) {
+        pam_end(pamh, retval);
+        return false;
+    }
+
+    retval = pam_acct_mgmt(pamh, 0);
+    pam_end(pamh, retval);
+
+    return (retval == PAM_SUCCESS);
+ #endif
 }
 
 bool SshSession::handleChannelEof(uint8_t *p) {
@@ -830,14 +901,14 @@ bool SshSession::handleChannelData(uint8_t *p, int alen) {
 
 	Channel * c = channels[channelNo];
 	if (c) {
-		uint32_t len = *(uint32_t*) p;
+		uint32_t len = getInt32Aligned(p);
 		p += 4;
 
 		uint32_t toAdd = c->updateWindowSize(len);
 		if (toAdd) {
 			outdata[5] = SSH_MSG_CHANNEL_WINDOW_ADJUST;
-			*(uint32_t*) &outdata[6] = c->getChannel();
-			*(uint32_t*) &outdata[10] = toAdd;
+			putInt32Aligned(&outdata[6] , c->getChannel());
+			putInt32Aligned(&outdata[10] , toAdd);
 			write(outdata + 5, 9);
 			logme(L_FINE, "@%ld sent SSH_MSG_CHANNEL_WINDOW_ADJUST %ld", sockFd, toAdd);
 		}
@@ -857,6 +928,7 @@ bool SshSession::handleChannelData(uint8_t *p, int alen) {
 
 		logme(L_DEBUG, "@%ld:%ld handle %ld data", sockFd, c->getChannel(), len);
 		int rest = c->handleData((char*) p, len);
+		if (rest < 0) return false;
 
 		// no data left
 		if (rest == 0)
@@ -867,7 +939,7 @@ bool SshSession::handleChannelData(uint8_t *p, int alen) {
 			logme(L_FINE, "keeping partial channel data: inuse=%ld, len=%ld", inChannelUse, rest);
 			if (rest > inChannelSize) {
 				inChannelBuf = (char *)realloc(inChannelBuf, rest);
-				inChannelSize = len;
+				inChannelSize = rest;
 			}
 			memcpy(inChannelBuf, p, rest);
 			inChannelUse = rest;
@@ -878,7 +950,7 @@ bool SshSession::handleChannelData(uint8_t *p, int alen) {
 }
 
 bool SshSession::handleChannelRequest(uint8_t *p) {
-	uint32_t channelNo = *(uint32_t*) p;
+	uint32_t channelNo = getInt32Aligned(p);
 	p += 4;
 	Channel * c = channels[channelNo];
 	if (c) {
@@ -902,7 +974,7 @@ bool SshSession::handleChannelRequest(uint8_t *p) {
 			sc->setDimension(numCols, numRows);
 
 			outdata[5] = SSH_MSG_CHANNEL_SUCCESS;
-			*(uint32_t*) (outdata + 6) = channelNo; // TODO Remote channelNo
+			putInt32Aligned((outdata + 6) , channelNo); // TODO Remote channelNo
 			write(outdata + 5, 5);
 			logme(L_TRACE, "@%ld sent SSH_MSG_CHANNEL_SUCCESS for pty", sockFd);
 			return true;
@@ -923,7 +995,7 @@ bool SshSession::handleChannelRequest(uint8_t *p) {
 			sc->setShell(!isExec);
 			sc->setExec(isExec);
 			outdata[5] = SSH_MSG_CHANNEL_SUCCESS;
-			*(uint32_t*) (outdata + 6) = channelNo; // TODO Remote channelNo
+			putInt32Aligned((outdata + 6) , channelNo); // TODO Remote channelNo
 			write(outdata + 5, 5);
 			logme(L_FINE, "@%ld sent SSH_MSG_CHANNEL_SUCCESS for %s", sockFd, isExec ? "shell" : "session");
 
@@ -963,7 +1035,7 @@ bool SshSession::handleChannelRequest(uint8_t *p) {
 			channels.replace(channelNo, sfc);
 
 			outdata[5] = SSH_MSG_CHANNEL_SUCCESS;
-			*(uint32_t*) (outdata + 6) = channelNo; // TODO Remote channelNo
+			putInt32Aligned((outdata + 6) , channelNo); // TODO Remote channelNo
 			write(outdata + 5, 5);
 			logme(L_FINE, "@%ld sent SSH_MSG_CHANNEL_SUCCESS for subsystem sftp", sockFd);
 
@@ -984,7 +1056,7 @@ bool SshSession::handleChannelRequest(uint8_t *p) {
 	Error:
 
 	outdata[5] = SSH_MSG_CHANNEL_FAILURE;
-	*(uint32_t*) (outdata + 6) = channelNo; // TODO Remote channelNo
+	putInt32Aligned((outdata + 6) , channelNo); // TODO Remote channelNo
 	write(outdata + 5, 5);
 	logme(L_FINE, "@%ld sent SSH_MSG_CHANNEL_FAILURE", sockFd);
 	return false;
@@ -1033,10 +1105,10 @@ bool SshSession::handleOpenChannel(uint8_t *p) {
 	}
 
 	outdata[5] = SSH_MSG_CHANNEL_OPEN_FAILURE;
-	*(uint32_t*) &outdata[6] = channelNo;
-	*(uint32_t*) &outdata[10] = reason; // resource
-	*(uint32_t*) &outdata[14] = 0; // no description
-	*(uint32_t*) &outdata[18] = 0; // no lang
+	putInt32Aligned(&outdata[6] , channelNo);
+	putInt32Aligned(&outdata[10] , reason); // resource
+	putInt32Aligned(&outdata[14] , 0); // no description
+	putInt32Aligned(&outdata[18] , 0); // no lang
 	write(outdata + 5, 17);
 
 	logme(L_FINE, "@%ld sent SSH_MSG_CHANNEL_OPEN_FAILURE for %s", sockFd, s);
@@ -1046,16 +1118,19 @@ bool SshSession::handleOpenChannel(uint8_t *p) {
 
 void SshSession::sendOpenChannelConfirmation(Channel *c, uint32_t windowsize, uint32_t maxsize) {
 	outdata[5] = SSH_MSG_CHANNEL_OPEN_CONFIRMATION;
-	*(uint32_t*) &outdata[6] = c->getChannel();
-	*(uint32_t*) &outdata[10] = c->getChannel();
-	*(uint32_t*) &outdata[14] = windowsize;
-	*(uint32_t*) &outdata[18] = maxsize;
+	putInt32Aligned(&outdata[6] , c->getChannel());
+	putInt32Aligned(&outdata[10] , c->getChannel());
+	putInt32Aligned(&outdata[14] , windowsize);
+	putInt32Aligned(&outdata[18] , maxsize);
 	write(outdata + 5, 17);
 	logme(L_FINE, "@%ld sent SSH_MSG_CHANNEL_OPEN_CONFIRMATION for session, window=%ld, max=%ld", sockFd, windowsize, maxsize);
 }
 
 static bool authorizeKey(uint8_t *hostBase64, uint8_t *buffer) {
-	BPTR f = Open("ENVARC:.ssh/authorized_keys", MODE_OLDFILE);
+	extern char const * sshDotDir;
+	static char const * authorized_keys;
+	if (!authorized_keys) authorized_keys = concat(sshDotDir, "/authorized_keys", NULL);
+	BPTR f = Open(authorized_keys, MODE_OLDFILE);
 	if (!f)
 		return false;
 
@@ -1106,6 +1181,7 @@ bool SshSession::handleUserAuthRequest(uint8_t *p) {
 		if (login(user, s)) {
 			write(loginSuccess, sizeof(loginSuccess));
 			logme(L_FINE, "@%ld sent SSH_MSG_USERAUTH_SUCCESS", sockFd);
+			username = strdup((char *)user);
 			return true;
 		}
 	} else if (0 == strcmp((char*) s, "publickey")) {
@@ -1141,6 +1217,7 @@ bool SshSession::handleUserAuthRequest(uint8_t *p) {
 								if (ge_verify_ed25519(m, len, p, pk)) {
 									write(loginSuccess, sizeof(loginSuccess));
 									logme(L_FINE, "@%ld sent SSH_MSG_USERAUTH_SUCCESS", sockFd);
+									username = strdup((char *)user);
 									return true;
 								}
 							}
@@ -1151,6 +1228,7 @@ bool SshSession::handleUserAuthRequest(uint8_t *p) {
 
 						write(outdata + 5, 71);
 						logme(L_FINE, "@%ld sent SSH_MSG_USERAUTH_PK_OK", sockFd);
+						username = strdup((char *)user);
 						return true;
 					}
 				}
@@ -1181,7 +1259,7 @@ int SshSession::decryptPacket(uint8_t *p, unsigned len) {
 	readAead->init(keyMat.encIvRead, 12);
 
 	if (readCounterBc) {
-			readAead->updateHash(p, 4 + len);
+		readAead->updateHash(p, 4 + len);
 	} else {
 		readAead->updateHash(p, 4);
 	}
@@ -1205,7 +1283,7 @@ int SshSession::decryptPacket(uint8_t *p, unsigned len) {
 
 	len -= pad1;
 	if (isLogLevel(L_TRACE))
-		_dump("received decrypted", p + 1, len > 512 ? 512 : len);
+		_dump("received decrypted", p, len > 512 ? 512 : len);
 	return len;
 }
 
@@ -1247,8 +1325,16 @@ void SshSession::createKexEcdhReply() {
 	} else {
 		sharedSecret_aka_K.size = 32;
 	}
+#ifdef __AMIGA__
 	handshakeMD.update(&sharedSecret_aka_K, sharedSecret_aka_K.size + 4);
 	HSU(&sharedSecret_aka_K, 0, sharedSecret_aka_K.size + 4);
+#else
+	uint32_t len_be = htonl(sharedSecret_aka_K.size);
+	handshakeMD.update(&len_be, 4);
+	handshakeMD.update(&sharedSecret_aka_K.data, sharedSecret_aka_K.size);
+	HSU(&len_be, 0, 4);
+	HSU(&sharedSecret_aka_K.data, 0, sharedSecret_aka_K.size);
+#endif
 	if (isLogLevel(L_TRACE))
 		_dump("shared secret", &sharedSecret_aka_K, sharedSecret_aka_K.size + 4);
 
@@ -1269,7 +1355,34 @@ void SshSession::createKexEcdhReply() {
 	outdata[4] = padLen;
 	memset(p, 0, padLen);
 	len += 1 + padLen;
-	*(uint32_t*) outdata = len;
+	putInt32Aligned((uint8_t*)outdata, len);
 	if (isLogLevel(L_TRACE))
 		_dump("kexreply", outdata, len + 4);
 }
+
+#ifdef __linux__
+int SshSession::getHandle() const {
+	int sz = channels.getMax();
+	for (int i = 0; i < sz; ++i) {
+		auto c = channels[i];
+		if (c && !c->isForward()) {
+			ShellChannel * sc = (ShellChannel *)c;
+			return sc->getHandle();
+		}
+	}
+	return 0;
+}
+
+int SshSession::readHandle() {
+	int sz = channels.getMax();
+	for (int i = 0; i < sz; ++i) {
+		auto c = channels[i];
+		if (c && !c->isForward()) {
+			ShellChannel * sc = (ShellChannel *)c;
+			return sc->handleRead();
+		}
+	}
+	return 0;
+}
+
+#endif

@@ -40,10 +40,18 @@
 #include "mime.h"
 #include "ssh.h"
 
+#ifdef __AMIGA__
 #include <proto/dos.h>
 #include <proto/exec.h>
+#include <amistdio.h>
+#else
+#include <stdio.h>
+#include "amiemul.h"
+#endif
 
+#ifdef __AMIGA__
 __attribute((section(".text")))
+#endif
 const static uint8_t KEYSTART[47] {
 		0, 0, 0, 4, 'n', 'o', 'n', 'e',
 		0, 0, 0, 4, 'n', 'o', 'n', 'e',
@@ -53,24 +61,30 @@ const static uint8_t KEYSTART[47] {
 		0, 0, 0, 0x20,
 };
 
+extern char const * sshDir;
+extern char const * keyFile;
+
 bool loadEd25519Key(uint8_t * pk, uint8_t * sk, char const * keyfilename) {
-	BPTR keyfile = Open(keyfilename, MODE_OLDFILE);
-	if (!keyfile) {
-		if (strcmp(keyfilename, "envarc:.ssh/id_ed25519"))
+	if (!keyFile) keyFile = concat(sshDir, ".ssh/id_ed25519", NULL);
+	if (!keyfilename) keyfilename = keyFile;
+
+	BPTR kfile = Open(keyfilename, MODE_OLDFILE);
+	if (!kfile) {
+		if (strcmp(keyfilename, keyFile))
 			logme(L_ERROR, "can't open `%s` for reading", keyfilename);
 		return false;
 	}
 	logme(L_DEBUG, "loading key file `%s`", keyfilename);
 
-	Seek(keyfile, 0, OFFSET_END);
-	int size = Seek(keyfile, 0, OFFSET_BEGINNING);
+	Seek(kfile, 0, OFFSET_END);
+	int size = Seek(kfile, 0, OFFSET_BEGINNING);
 	char * keymime = (char *)AllocVec(size, MEMF_PUBLIC);
 	uint8_t * keydata = (uint8_t *)AllocVec(size, MEMF_PUBLIC);
 
 	bool r = true;
 	if (keydata && keymime) {
 		for (int read = 0; read < size;) {
-			int in = Read(keyfile, keymime + read, size - read);
+			int in = Read(kfile, keymime + read, size - read);
 			read += in;
 		}
 
@@ -117,12 +131,14 @@ bool loadEd25519Key(uint8_t * pk, uint8_t * sk, char const * keyfilename) {
 			r = false;
 			logme(L_ERROR, "not a valid key file");
 		}
+		memset(keydata, 0, size);
+		memset(keymime, 0, size);
 		FreeVec(keydata);
 		FreeVec(keymime);
 	} else {
 		r = false;
 		logme(L_ERROR, "no mem for %ld bytes", size);
 	}
-	Close(keyfile);
+	Close(kfile);
 	return r;
 }

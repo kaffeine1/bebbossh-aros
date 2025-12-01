@@ -33,7 +33,6 @@
  * ----------------------------------------------------------------------
  */
 #define REPLACE_STDIO
-#include <amistdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -43,10 +42,15 @@
 #include <test.h>
 #include "revision.h"
 
+#ifdef __AMIGA__
+#include <amistdio.h>
 #include <proto/dos.h>
 #include <proto/exec.h>
+#else
+#include "amiemul.h"
+#endif
 
-static char const *filename = "ENVARC:.ssh/id_ed25519";
+static char const *filename;
 static char outfilename[256];
 
 static void printUsage() {
@@ -93,16 +97,22 @@ static void parseParams(unsigned argc, char **argv) {
 	exit(10);
 }
 
+extern char const * sshDir;
+
 __stdargs int main(int argc, char **argv) {
 	static char buf[256];
+
+	filename = concat(sshDir, ".ssh/id_ed25519");
 
 	strcpy(outfilename, filename);
 
 	parseParams(argc, argv);
 
+#ifdef __AMIGA__
 	// remove the program arguments from stdin
 	FGetC(stdin);
 	fflush(stdin);
+#endif
 
 	puts("Generating public/private ed25519 key pair");
 

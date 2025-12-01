@@ -45,6 +45,44 @@
 char const * const AES128 = "aes128-gcm@openssh.com";
 char const * const CHACHA20 = "chacha20-poly1305@openssh.com";
 
+#ifndef __AMIGA__
+#include <stdio.h>
+#include <stdarg.h>
+#include <time.h>
+#include <netinet/in.h>
+
+char* concat(const char *s0, ...) {
+    if (!s0) return 0;
+    size_t sz = 1 + strlen(s0);
+    va_list args;
+    va_start(args, s0);
+    for(;;) {
+        char const *s = va_arg(args, char const*);
+        if (!s)
+            break;
+        sz += strlen(s);
+    }
+    va_end(args);
+    char * r = (char *)malloc(sz);
+    if (!r) return 0;
+
+    char * q = r;
+    va_start(args, s0);
+    while ((*q = *s0++)) {
+        ++q;
+    }
+    for(;;) {
+        char const *s = va_arg(args, char const*);
+        if (!s)
+            break;
+        while ((*q = *s++)) {
+            ++q;
+        }
+    }
+    va_end(args);
+    return r;
+}
+#endif
 
 uint8_t * sshString(uint8_t * &p) {
 	uint32_t len = getInt32(p);
@@ -55,13 +93,26 @@ uint8_t * sshString(uint8_t * &p) {
 }
 
 static void mkKey(uint8_t * buffer, SHA256 &sha256, SharedSecret * sharedSecret, uint8_t * hash, uint8_t c) {
+#if (BYTE_ORDER == BIG_ENDIAN)
 	sha256.update(sharedSecret, sharedSecret->size + 4);
+#else
+	uint32_t len_be = htonl(sharedSecret->size);
+	sha256.update(&len_be, 4);
+	sha256.update(&sharedSecret->data, sharedSecret->size);
+#endif
+
 	sha256.update(hash, 32);
 	sha256.update(&c, 1);
 	sha256.update(hash, 32); // sessionId
 	sha256.digest(buffer);
 
+#if (BYTE_ORDER == BIG_ENDIAN)
 	sha256.update(sharedSecret, sharedSecret->size + 4);
+#else
+	sha256.update(&len_be, 4);
+	sha256.update(&sharedSecret->data, sharedSecret->size);
+#endif
+
 	sha256.update(hash, 32); // hash
 	sha256.update(buffer, 32); // last result
 	sha256.digest(buffer + 32);
@@ -89,7 +140,7 @@ void deriveKeys(KeyMaterial * kd, SharedSecret * sharedSecret, uint8_t * hash, b
 }
 
 int fillKexInit(uint8_t * p, char const * encOrder) {
-	uint8_t * const start = p;
+	uint8_t * start = p;
 	p += 5;
 	*p ++ = SSH_MSG_KEX_INIT;
 	// compute it before connecting,
@@ -139,9 +190,19 @@ int fillKexInit(uint8_t * p, char const * encOrder) {
 	}
 
 	int len = p - start;
-	*(uint32_t*)start = len - 4;
+	putInt32AndInc(start, len - 4);
 
 //	_dump("kex_init", start, len);
 
 	return len;
+}
+
+void putString(uint8_t * &p, char const * s) {
+	uint8_t * start = p;
+	p += 4;
+	while (*s) {
+		*p = *s;
+		++p; ++s;
+	}
+	putInt32AndInc(start, p - start - 4);
 }

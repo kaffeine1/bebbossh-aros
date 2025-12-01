@@ -35,10 +35,10 @@ extern "C" {
 
 static const uint8_t fe_basePoint[32] = { 9 };
 const ed_t neg[EDSIZE] = { EDX(19, 0), EDX(0, 0), EDX(0, 0), EDX(0, 0), EDX(0, 0), EDX(0, 0), EDX(0, 0), EDX(0, 0x8000) };
-static const ed_t pos[EDSIZE] = { EDX(0x10000 - 20, 0x7fff), EDX(0xffff, 0xffff), EDX(0xffff, 0xffff), EDX(0xffff, 0xffff), EDX(0xffff, 0xffff), EDX(0xffff, 0xffff), EDX(0xffff, 0xffff), EDX(0xffff, 0x7fff)};
+static const ed_t pos[EDSIZE] = { EDX(0x10000 - 20, 0xffff), EDX(0xffff, 0xffff), EDX(0xffff, 0xffff), EDX(0xffff, 0xffff), EDX(0xffff, 0xffff), EDX(0xffff, 0xffff), EDX(0xffff, 0xffff), EDX(0xffff, 0x7fff)};
 
 
-#if defined(__AMIGA__)
+#if defined(__mc68000__)
 
 void edadd(ed_t *out , const ed_t *a, const ed_t *b) {
 	ed_t d0, d1;
@@ -150,33 +150,49 @@ void edsquare(ed_t *out, const ed_t *a) {
 #endif
 
 void unpack16(ed_t *r, const uint8_t *in) {
-  for (short i = 0; i < EDSIZE; i++) {
-    ed_t x = (ed_t)*in++;
-    x |= (ed_t)(*in++) << 8;
-#ifdef __AMIGA__
-    x |= (ed_t)(*in++) << 16;
-    x |= (ed_t)(*in++) << 24;
-#endif
-    *r++ = x;
-  }
-#ifdef __AMIGA__
-  *--r &= (ed_t)0x7fffffffU;
+#ifdef __mc68000__
+    // 8 × 32-bit limbs
+    for (short i = 0; i < EDSIZE; i++) {
+        uint32_t x = (uint32_t)in[0]
+                   | ((uint32_t)in[1] << 8)
+                   | ((uint32_t)in[2] << 16)
+                   | ((uint32_t)in[3] << 24);
+        r[i] = x;
+        in += 4;
+    }
+    r[EDSIZE-1] &= 0x7fffffffU;
 #else
-  *--r &= (ed_t)0x7fffU;
+    // 16 × 16-bit limbs
+    for (short i = 0; i < EDSIZE; i++) {
+        uint16_t x = (uint16_t)in[0]
+                   | ((uint16_t)in[1] << 8);
+        r[i] = x;
+        in += 2;
+    }
+    r[EDSIZE-1] &= 0x7fffU;
 #endif
 }
 
-
 void pack16(uint8_t *r, const ed_t *in) {
-	for (short i = 0; i < EDSIZE; i++) {
-		ed_t x = *in++;
-		*r++ = x;
-		*r++ = x >> 8;
-#ifdef __AMIGA__
-		*r++ = x >> 16;
-		*r++ = x >> 24;
+#ifdef __mc68000__
+    // 8 × 32-bit limbs
+    for (short i = 0; i < EDSIZE; i++) {
+        uint32_t x = in[i];
+        r[0] = (uint8_t)(x);
+        r[1] = (uint8_t)(x >> 8);
+        r[2] = (uint8_t)(x >> 16);
+        r[3] = (uint8_t)(x >> 24);
+        r += 4;
+    }
+#else
+    // 16 × 16-bit limbs
+    for (short i = 0; i < EDSIZE; i++) {
+        uint16_t x = in[i];
+        r[0] = (uint8_t)(x);
+        r[1] = (uint8_t)(x >> 8);
+        r += 2;
+    }
 #endif
-	}
 }
 
 void pow252_2_2(ed_t *t0, ed_t *z11, const ed_t *z) {
@@ -282,7 +298,7 @@ void recip16(ed_t *out, const ed_t *z) {
 	/* 2^255 - 21 */edmul(out, t1, z11);
 }
 
-#ifdef __AMIGA__
+#ifdef __mc68000__
 typedef int32_t ptr_t;
 #else
 typedef long long ptr_t;

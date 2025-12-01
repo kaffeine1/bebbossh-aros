@@ -34,7 +34,6 @@
  */
 #include <stdint.h>
 
-#include <amistdio.h>
 #include <stdlib.h>
 #include <fnmatch.h>
 
@@ -45,6 +44,8 @@
 #include <sys/stat.h>
 #include <netinet/in.h>
 
+#ifdef __AMIGA__
+#include <amistdio.h>
 #include <dos/dostags.h>
 #include <exec/execbase.h>
 #include <intuition/intuitionbase.h>
@@ -60,16 +61,50 @@
 
 #include <stabs.h>
 
-#include <log.h>
-#include <stack.h>
+#include "keyboard.h"
+
+typedef BPTR DPTR;
+#define IS_FILE(fib) ((fib).fib_DirEntryType <= 0)
+#define IS_DIR(fib) ((fib).fib_DirEntryType > 0)
+#define IS_LINK(fib) ((fib).fib_DirEntryType == 3)
+
+typedef BPTR FPTR;
+#define ExamineF(l,f) Examine(l,f)
+#define LockF(f,m) Lock(f,m)
+#define UnLockF(f) UnLock(f)
+
+#define DateStampF DateStamp
+static inline long delta_ms(const struct DateStamp &now,
+                            const struct DateStamp &then) {
+    /* convert both to total ticks since epoch */
+    long ticks_now  = now.ds_Tick
+                    + now.ds_Minute * 50
+                    + now.ds_Days * 24 * 60 * 50;
+    long ticks_then = then.ds_Tick
+                    + then.ds_Minute * 50
+                    + then.ds_Days * 24 * 60 * 50;
+
+    long diff_ticks = ticks_now - ticks_then;
+
+    /* each tick = 20 ms */
+    return diff_ticks * 20;
+}
+
+#else
+#include "amiemul.h"
+#endif
+
+#include "log.h"
+#include "stack.h"
 
 #include "revision.h"
-#include "keyboard.h"
 #include "ssh.h"
 #include "sftp.h"
 #include "test.h"
 #include "client.h"
 #include "clientchannel.h"
+
+extern char const * sshDir;
 
 static bool pty = false;
 
@@ -88,9 +123,13 @@ static uint8_t CHANNEL_PTY[17] = {
 SSH_MSG_CHANNEL_REQUEST, 0x00, 0x00, 0x00, 0x00, // channel 0
 		0x00, 0x00, 0x00, 0x07, 'p', 't', 'y', '-', 'r', 'e', 'q', 0x01, // want reply
 		};
+#ifdef __AMIGA__
 static const char *TERM = "xterm-amiga";
-static uint32_t numCols;
-static uint32_t numRows;
+#else
+static const char *TERM = "xterm";
+#endif
+extern uint32_t numCols;
+extern uint32_t numRows;
 static uint8_t TERMCAPS[43] = { 0x00, 0x00, 0x00, 0x0, // terminal width, pixels
 		0x00, 0x00, 0x00, 0x0, // terminal height, pixels
 		0x00, 0x00, 0x00, 6 * 5 + 1, // length of the options
@@ -118,8 +157,8 @@ static bool sendNewPty() {
 
 	putString(p, TERM);
 
-	putInt32(p, numCols);
-	putInt32(p, numRows);
+	putInt32AndInc(p, numCols);
+	putInt32AndInc(p, numRows);
 
 	memcpy(p, TERMCAPS, sizeof(TERMCAPS));
 	int len = p - (buffer + 5) + sizeof(TERMCAPS);
@@ -127,36 +166,7 @@ static bool sendNewPty() {
 	return sendEncrypted(buffer + 5, len);
 }
 
-static bool getConsoleSize() {
-	uint8_t tmp[16];
-	if (!stdoutBptr)
-		return false;
-	Write(stdinBptr, "\x9b\x30\x20\x71", 4);
-	uint8_t *p = &tmp[0];
-	while (WaitForChar(stdinBptr, 200) == DOSTRUE) {
-		Read(stdinBptr, p, 1);
-		++p;
-		if (p > &tmp[15])
-			break;
-	}
-	uint8_t *q = &tmp[5];
-	numRows = 0;
-	for (; q < p; ++q) {
-		if (*q == ';')
-			break;
-		numRows = numRows * 10;
-		numRows += *q - '0';
-	}
-	++q;
-	numCols = 0;
-	for (; q < p; ++q) {
-		if (*q == ' ')
-			break;
-		numCols = numCols * 10;
-		numCols += *q - '0';
-	}
-	return true;
-}
+bool getConsoleSize();
 
 enum estate {
 	STATE_NONE, STATE_INIT,
@@ -181,7 +191,7 @@ struct CopyState {
 	BPTR localFile;
 
 	// local dir
-	BPTR localDir;
+	DPTR localDir;
 
 	// remote dir
 	Stack<CopyState> * entries;
@@ -219,7 +229,11 @@ struct CopyState {
 		sizeHi = 0;
 		size = 0;
 		protect = 0;
+#ifdef __AMIGA__
 		date = {0, 0, 0};
+#else
+		date = {0, 0};
+#endif
 		handleSize = 0;
 		handle = 0;
 	}
@@ -282,25 +296,34 @@ bool CopyState::setAttrs(uint8_t * &p) {
 	if (flags & SSH_FILEXFER_ATTR_PERMISSIONS) { // 4
 		mode = getInt32(p);
 		p += 4;
+#ifdef __AMIGA__
 		protect = ssh2amode(mode);
+#else
+		protect = mode;
+#endif
 	}
 	struct timeval tv;
 	if (flags & SSH_FILEXFER_ATTR_CREATETIME) {
-		tv.tv_secs = getInt32(p);
+		tv.tv_sec = getInt32(p);
 		p += 4;
 		tv.tv_usec = getInt32(p);
 		p += 4;
 	}
 	if (flags & SSH2_FILEXFER_ATTR_ACMODTIME) { // 8
-		tv.tv_secs = getInt32(p);
+		tv.tv_sec  = getInt32(p);
 		p += 4;
 		tv.tv_usec = getInt32(p);
 		p += 4;
 	}
 	if (flags & (SSH_FILEXFER_ATTR_ACCESSTIME | SSH_FILEXFER_ATTR_CREATETIME | SSH2_FILEXFER_ATTR_ACMODTIME)) {
-		date.ds_Tick = tv.tv_usec / 20000 + (tv.tv_secs % 60) * 1000000;
+#ifdef __AMIGA__
+		date.ds_Tick = tv.tv_usec / 20000 + (tv.tv_sec % 60) * 1000000;
 		date.ds_Days = tv.tv_sec / (24 * 60 * 60);
 		date.ds_Minute = (tv.tv_sec - date.ds_Days * (24 * 60 * 60)) / 60;
+#else
+		date.tv_sec  = tv.tv_sec;
+		date.tv_nsec = tv.tv_usec * 1000;  // convert microseconds -> nanoseconds
+#endif
 	}
 
 	return 040000 & mode;
@@ -359,10 +382,10 @@ void ScpChannel::sendChannelData(uint8_t *end) {
 	uint8_t *p0 = buffer + 5;
 	uint8_t *p = p0;
 	*p++ = SSH_MSG_CHANNEL_DATA;
-	putInt32(p, getChannelNo());
+	putInt32AndInc(p, getChannelNo());
 
-	putInt32(p, end - p - 4); // total length
-	putInt32(p, end - p - 4); // inner length
+	putInt32AndInc(p, end - p - 4); // total length
+	putInt32AndInc(p, end - p - 4); // inner length
 
 //	_dump("send", p0, end - p0);
 	sendEncrypted(p0, end - p0);
@@ -373,7 +396,7 @@ void ScpChannel::init() {
 
 	uint8_t *p = buffer + 18;
 	*p++ = SSH_FXP_INIT;
-	putInt32(p, 3);
+	putInt32AndInc(p, 3);
 	logme(L_DEBUG, "SSH_FXP_INIT");
 	sendChannelData(p);
 
@@ -383,7 +406,7 @@ void ScpChannel::init() {
 void ScpChannel::getRealPath(char const *path) {
 	uint8_t *p = buffer + 18;
 	*p++ = SSH_FXP_REALPATH;
-	putInt32(p, ++REQUESTID);
+	putInt32AndInc(p, ++REQUESTID);
 	putString(p, path);
 	logme(L_DEBUG, "%ld SSH_FXP_REALPATH %s",REQUESTID, path);
 	sendChannelData(p);
@@ -392,7 +415,7 @@ void ScpChannel::getRealPath(char const *path) {
 void ScpChannel::getLStat(char const *path) {
 	uint8_t *p = buffer + 18;
 	*p++ = SSH_FXP_LSTAT;
-	putInt32(p, ++REQUESTID);
+	putInt32AndInc(p, ++REQUESTID);
 	putString(p, path);
 	logme(L_DEBUG, "%ld SSH_FXP_LSTAT %s",REQUESTID, path);
 	sendChannelData(p);
@@ -401,17 +424,17 @@ void ScpChannel::getLStat(char const *path) {
 void ScpChannel::openFile(CopyState * cs, bool write) {
 	uint8_t *p = buffer + 18;
 	*p++ = SSH_FXP_OPEN;
-	putInt32(p, ++REQUESTID);
+	putInt32AndInc(p, ++REQUESTID);
 
 	putString(p, write ? cs->dst : cs->src);
 
 	if (write) {
-		putInt32(p, 0xa); // CREATE
-		putInt32(p, SSH_FILEXFER_ATTR_PERMISSIONS);
-		putInt32(p, a2sshmode(cs->protect));
+		putInt32AndInc(p, 0xa); // CREATE
+		putInt32AndInc(p, SSH_FILEXFER_ATTR_PERMISSIONS);
+		putInt32AndInc(p, a2sshmode(cs->protect));
 	} else {
-		putInt32(p, 1); // READ
-		putInt32(p, 0);
+		putInt32AndInc(p, 1); // READ
+		putInt32AndInc(p, 0);
 	}
 
 	logme(L_DEBUG, "%ld SSH_FXP_OPEN %s",REQUESTID, write ? cs->dst : cs->src);
@@ -422,10 +445,10 @@ void ScpChannel::openFile(CopyState * cs, bool write) {
 void ScpChannel::mkDir(CopyState * cs) {
 	uint8_t *p = buffer + 18;
 	*p++ = SSH_FXP_MKDIR;
-	putInt32(p, ++REQUESTID);
+	putInt32AndInc(p, ++REQUESTID);
 	putString(p, cs->dst);
-	putInt32(p, SSH_FILEXFER_ATTR_PERMISSIONS);
-	putInt32(p, a2sshmode(cs->protect));
+	putInt32AndInc(p, SSH_FILEXFER_ATTR_PERMISSIONS);
+	putInt32AndInc(p, a2sshmode(cs->protect));
 
 	logme(L_DEBUG, "%ld SSH_FXP_MKDIR %s",REQUESTID, cs->dst);
 	sendChannelData(p);
@@ -434,7 +457,7 @@ void ScpChannel::mkDir(CopyState * cs) {
 void ScpChannel::openDir(CopyState * cs) {
 	uint8_t *p = buffer + 18;
 	*p++ = SSH_FXP_OPENDIR;
-	putInt32(p, ++REQUESTID);
+	putInt32AndInc(p, ++REQUESTID);
 	putString(p, cs->src);
 
 	logme(L_DEBUG, "%ld SSH_FXP_OPENDIR %s",REQUESTID, cs->src);
@@ -444,9 +467,9 @@ void ScpChannel::openDir(CopyState * cs) {
 void ScpChannel::readDir(CopyState * cs) {
 	uint8_t *p = buffer + 18;
 	*p++ = SSH_FXP_READDIR;
-	putInt32(p, ++REQUESTID);
+	putInt32AndInc(p, ++REQUESTID);
 
-	putInt32(p, cs->handleSize);
+	putInt32AndInc(p, cs->handleSize);
 	memcpy(p, cs->handle, cs->handleSize);
 	p += cs->handleSize;
 
@@ -456,14 +479,14 @@ void ScpChannel::readDir(CopyState * cs) {
 void ScpChannel::readData(CopyState *cs) {
 	uint8_t *p = buffer + 18;
 	*p++ = SSH_FXP_READ;
-	putInt32(p, ++REQUESTID);
+	putInt32AndInc(p, ++REQUESTID);
 
-	putInt32(p, cs->handleSize);
+	putInt32AndInc(p, cs->handleSize);
 	memcpy(p, cs->handle, cs->handleSize);
 	p += cs->handleSize;
-	putInt32(p, 0); // no support > 4G
-	putInt32(p, cs->pos);
-	putInt32(p, maxBuffer);
+	putInt32AndInc(p, 0); // no support > 4G
+	putInt32AndInc(p, cs->pos);
+	putInt32AndInc(p, maxBuffer);
 
 	logme(L_DEBUG, "%ld SSH_FXP_READ %s",REQUESTID, cs->src);
 	sendChannelData(p);
@@ -472,19 +495,19 @@ void ScpChannel::readData(CopyState *cs) {
 int ScpChannel::writeData(CopyState *cs) {
 	uint8_t *p = buffer + 18;
 	*p++ = SSH_FXP_WRITE;
-	putInt32(p, ++REQUESTID);
+	putInt32AndInc(p, ++REQUESTID);
 
-	putInt32(p, cs->handleSize);
+	putInt32AndInc(p, cs->handleSize);
 	memcpy(p, cs->handle, cs->handleSize);
 	p += cs->handleSize;
-	putInt32(p, 0); // no support > 4G
-	putInt32(p, cs->pos);
+	putInt32AndInc(p, 0); // no support > 4G
+	putInt32AndInc(p, cs->pos);
 
 	int read = Read(cs->localFile, p + 4, maxBuffer);
 	logme(L_DEBUG, "remote writing %ld", read);
 	if (read > 0) {
 		cs->pos += read;
-		putInt32(p, read);
+		putInt32AndInc(p, read);
 		p += read;
 
 		logme(L_DEBUG, "%ld SSH_FXP_WRITE %s",REQUESTID, cs->dst);
@@ -496,9 +519,9 @@ int ScpChannel::writeData(CopyState *cs) {
 void ScpChannel::closeFile(CopyState *cs) {
 	uint8_t *p = buffer + 18;
 	*p++ = SSH_FXP_CLOSE;
-	putInt32(p, ++REQUESTID);
+	putInt32AndInc(p, ++REQUESTID);
 
-	putInt32(p, cs->handleSize);
+	putInt32AndInc(p, cs->handleSize);
 	memcpy(p, cs->handle, cs->handleSize);
 	p += cs->handleSize;
 
@@ -686,7 +709,7 @@ int ScpChannel::processChannelData(void *data, int length) {
 
 OpenRemoteDirOrFile:
 			if (currentCs->srcIsDir) {
-				BPTR dirLock = Lock(currentCs->dst, SHARED_LOCK);
+				DPTR dirLock = Lock(currentCs->dst, SHARED_LOCK);
 				if (!dirLock)
 					dirLock = CreateDir(currentCs->dst);
 				if (!dirLock) {
@@ -696,7 +719,7 @@ OpenRemoteDirOrFile:
 				Examine(dirLock, &currentCs->fib);
 				UnLock(dirLock);
 
-				if (currentCs->fib.fib_DirEntryType <= 0) {
+				if (IS_FILE(currentCs->fib)) {
 					logme(L_ERROR, "not a dir `%s`", currentCs->dst);
 					return -1;
 				}
@@ -708,12 +731,12 @@ OpenRemoteDirOrFile:
 				return 0;
 			}
 
-			BPTR dirLock = Lock(currentCs->dst, SHARED_LOCK);
+			DPTR dirLock = Lock(currentCs->dst, SHARED_LOCK);
 			if (dirLock) {
 				Examine(dirLock, &currentCs->fib);
 				UnLock(dirLock);
 
-				if (currentCs->fib.fib_DirEntryType > 0 && 0 == strcmp(currentCs->dst, dst)) {
+				if (!IS_FILE(currentCs->fib) && 0 == strcmp(currentCs->dst, dst)) {
 					if (outname == 0)
 						outname = (char *)lastPart(src);
 					appendOutname();
@@ -746,19 +769,21 @@ OpenLocalDirOrFile:
 				return -1;
 			}
 
+#ifdef __AMIGA__
 			// don't create volumes
 			if (currentCs->dst[strlen(currentCs->dst) - 1] == ':')
 				goto ExamineNext;
+#endif
 
 			state = STATE_DST_MKDIR;
 			mkDir(currentCs);
 		} else {
 			// it's a file!
-			BPTR lock = Lock(currentCs->src, SHARED_LOCK);
+			FPTR lock = LockF(currentCs->src, SHARED_LOCK);
 			currentCs->localFile = Open(currentCs->src, MODE_OLDFILE);
 			if (!currentCs->localFile || !lock) {
 				if (lock)
-					UnLock(lock);
+					UnLockF(lock);
 				if (currentCs->localFile) {
 					Close(currentCs->localFile);
 					currentCs->localFile = 0;
@@ -766,10 +791,10 @@ OpenLocalDirOrFile:
 				logme(L_ERROR, "can't open `%s` for reading", currentCs->src);
 				return -1;
 			}
-			Examine(lock, &currentCs->fib);
+			ExamineF(lock, &currentCs->fib);
 			currentCs->protect = currentCs->fib.fib_Protection;
 			currentCs->size = currentCs->fib.fib_Size;
-			UnLock(lock);
+			UnLockF(lock);
 
 			state = STATE_DST_OPEN;
 			openFile(currentCs, true);
@@ -803,7 +828,7 @@ OpenLocalDirOrFile:
 				logme(L_ERROR, "read failed for remote `%s`: %ld", currentCs->src, reason);
 				return -1;
 			}
-			putInt32(p, 0);
+			putInt32AndInc(p, 0);
 			p -= 4;
 		}
 		{
@@ -992,7 +1017,7 @@ DstDone:
 		}
 		logme(L_DEBUG, "remote dir already exists: %s", currentCs->dst);
 		k = SSH_FXP_STATUS;
-		putInt32(p, SSH_FX_OK); p -= 4;
+		putInt32AndInc(p, SSH_FX_OK); p -= 4;
 		/* no break */
 
 	case STATE_DST_MKDIR:
@@ -1006,21 +1031,25 @@ ExamineNext:
 		if (ExNext(currentCs->localDir, &currentCs->fib)) {
 			if (pattern && fnmatch(pattern, currentCs->fib.fib_FileName, FNM_IGNORECASE))
 				goto ExamineNext;
+#ifndef __AMIGA__
+			if (0 == strcmp(currentCs->fib.fib_FileName, ".") || 0 == strcmp(currentCs->fib.fib_FileName, ".."))
+				goto ExamineNext;
+#endif
 
 			char * src = concatPath(currentCs->src, currentCs->fib.fib_FileName);
 			bool isDir;
-			if (currentCs->fib.fib_DirEntryType == 3) {
+			if (IS_LINK(currentCs->fib)) {
 				// link, try to open it as file
-				BPTR lock = Lock(src, MODE_OLDFILE);
+				FPTR lock = LockF(src, MODE_OLDFILE);
 				if (!lock) {
 					logme(L_INFO, "skipping linked folder %s", src);
 					goto ExamineNext;
 				}
 				logme(L_INFO, "copying linked file %s", src);
-				UnLock(lock);
+				UnLockF(lock);
 				isDir = false;
 			} else {
-				isDir = currentCs->fib.fib_DirEntryType > 0;
+				isDir = !IS_FILE(currentCs->fib);
 			}
 
 			CopyState * cs = new CopyState(isDir, src,
@@ -1054,7 +1083,7 @@ bool ScpChannel::start() {
 	// open the sftp
 	uint8_t *p = buffer + 5;
 	*p++ = SSH_MSG_CHANNEL_REQUEST;
-	putInt32(p, getChannelNo());
+	putInt32AndInc(p, getChannelNo());
 	putString(p, "subsystem");
 	*p++ = 1;
 	putString(p, "sftp");
@@ -1071,12 +1100,12 @@ bool ScpChannel::start() {
 	}
 	// validate the copy parameters
 	if (localSrc) {
-		BPTR srcLock = Lock(src, SHARED_LOCK);
+		FPTR srcLock = LockF(src, SHARED_LOCK);
 		if (srcLock) {
 			D_S(struct FileInfoBlock, fib);
-			Examine(srcLock, fib);
-			srcIsDir = fib->fib_DirEntryType > 0;
-			UnLock(srcLock);
+			ExamineF(srcLock, fib);
+			srcIsDir = IS_DIR(*fib);
+			UnLockF(srcLock);
 		} else {
 			char *slashColon = 0;
 			char *star = 0;
@@ -1093,9 +1122,9 @@ bool ScpChannel::start() {
 				if (*slashColon == ':')
 					++slashColon;
 				*slashColon = 0;
-				BPTR srcLock = Lock(src, SHARED_LOCK);
+				FPTR srcLock = LockF(src, SHARED_LOCK);
 				if (srcLock)
-					UnLock(srcLock);
+					UnLockF(srcLock);
 				else
 					slashColon = 0;
 			} else
@@ -1108,12 +1137,12 @@ bool ScpChannel::start() {
 		}
 	} else {
 		// chk dst
-		BPTR dstLock = Lock(dst, SHARED_LOCK);
+		FPTR dstLock = LockF(dst, SHARED_LOCK);
 		if (dstLock) {
 			D_S(struct FileInfoBlock, fib);
-			Examine(dstLock, fib);
-			dstIsDir = fib->fib_DirEntryType > 0;
-			UnLock(dstLock);
+			ExamineF(dstLock, fib);
+			dstIsDir = IS_DIR(*fib);
+			UnLockF(dstLock);
 		} // if not exist, assume it's a dir
 		char *slashColon = 0;
 		char *star = 0;
@@ -1170,9 +1199,7 @@ static void printStats(bool full) {
 		then = &startTime;
 	 else
 		then = &lastTime;
-	int delta = (now.ds_Tick - then->ds_Tick
-			  + (now.ds_Minute - then->ds_Minute
-			  + (now.ds_Days - then->ds_Days) * 24 * 60) * 60 * 50) * 2;
+	int delta = delta_ms(now, *then) / 10;
 
 	int speed = 0;
 	if (delta) {
@@ -1195,12 +1222,14 @@ static void printStats(bool full) {
 	int min = eta / 60;
 	int sec = eta % 60;
 	int kb = speed/10;
-	printf("%3ld%% %8ldKB %4ld.%ldKB/s %2ld:%02ld %s\n", percent, sz, kb, speed - 10*kb, min, sec, full ? "   " : "ETA");
+	printf("%3ld%% %8ldKB %4ld.%ldKB/s %2ld:%02ld %s", percent, sz, kb, speed - 10*kb, min, sec, full ? "   " : "ETA");
+	if (full)
+		printf("\r\n");
 	fflush(stdout);
 }
 
 static void updateStats() {
-	DateStamp(&now);
+	DateStampF(&now);
 	if (currentCs->pos == 0) {
 		if (!firstDone) {
 			firstDone = true;
@@ -1218,7 +1247,7 @@ static void updateStats() {
 			if (spaces <= 0)
 				spaces = 1;
 			while (--spaces >= 0) {
-				putchar(' ');
+				printf(" ");
 			}
 			printStats(false);
 
@@ -1232,8 +1261,8 @@ static void updateStats() {
 			return;
 
 		// update every second
-		int diff = now.ds_Tick - lastTime.ds_Tick;
-		if (diff < 0 || diff > TICKS_PER_SECOND) {
+		long diff_ms = delta_ms(now, lastTime);
+		if (diff_ms < 0 || diff_ms > 1000) {
 			erase();
 			printStats(false);
 			lastTime = now;
@@ -1267,7 +1296,7 @@ static void printUsage() {
 	puts("    one of [source]/[target] must be remote, the other local");
 	puts("    -?            display this help");
 	puts("    -c <file>     select the config file");
-	puts("                  defaults to envarc:.ssh/ssh_config");
+	printf("                  defaults to %s/.ssh/ssh_config\n", sshDir);
 	puts("    -i <file>     select the private key file for public key authentication");
 	puts("    -p <port>     connect to the host at port <port>");
 	puts("    -t            allocate a pseudo terminal");
@@ -1436,6 +1465,7 @@ static bool isLocal(char *&path) {
 	p[l] = 0;
 	char * maybeHostname = p;
 
+#ifdef __AMIGA__
 	struct DosList *dl = AttemptLockDosList(LDF_ALL | LDF_READ);
 	if (!dl)
 		return false;
@@ -1448,6 +1478,7 @@ static bool isLocal(char *&path) {
 	UnLockDosList(LDF_ALL | LDF_READ);
 	if (dl)
 		return true;
+#endif
 
 	path = colon + 1;
 	hostname = maybeHostname;

@@ -32,7 +32,6 @@
  *  Allow Amiga systems to act as SSH servers for secure remote access.
  * ----------------------------------------------------------------------
  */
-#include <amistdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
@@ -40,6 +39,8 @@
 #include <arpa/inet.h> //inet_addr
 #include <unistd.h>    //write
 
+#ifdef __AMIGA__
+#include <amistdio.h>
 #include <clib/alib_protos.h>
 #include <devices/timer.h>
 #include <dos/dostags.h>
@@ -48,6 +49,12 @@
 #include <proto/exec.h>
 #include <proto/socket.h>
 #include <proto/timer.h>
+
+#define DPTR BPTR
+
+#else
+#include "amiemul.h"
+#endif
 
 #include <aes.h>
 #include <ed25519.h>
@@ -66,11 +73,8 @@
 
 static __far char theBuffer[2*CHUNKSIZE - 256];
 
+#ifdef __AMIGA__
 struct SignalSemaphore theLock;
-
-/* host key */
-uint8_t hostPK[32];
-uint8_t hostSK[64];
 
 /* DOS FileHandle functions */
 LONG readFx;
@@ -80,6 +84,13 @@ LONG flushFx;
 struct FileHandle *theInput;
 long theInputSize;
 struct FileHandle *theOutput;
+#else
+pthread_mutex_t theLock;
+#endif
+
+/* host key */
+uint8_t hostPK[32];
+uint8_t hostSK[64];
 
 /* config stuff */
 int serverPort = 22;
@@ -88,15 +99,21 @@ unsigned stackSize = 4096;
 char const * homeDir = "RAM:";
 BPTR curDir, orgDir;
 
-char const * configName = "ENVARC:ssh/sshd_config";
 char const * bsdName = "bsdsocket.library";
+#ifdef __AMIGA__
+char const * configName = "ENVARC:ssh/sshd_config";
 char const * passwords = "ENVARC:ssh/passwd";
 char const * hostKeyName = "ENVARC:ssh/ssh_host_ed25519_key";
+#else
+char const * configName = "/etc/ssh/sshd_config";
+char const * passwords = "/etc/ssh/passwd";
+char const * hostKeyName = "/etc/ssh/ssh_host_ed25519_key";
+#endif
 
 bool hasAes = true;
 bool hasChacha = true;
-char const * const AES128 = "aes128-gcm@openssh.com";
-char const * const CHACHA20 = "chacha20-poly1305@openssh.com";
+extern char const * AES128;
+extern char const * CHACHA20;
 
 /* This task and its message port */
 struct Task * thisTask;
@@ -107,10 +124,6 @@ int acceptSock = -1;
 int stopped;
 bool timerOn;
 int noopMask;
-
-struct MsgPort * timerPort;
-struct timerequest * timerIO;
-struct Device * TimerBase = 0;
 
 enum Errors {
 	NO_ERROR,
@@ -128,8 +141,20 @@ Errors error;
 Stack<Listener> listeners;
 static Stack<SshSession> clients;
 
-static inline struct DosPacket * getDosPacket (struct Message * m){
-	return (struct DosPacket*) m->mn_Node.ln_Name;
+#ifdef __AMIGA__
+struct MsgPort * timerPort;
+struct timerequest * timerIO;
+struct Device * TimerBase = 0;
+
+__stdargs struct IORequest* CreateExtIO(CONST struct MsgPort *port, LONG iosize) {
+	struct IORequest *ioreq = NULL;
+	if (port && (ioreq = (struct IORequest*) malloc(iosize))) {
+		memset(ioreq, 0, iosize);
+		ioreq->io_Message.mn_Node.ln_Type = NT_REPLYMSG;
+		ioreq->io_Message.mn_ReplyPort = (struct MsgPort*) port;
+		ioreq->io_Message.mn_Length = iosize;
+	}
+	return ioreq;
 }
 
 /*
@@ -185,31 +210,6 @@ ShellChannel * findByBreakPort(struct MsgPort * mp) {
 	ReleaseSemaphore(&theLock);
 	return sc;
 }
-
-// prune dead clients
-void pruneDeadClients() {
-	// needs synchronization with the runnning commands
-	ObtainSemaphore(&theLock);
-	int sz = clients.getMax();
-	for (int i = 0; i < sz; ++i) {
-		SshSession * cs = clients[i];
-		if (!cs || cs->isOpen() || cs->isAlive())
-			continue;
-
-		logme(L_DEBUG, "pruning server %s socket=%ld", cs->name, cs->getSockFd());
-		clients.remove(cs->getSockFd());
-		listeners.remove(cs->getSockFd());
-
-#ifdef PROFILE
-		puts("stopping");
-		stopped = 1;
-#endif
-
-		delete cs;
-	}
-	ReleaseSemaphore(&theLock);
-}
-
 /**
  * Handle the messages.
  * - end message, if a command has ended. Identified by replyport == timerPort and pri==42
@@ -351,6 +351,28 @@ void handleMsg(struct Message * msg) {
 	}
 }
 
+void startTimer() {
+	logme(L_ULTRA, "starting new timer");
+	timerIO->tr_node.io_Command = TR_ADDREQUEST;
+	timerIO->tr_time.tv_secs = 0;
+	timerIO->tr_time.tv_micro = 32768 + (rand() & 32767);
+	SendIO(&timerIO->tr_node);
+	timerOn = true;
+}
+
+
+void timeoutWaitForChar() {
+	struct timeval now;
+	GetSysTime(&now);
+	uint32_t sz = clients.getMax();
+	for (int i = 0; i < sz; ++i) {
+		auto c = clients[i];
+		if (c)
+			c->checkTimeout(&now);
+	}
+}
+#endif
+
 int cancelRunning() {
 	int running = 0;
 	ObtainSemaphore(&theLock);
@@ -373,6 +395,32 @@ int cancelRunning() {
 	return running;
 }
 
+// prune dead clients
+void pruneDeadClients() {
+	// needs synchronization with the runnning commands
+	ObtainSemaphore(&theLock);
+	int sz = clients.getMax();
+	for (int i = 0; i < sz; ++i) {
+		SshSession * cs = clients[i];
+		if (!cs || cs->isOpen() || cs->isAlive())
+			continue;
+
+		logme(L_DEBUG, "pruning server %s socket=%ld", cs->name, cs->getSockFd());
+		clients.remove(cs->getSockFd());
+		listeners.remove(cs->getSockFd());
+
+#ifdef PROFILE
+		puts("stopping");
+		stopped = 1;
+#endif
+
+		delete cs;
+	}
+	ReleaseSemaphore(&theLock);
+}
+
+
+
 void checkFinished() {
 	uint32_t sz = clients.getMax();
 	for (int i = 0; i < sz; ++i) {
@@ -388,7 +436,7 @@ void cleanup() {
 		logme(L_FINE, "closing listen socket %ld", acceptSock);
 		CloseSocket(acceptSock);
 	}
-
+#ifdef __AMIGA__
 	if (SocketBase) {
 		logme(L_FINE, "closing %s", bsdName);
 		CloseLibrary(SocketBase);
@@ -406,7 +454,7 @@ void cleanup() {
 
 	if (timerIO) {
 		logme(L_FINE, "free timer request");
-		free(timerIO);
+		xfree(timerIO);
 	}
 
 	if (timerPort) {
@@ -423,27 +471,7 @@ void cleanup() {
 		CurrentDir(orgDir);
 	if (curDir)
 		UnLock(curDir);
-}
-
-void startTimer() {
-	logme(L_ULTRA, "starting new timer");
-	timerIO->tr_node.io_Command = TR_ADDREQUEST;
-	timerIO->tr_time.tv_secs = 0;
-	timerIO->tr_time.tv_micro = 32768 + (rand() & 32767);
-	SendIO(&timerIO->tr_node);
-	timerOn = true;
-}
-
-
-void timeoutWaitForChar() {
-	struct timeval now;
-	GetSysTime(&now);
-	uint32_t sz = clients.getMax();
-	for (int i = 0; i < sz; ++i) {
-		auto c = clients[i];
-		if (c)
-			c->checkTimeout(&now);
-	}
+#endif
 }
 
 void abortAll() {
@@ -456,6 +484,7 @@ void abortAll() {
 }
 
 static bool init() {
+#ifdef __AMIGA__
 	grabFx();
 	if (!theOutput || !theInput)
 		logme(L_ERROR, "no working i/o");
@@ -500,6 +529,7 @@ static bool init() {
 	logme(L_FINE, "opened %s", bsdName);
 
 	SocketBaseTags(SBTM_SETVAL(SBTC_BREAKMASK), 0, TAG_DONE);
+#endif
 
 	//Create socket
 	acceptSock = socket(AF_INET, SOCK_STREAM, 0);
@@ -508,6 +538,11 @@ static bool init() {
 		return false;
 	}
 	logme(L_FINE, "create listen socket %ld", acceptSock);
+
+#ifdef __linux__
+	int yes = 1;
+	setsockopt(acceptSock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+#endif
 
 	return true;
 }
@@ -695,8 +730,14 @@ __stdargs int main(int argc, char *argv[]) {
 		return error = ERR_KEYFILE;
 	}
 
+#ifdef __AMIGA__
 	thisTask = SysBase->ThisTask;
 	logme(L_TRACE, "self %08lX mp %08lX", thisTask, &((struct Process *)thisTask)->pr_MsgPort);
+
+	ULONG portMask = (1 << port->mp_SigBit);
+	ULONG timerMask = (1 << timerPort->mp_SigBit);
+
+#endif
 
 	do { // while (0);
 		if (!init())
@@ -716,7 +757,7 @@ __stdargs int main(int argc, char *argv[]) {
 				(0xff & (server.sin_addr.s_addr >> 24)),
 				(0xff & (server.sin_addr.s_addr >> 16)),
 				(0xff & (server.sin_addr.s_addr >> 8)),
-				(0xff & server.sin_addr.s_addr), server.sin_port);
+				(0xff & server.sin_addr.s_addr), htons(server.sin_port));
 			error = ERR_BIND;
 			break;
 		}
@@ -729,10 +770,7 @@ __stdargs int main(int argc, char *argv[]) {
 				(0xff & (server.sin_addr.s_addr >> 24)),
 				(0xff & (server.sin_addr.s_addr >> 16)),
 				(0xff & (server.sin_addr.s_addr >> 8)),
-				(0xff & server.sin_addr.s_addr), server.sin_port);
-
-		ULONG portMask = (1 << port->mp_SigBit);
-		ULONG timerMask = (1 << timerPort->mp_SigBit);
+				(0xff & server.sin_addr.s_addr), htons(server.sin_port));
 
 		for(;;) {
 			if (stopped) {
@@ -776,6 +814,7 @@ __stdargs int main(int argc, char *argv[]) {
 					pruneDeadClients();
 			}
 
+#ifdef __AMIGA__
 			ULONG signales = SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | portMask | timerMask;
 			WaitSelect(listeners.getMax() + 1, &readfds, NULL, NULL, 0, &signales);
 
@@ -808,6 +847,24 @@ __stdargs int main(int argc, char *argv[]) {
 				struct Message *msg = GetMsg(port);
 				handleMsg(msg);
 			}
+#else
+			int sn = listeners.getMax();
+			if (sn < acceptSock) sn = acceptSock;
+
+			uint32_t csz = clients.getMax();
+			for (int i = 0; i < csz; ++i) {
+				auto c = clients[i];
+				if (c) {
+					int h = c->getHandle();
+					if (h) {
+						FD_SET(h, &readfds);
+						if (h > sn)
+							sn = h;
+					}
+				}
+			}
+			select(sn + 1, &readfds, NULL, NULL, 0);
+#endif
 
 			// handle new connections
 			if (FD_ISSET(acceptSock, &readfds)) {
@@ -842,6 +899,21 @@ __stdargs int main(int argc, char *argv[]) {
 					continue;
 				}
 			}
+
+#ifdef __linux__
+			for (int i = 0; i < csz; ++i) {
+				auto c = clients[i];
+				if (c) {
+					int h = c->getHandle();
+					if (h && FD_ISSET(h, &readfds)) {
+						if (c->readHandle() < 0) {
+							c->close();
+						}
+					}
+				}
+			}
+#endif
+
 			sz = listeners.getMax();
 			bool somethingClosed = false;
 			for (uint32_t i = 0; i < sz; ++i) {
@@ -874,15 +946,3 @@ __stdargs int main(int argc, char *argv[]) {
 
 	return error;
 }
-
-__stdargs struct IORequest* CreateExtIO(CONST struct MsgPort *port, LONG iosize) {
-	struct IORequest *ioreq = NULL;
-	if (port && (ioreq = (struct IORequest*) malloc(iosize))) {
-		memset(ioreq, 0, iosize);
-		ioreq->io_Message.mn_Node.ln_Type = NT_REPLYMSG;
-		ioreq->io_Message.mn_ReplyPort = (struct MsgPort*) port;
-		ioreq->io_Message.mn_Length = iosize;
-	}
-	return ioreq;
-}
-

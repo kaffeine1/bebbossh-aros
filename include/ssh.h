@@ -82,9 +82,24 @@ uint8_t * sshString(uint8_t * &p);
 static inline uint32_t getInt32(uint8_t * p) {
 	return (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3];
 }
+static inline uint32_t getInt32(char * p) {
+	return getInt32((uint8_t*)p);
+}
 
-static inline void putInt32(uint8_t * &p, uint32_t l) {
-#ifdef __mc68000__
+static inline uint32_t getInt32Aligned(uint8_t * p) {
+#if (BYTE_ORDER == BIG_ENDIAN)
+	return *(uint32_t*)p;
+#else
+	return (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3];
+#endif
+}
+static inline uint32_t getInt32Aligned(char * p) {
+	return getInt32Aligned((uint8_t*)p);
+}
+
+
+static inline void putInt32AndInc(uint8_t * &p, uint32_t l) {
+#if defined (__mc68000__) || (BYTE_ORDER == LITTLE_ENDIAN)
 	*p++ = l >> 24;
 	*p++ = l >> 16;
 	*p++ = l >> 8;
@@ -95,15 +110,24 @@ static inline void putInt32(uint8_t * &p, uint32_t l) {
 #endif
 }
 
-static void putString(uint8_t * &p, char const * s) {
-	int slen = strlen(s);
-	putInt32(p, slen);
-	memcpy(p, s, slen);
-	p += slen;
+static inline void putInt32Aligned(uint8_t * p, uint32_t l) {
+#if (BYTE_ORDER == LITTLE_ENDIAN)
+	*p++ = l >> 24;
+	*p++ = l >> 16;
+	*p++ = l >> 8;
+	*p++ = l;
+#else
+	*(uint32_t *)p = l;
+#endif
+}
+static inline void putInt32Aligned(char * p, uint32_t l) {
+	putInt32Aligned((uint8_t*)p, l);
 }
 
+void putString(uint8_t * &p, char const * s);
+
 static void putAny(uint8_t * &p, void const * s, int slen) {
-	putInt32(p, slen);
+	putInt32AndInc(p, slen);
 	memcpy(p, s, slen);
 	p += slen;
 }
