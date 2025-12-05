@@ -5,7 +5,7 @@
 **Uploader:** s.franke@bebbosoft.de  
 **Architecture:** m68k-amigaos  
 **Type:** comm/net  
-**Version:** 1.41
+**Version:** 1.40
 **Required:** bsdsocket.library (e.g. AmiTCP)  
 **Replaces:** amigassh  
 
