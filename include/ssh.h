@@ -79,13 +79,6 @@
 
 uint8_t * sshString(uint8_t * &p);
 
-static inline uint32_t getInt32(uint8_t * p) {
-	return (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3];
-}
-static inline uint32_t getInt32(char * p) {
-	return getInt32((uint8_t*)p);
-}
-
 static inline uint32_t getInt32Aligned(uint8_t * p) {
 #if (BYTE_ORDER == BIG_ENDIAN)
 	return *(uint32_t*)p;
@@ -97,6 +90,16 @@ static inline uint32_t getInt32Aligned(char * p) {
 	return getInt32Aligned((uint8_t*)p);
 }
 
+static inline uint32_t getInt32(uint8_t * p) {
+#if defined (__mc68020__)
+	return getInt32Aligned(p);
+#else
+	return (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3];
+#endif
+}
+static inline uint32_t getInt32(char * p) {
+	return getInt32((uint8_t*)p);
+}
 
 static inline void putInt32AndInc(uint8_t * &p, uint32_t l) {
 #if defined (__mc68000__) || (BYTE_ORDER == LITTLE_ENDIAN)

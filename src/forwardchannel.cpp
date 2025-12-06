@@ -61,7 +61,7 @@ bool ForwardChannel::init(uint8_t * src, uint32_t srcPort, uint8_t * to, uint32_
 
 	sinRemote.sin_family = host->h_addrtype;
 	sinRemote.sin_port = toPort;
-	sinRemote.sin_addr.s_addr = *(unsigned*) host->h_addr;
+	sinRemote.sin_addr.s_addr = getInt32(host->h_addr);
 
 	logme(L_INFO, "@%ld:%ld connecting %ld to %ld.%ld.%ld.%ld:%ld", server->getSockFd(), channel, listener.getSockFd(),
 			(0xff & (sinRemote.sin_addr.s_addr >> 24)),

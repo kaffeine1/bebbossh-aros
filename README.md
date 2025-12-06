@@ -5,7 +5,7 @@
 **Uploader:** s.franke@bebbosoft.de  
 **Architecture:** m68k-amigaos  
 **Type:** comm/net  
-**Version:** 1.40
+**Version:** 1.41
 **Required:** bsdsocket.library (e.g. AmiTCP)  
 **Replaces:** amigassh  
 
@@ -130,17 +130,7 @@ The author shall not be liable for any damages (direct, indirect, incidental, or
 
 ## 🕑 History
 
-### BebboSSH v1.39
-- Name change to BebboSSH  
-- Consolidated crypto with BebboGet  
-- Rewrote AES for speed improvements  
-- Improved ChaCha20-Poly1305 performance  
-- Source code available at: https://franke.ms/git/bebbo/bebbossh  
-
-### Previous Versions (AmigaSSH)
-- v1.38: Added ChaCha20/Poly1305, config file support for ciphers  
-- v1.37: Speed enhancements, faster key generation and verification  
-- v1.36–v1.29: Various fixes, SFTP improvements, ESC handling, channel management refinements  
+see bebbossh.readme
 
 ---
 

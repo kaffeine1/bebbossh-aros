@@ -483,7 +483,43 @@ static void makeKexEcdhInit() {
 	memset(buffer + sizeof(KEX_ECDH_INIT) + 32, 0, 6); // clear padding data
 }
 
-static bool verifyHost(uint8_t * hostBase64) {
+// helper to skip whitespace
+static inline char *skip_ws(char *p) {
+    while (*p && *p <= 32) ++p;
+    return p;
+}
+
+// helper to extract next token
+static inline char *next_token(char **pp) {
+    char *p = skip_ws(*pp);
+    char *tok = p;
+    while (*p && *p > 32) ++p;
+    if (*p) *p++ = 0;
+    *pp = p;
+    return tok;
+}
+
+// helper function to parse n, c, k
+static void parse_line(char *line, char **n, char **c, char **k) {
+    char *p = line;
+    *n = next_token(&p);
+    *c = next_token(&p);
+    *k = next_token(&p);
+}
+
+// helper: write one line into a memory buffer
+static char *append_line(char *out, const char *n, const char *c, const char *k) {
+    out = stpcpy(out, n);
+    *out++ = ' ';
+    out = stpcpy(out, c);
+    *out++ = ' ';
+    out = stpcpy(out, k);
+    *out++ = '\n';
+    *out = '\0';
+    return out;
+}
+
+static bool verifyHost(uint8_t const * hostBase64) {
 	if (!sshDotDir) sshDotDir = concat(sshDir, ".ssh", NULL);
 	if (!knownHosts) knownHosts = concat(sshDotDir, "/known_hosts", NULL);
 
@@ -498,63 +534,83 @@ static bool verifyHost(uint8_t * hostBase64) {
 	if (port != 22) {
 		char buf[12];
 		utoa(port, buf, 10);
-		char * p = (char *)malloc(strlen(hostname) + strlen(buf) + 2);
-		strcpy(p, hostname);
-		strcat(p, ":");
-		strcat(p, buf);
-		hostname = p;
+		hostname = concat(hostname, ":", buf, NULL);
  	}
 
+	char * buf = (char *)buffer;
+	bool replace = false;
 	bool r = false;
 	Seek(f, OFFSET_BEGINNING, 0);
 	while(!r) {
-		char * p = (char *)buffer + 1000;
+		char * p = buf + 1000;
 		if (!fgets(p, buffersize - 1000, f))
 			break;
 
-		// split
-		while (*p && *p <= 32)
-			++p;
-
-		char * n = p;
-		while (*p && *p > 32)
-			++p;
-		*p++ = 0;
-
-		while (*p && *p <= 32)
-			++p;
-		char *c = p;
-
-		while (*p && *p > 32)
-			++p;
-		*p++ = 0;
-
-		while (*p && *p <= 32)
-			++p;
-		char *k = p;
-
-		while (*p && *p > 32)
-			++p;
-		*p++ = 0;
+	    char *n, *c, *k;
+	    parse_line(p, &n, &c, &k);
 
 		if (0 == strcmp(n, hostname) && 0 == strcmp(c, "ssh-ed25519")) {
 			r = 0 == strcmp(k, (char *)hostBase64);
 			if (!r) {
 				printf("host key %s differs from stored host key %s for host %s\n", hostBase64, k, hostname);
-				puts("aborting");
+				replace = true;
 			}
 			break;
 		}
 	}
-
 	if (!r) {
 		printf("do you trust host %s with ssh-ed25519 key %s? Then enter: yes\n", hostname, hostBase64);
 		fflush(stdout);
-		*buffer = 0;
-		fgets((char *)buffer, 5, stdin);
+		*buf = 0;
+		fgets(buf, 5, stdin);
 		if (0 == strncmp("yes", (char *)buffer, 3)) {
 			r = true;
-			fprintf(f, "%s ssh-ed25519 %s\n", hostname, hostBase64);
+			if (replace) {
+				// Get file size
+				Seek(f, 0, OFFSET_END);
+				long size = Seek(f, 0, OFFSET_CURRENT);
+
+				Close(f);
+				f = Open(knownHosts, MODE_OLDFILE);
+
+				size += 1024;// extra room
+				char *mem = (char *)malloc(size);
+				if (!mem) {
+					logme(L_ERROR, "out of memory for %ld bytes", size);
+					exit(10);
+				}
+
+				char *out = mem;
+				char * p = buf + 1000;
+				while (fgets(p, buffersize - 1000, f)) {
+					char *n, *c, *k;
+					parse_line(p, &n, &c, &k);
+
+					// skip lines without 3 values
+					if (!*n || !*c || !*k)
+						continue;
+
+					if (strcmp(n, hostname) == 0 && strcmp(c, "ssh-ed25519") == 0) {
+						// skip old entry
+						continue;
+					}
+					out = append_line(out, n, c, k);
+				}
+
+				// append new entry
+				out = append_line(out, hostname, "ssh-ed25519", (char *)hostBase64);
+
+				// rewind and truncate
+				Close(f);
+				f = Open(knownHosts, MODE_NEWFILE);
+				Write(f, mem, out - mem);
+
+				free(mem);
+			} else {
+				// just append
+				Seek(f, OFFSET_END, 0);
+				fprintf(f, "%s ssh-ed25519 %s\n", hostname, hostBase64);
+			}
 		}
 	}
 
@@ -1228,7 +1284,7 @@ bool connectClient() {
 
 		sinRemote.sin_family = host->h_addrtype;
 		sinRemote.sin_port = htons(port);
-		sinRemote.sin_addr.s_addr = *(unsigned*) host->h_addr;
+		sinRemote.sin_addr.s_addr = getInt32(host->h_addr);
 
 		if (0 != connect(sockfd, (struct sockaddr* )&sinRemote, sizeof(sinRemote))) {
 			error = ERROR_CONNECT;

@@ -3,7 +3,7 @@ Author:       s.franke@bebbosoft.de
 Uploader:     s.franke@bebbosoft.de
 Architecture: m68k-amigaos
 Type:         comm/net
-Version:      1.40
+Version:      1.41
 Required:     bsdsocket.library (e.g AmiTCP)
 
 ===============================================================================
@@ -217,6 +217,10 @@ SOFTWARE, EVEN IF I HAVE ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
 
 ===============================================================================
 HISTORY
+
+bebbossh V1.41
+* fix address error on 68000 if gethostbyname returns an odd address!?
+* known_hosts is now updated properly if the server key changed
 
 bebbossh V1.40
 * fix nasty bug that caused sig-verify to fail
