@@ -264,8 +264,8 @@ static inline DPTR CreateDir(const char *path) {
 #define DeleteFile(path)   (unlink(path) == 0)
 
 #define AllocVec(s,t)    malloc(s)
-#define FreeVec(p)       xfree(p)
-extern "C" { void xfree(void *);}
+#define FreeVec(p)       free(p)
+extern "C" { void free(void *);}
 
 /* Socket handling */
 #ifdef __unix__

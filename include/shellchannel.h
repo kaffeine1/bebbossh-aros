@@ -41,8 +41,6 @@
 
 #include "channel.h"
 
-extern "C" void xfree(void *);
-
 /**
  * A ring buffer to maintain the command history of a shell.
  */
@@ -59,7 +57,7 @@ public:
 	}
 	~History() {
 		for (int i = 0; i < max; ++i)
-			xfree(data[i]);
+			free(data[i]);
 		delete [] data;
 	}
 	char * getNext() {
@@ -82,12 +80,12 @@ public:
 		int endm1 = end ? end - 1 : max - 1;
 		if (endm1 == top || strcmp(t, data[endm1])) {
 			if (end == top)
-				xfree(data[end]);
+				free(data[end]);
 			data[end] = t;
 			if (++end == max)
 				end = 0;
 		} else
-			xfree(t);
+			free(t);
 		pos = end;
 	}
 	void toEnd() {

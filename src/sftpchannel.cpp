@@ -69,7 +69,6 @@ static inline long delta_ms(const struct DateStamp &now,
     return diff_ticks * 20;
 }
 
-extern "C" { void xfree(void * ptr); }
 #else
 #include "amiemul.h"
 #endif
@@ -508,7 +507,7 @@ void SftpChannel::sendPacket(uint8_t *end, uint8_t * &out) {
 	if (rest) {
 		// keep the data - copy needed since send trashes it
 		if (queueLen < rest) {
-			xfree(queue);
+			free(queue);
 			queue = malloc(rest);
 			queueLen = rest;
 		}

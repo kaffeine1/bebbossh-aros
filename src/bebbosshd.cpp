@@ -454,7 +454,7 @@ void cleanup() {
 
 	if (timerIO) {
 		logme(L_FINE, "free timer request");
-		xfree(timerIO);
+		free(timerIO);
 	}
 
 	if (timerPort) {
@@ -730,18 +730,17 @@ __stdargs int main(int argc, char *argv[]) {
 		return error = ERR_KEYFILE;
 	}
 
-#ifdef __AMIGA__
-	thisTask = SysBase->ThisTask;
-	logme(L_TRACE, "self %08lX mp %08lX", thisTask, &((struct Process *)thisTask)->pr_MsgPort);
-
-	ULONG portMask = (1 << port->mp_SigBit);
-	ULONG timerMask = (1 << timerPort->mp_SigBit);
-
-#endif
-
 	do { // while (0);
 		if (!init())
 			break;
+
+#ifdef __AMIGA__
+		thisTask = SysBase->ThisTask;
+		logme(L_TRACE, "self %08lX mp %08lX", thisTask, &((struct Process *)thisTask)->pr_MsgPort);
+
+		ULONG portMask = (1 << port->mp_SigBit);
+		ULONG timerMask = (1 << timerPort->mp_SigBit);
+#endif
 
 		struct sockaddr_in server;
 		int c = sizeof(server);

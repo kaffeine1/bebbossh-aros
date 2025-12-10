@@ -195,7 +195,10 @@ endif
 clean:
 	rm -rf $(OUTDIR)/*
 
-ifndef linux	
+ifdef linux
+.PHONY: install
+install: all
+else
 ifdef Release
 install: all $(OUTDIR)/bebbossh $(OUTDIR)/bebbosshd $(OUTDIR)/bebbosshkeygen $(OUTDIR)/bebboscp $(OUTDIR)/libcryptossh.library
 	cp $(OUTDIR)/bebbossh $(DEST)

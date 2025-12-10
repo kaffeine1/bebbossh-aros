@@ -59,16 +59,7 @@ struct MsgPort;
 struct SshSession : public Listener {
 	char name[16];
 	SshState state;
-	SHA256 handshakeMD;
 	struct KeyMaterial keyMat;
-	AeadBlockCipher * readAead;
-	BlockCipher * readBc;
-	ChaCha20 * readCounterBc;
-	AeadBlockCipher * writeAead;
-	BlockCipher * writeBc;
-	ChaCha20 * writeCounterBc;
-
-	Stack<Channel> channels;
 
 	union {
 		struct { // this is only needed during handshake, keel it later
@@ -87,6 +78,16 @@ struct SshSession : public Listener {
 	char * inpos;                // position into indata
 	char indatax[CHUNKSIZE * 2]; // incoming packet data * 2 for buffering
 	char outdata[CHUNKSIZE * 2]; // outgoing packet data
+
+	AeadBlockCipher * readAead;
+	BlockCipher * readBc;
+	ChaCha20 * readCounterBc;
+	AeadBlockCipher * writeAead;
+	BlockCipher * writeBc;
+	ChaCha20 * writeCounterBc;
+
+	SHA256 handshakeMD;
+	Stack<Channel> channels;
 
 	int inChannelUse;
 	int inChannelSize;

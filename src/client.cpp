@@ -83,8 +83,6 @@ static uint8_t * hsdp;
 #define HSU(a,b,c)
 #endif
 
-extern "C" { void xfree(void * ptr); }
-
 err error = NO_ERROR;
 
 static char const * ERR_MSG[] = {
@@ -255,7 +253,7 @@ static bool ensureBufferSize(unsigned nsize) {
 		nb[1] = buffer[1];
 		nb[2] = buffer[2];
 		nb[3] = buffer[3];
-		xfree(buffer);
+		free(buffer);
 		buffer = nb;
 		buffersize = nsize;
 	}

@@ -69,7 +69,7 @@ ShellChannel::ShellChannel(SshSession * server, uint32_t channel, ChannelType ty
 		stackSize(::stackSize), dir(0),
 		breakPort1(0), breakPort2(0), pending(0), waiting(0),
 		xpos(line), xend(line),
-		inBufferLen(0), inBuffer(0),
+		inBufferLen(1024),
 		history(32)
 {
 	*xend = 0;
@@ -78,6 +78,7 @@ ShellChannel::ShellChannel(SshSession * server, uint32_t channel, ChannelType ty
 	if (!dir)
 		dir = Lock("RAM:", SHARED_LOCK);
 	logme(L_DEBUG, "@%ld:%ld opening shell channel", server->getSockFd(), channel);
+	inBuffer = (char *)malloc(inBufferLen);
 }
 #else
 	pid(0), master(0)
@@ -87,7 +88,7 @@ ShellChannel::ShellChannel(SshSession * server, uint32_t channel, ChannelType ty
 
 ShellChannel::~ShellChannel() {
 #ifdef __AMIGA__
-	xfree(inBuffer);
+	free(inBuffer);
 	if (dir)
 		UnLock(dir);
 #endif
@@ -987,7 +988,7 @@ bool ShellChannel::startCommand(char const * cmd){
     argv[argc] = NULL;
 
     if (argc == 0) {
-        xfree(copy);
+        free(copy);
         return false;
     }
 
@@ -1065,7 +1066,7 @@ bool ShellChannel::startCommand(char const * cmd){
 
     // parent
     close(slave);
-    xfree(argv[0]);
+    free(argv[0]);
     return true;
 }
 

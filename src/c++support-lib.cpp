@@ -44,18 +44,6 @@
 #define __saveds
 #endif
 
-extern "C" {
-void xfree(void * ptr) {
-#ifdef __AMIGA__ // should be libnix
-	unsigned long sz = ((unsigned long *)ptr)[-1];
-	memset(ptr, 0, sz);
-#elif defined(__linux__)
-	unsigned long sz = malloc_usable_size(ptr);
-	memset(ptr, 0, sz);
-#else
-#endif
-}}
-
 asm("__Znaj: .globl __Znaj");
 __saveds
 void* operator new(size_t sz) {
@@ -66,12 +54,12 @@ asm("__ZdlPvj: .globl __ZdlPvj");
 asm("__ZdaPvj: .globl __ZdaPvj");
 __saveds
 void operator delete(void *p) {
-	xfree(p);
+	free(p);
 }
 
 __saveds
 void operator delete(void *p, unsigned long) {
-	xfree(p);
+	free(p);
 }
 
 extern "C" {

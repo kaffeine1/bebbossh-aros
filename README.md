@@ -5,7 +5,7 @@
 **Uploader:** s.franke@bebbosoft.de  
 **Architecture:** m68k-amigaos  
 **Type:** comm/net  
-**Version:** 1.41
+**Version:** 1.42
 **Required:** bsdsocket.library (e.g. AmiTCP)  
 **Replaces:** amigassh  
 
@@ -13,7 +13,9 @@
 
 ## 📖 Overview
 
-**BebboSSH** is an SSH2 implementation for Amiga systems (68000+).  
+**BebboSSH** is an SSH2 implementation for
+- Amiga systems (68000+).
+- Linux systems (all cpu should do).  
 
 📦 **Source Code:** https://franke.ms/git/bebbo/bebbossh
 
@@ -26,7 +28,7 @@ The supported cryptographic methods are
 - chacha20-poly1305@openssh.com
 - hmac-sha2-256
 - sha512
-So it needs a server that supports that.
+So it needs a server that supports that. E.g. bebbosshd :-)
 
 It provides the following tools and libraries:
 
@@ -34,8 +36,9 @@ It provides the following tools and libraries:
 - `bebbossh` – SSH2 client  
 - `bebboscp` – SCP file transfer utility  
 - `bebbosshkeygen` – Key generation tool (Ed25519)  
-- `libcryptossh.library`  
-- `libcryptossh.library020` (rename and use on 68020–68040 or 68080 CPUs)  
+- `libcryptossh.library`    (Amiga only)
+- `libcryptossh.library020` (Amiga only, rename and use on 68020–68040 or 68080 CPUs)  
+- `libcryptossh.library060` (Amiga only, rename and use on 68060 CPUs)  
 
 👉 Also check out **bebboget** for fast HTTPS downloads!
 

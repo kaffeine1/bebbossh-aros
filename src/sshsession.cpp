@@ -261,8 +261,10 @@ SshSession::~SshSession() {
 	if (writeBc) delete writeBc;
 	if (readCounterBc) delete readCounterBc;
 	if (writeCounterBc) delete writeCounterBc;
-	xfree(inChannelBuf);
-	if (username) xfree(username);
+	free(inChannelBuf);
+	if (username) free(username);
+
+	memset(name, 0xde, (char*)&readAead - (char*)&name);
 }
 
 void SshSession::start() {
