@@ -48,7 +48,7 @@
 
 static char const * LEVELNAMES[] = {"", "FATAL", "ERROR", "WARN ", "INFO ", "DEBUG", "FINE ", "TRACE", "ULTRA"};
 
-enum DebugLevel DEBUG_LEVEL__data = L_INFO;
+enum DebugLevel DEBUG_LEVEL__data = L_WARN;
 enum DebugLevel * DEBUG_LEVEL = &DEBUG_LEVEL__data;
 
 void logme(enum DebugLevel lvl, char const *fmt, ...) {

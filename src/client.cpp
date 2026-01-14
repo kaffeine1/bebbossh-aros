@@ -1677,9 +1677,11 @@ void parseConfigFile(int ssh) {
 	if (!configFile) configFile = concat(sshDir, ".ssh/ssh_config", NULL);
 	BPTR ini = Open(configFile, MODE_OLDFILE);
 	if (!ini) {
-		logme(L_DEBUG, "can't open `%s`", configFile);
+		logme(L_DEBUG, "can't open %s", configFile);
 		return;
 	}
+
+	logme(L_DEBUG, "reading config file %s", configFile);
 
 	char const * hn = hostname;
 	bool match = false;
@@ -1698,6 +1700,8 @@ void parseConfigFile(int ssh) {
 		logme(L_DEBUG, "ssh_config: %s %s", s, p);
 		if (0 == stricmp("Host", s)) {
 			match = !fnmatch(p, hn, 0);
+			if (match)
+				logme(L_INFO, "host %s matches %s", hn, p);
 			continue;
 		}
 		if (!match)
@@ -1721,40 +1725,51 @@ void parseConfigFile(int ssh) {
 				}
 				if (userOrder) {
 					encOrder = userOrder;
+					logme(L_INFO, "set cipher order: %s", encOrder);
 				} else {
-					logme(L_WARN, "no valid ciphers given in %s: %s", configFile, p);
+					logme(L_WARN, "no valid ciphers given in %s", p);
 				}
 			}
 		} else
 		if (0 == stricmp("LogLevel", s)) {
-			if (!loglevelSet)
+			if (!loglevelSet) {
 				parseLogLevel(p);
-			else
+				logme(L_DEBUG, "log level set: %s", p);
+			} else
 				logme(L_INFO, "LogLevel already set");
 		} else
 		if (0 == stricmp("HostName", s)) {
 			hostname = strdup(p);
+			logme(L_INFO, "set host name to: %s", p);
 		} else
 		if (0 == stricmp("User", s)) {
-			if (!usernameSet)
+			if (!usernameSet) {
 				username = strdup(p);
-			else
-				logme(L_INFO, "User already set");
+				logme(L_INFO, "set user name to: %s", p);
+			} else
+				logme(L_INFO, "User already set to: %s", username);
 		} else
 		if (0 == stricmp("Port", s)) {
-			if (!portSet)
+			if (!portSet) {
 				port = strtoul(p, 0, 10);
+				logme(L_INFO, "set port to: %s", p);
+			}
 			else
-				logme(L_INFO, "Port already set");
+				logme(L_INFO, "Port already set %ld", port);
 		} else
 		if (0 == stricmp("IdentityFile", s)) {
-			if (!keyfileSet)
+			if (!keyfileSet) {
 				keyFile = strdup(p);
+				logme(L_INFO, "set identity file to: %s", p);
+			}
 			else
-				logme(L_INFO, "IdentityFile already set");
+				logme(L_INFO, "IdentityFile already set to %s", keyFile);
 		} else
 		if (0 == stricmp("LocalForward", s)) {
-			if (ssh) addForwardAcceptor(p);
+			if (ssh) {
+				logme(L_INFO, "add forward to: %s", p);
+				addForwardAcceptor(p);
+			}
 		} else {
 			logme(L_WARN, "ssh_config: unknown directive: %s %s", s, p);
 		}
