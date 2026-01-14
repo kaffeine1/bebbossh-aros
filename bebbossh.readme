@@ -220,6 +220,10 @@ SOFTWARE, EVEN IF I HAVE ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
 ===============================================================================
 HISTORY
 
+bebbossh V1.43
+* bebboscp applies now the ssh_config file *after* getting the hostname from
+  the command line...
+
 bebbossh V1.42
 * bug fix for bebbosshd: init signales correctly
 

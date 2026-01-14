@@ -1296,7 +1296,7 @@ static void printUsage() {
 	puts("    one of [source]/[target] must be remote, the other local");
 	puts("    -?            display this help");
 	puts("    -c <file>     select the config file");
-	printf("                  defaults to %s/.ssh/ssh_config\n", sshDir);
+	printf("                  defaults to %s.ssh/ssh_config\n", sshDir);
 	puts("    -i <file>     select the private key file for public key authentication");
 	puts("    -p <port>     connect to the host at port <port>");
 	puts("    -t            allocate a pseudo terminal");
@@ -1498,8 +1498,6 @@ __stdargs int main(int argc, char **argv) {
 
 	parseParams(argc, argv);
 
-	parseConfigFile(false);
-
 	bool localSrc = isLocal(src);
 	bool localDst = isLocal(dst);
 	logme(L_DEBUG, "user=%s host=%s src=%s slocal=%ld dst=%s dlocal=%ld", username, hostname, src, localSrc, dst, localDst);
@@ -1512,6 +1510,8 @@ __stdargs int main(int argc, char **argv) {
 		puts("copying local to local is not supported");
 		return 100;
 	}
+
+	parseConfigFile(false);
 
 	theSCP = new ScpChannel(pty, localSrc, src, dst);
 	clientChannels.add(0, theSCP);
