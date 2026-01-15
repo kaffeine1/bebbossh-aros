@@ -1,7 +1,7 @@
 #ifndef __REVISION_H__
 #define __REVISION_H__
 #define __VERSION_MAJOR "1"
-#define __VERSION_MINOR "44"
+#define __VERSION_MINOR "45"
 #define __V__ __VERSION_MAJOR "." __VERSION_MINOR
 
 
