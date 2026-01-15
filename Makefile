@@ -23,7 +23,8 @@ CC = m68k-amigaos-gcc
 ASFLAGS  = -I include
 CFLAGS   = -I include -fno-builtin
 C++FLAGS = -fno-exceptions -fno-rtti
-LDFLAGS  = -noixemul -L $(OUTDIR)
+LDFLAGS  = -noixemul -L $(OUTDIR) 
+#-Wl,--gc-sections
 #LDFLAGS += -Wl,-M
 LIBS     = -lcryptossh
 
@@ -39,7 +40,7 @@ CFLAGS += -O2 -fomit-frame-pointer -mregparm=3
 LDFLAGS += $(STRIP)
 LDFLAGS += -fbaserel
 ifeq ($(STRIP),)
-LDFLAGS += -Wl,-u___checkstack 
+LDFLAGS += -Wl,-u___checkstack
 endif
 LIB_EXT = library
 else

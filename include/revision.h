@@ -1,7 +1,7 @@
 #ifndef __REVISION_H__
 #define __REVISION_H__
 #define __VERSION_MAJOR "1"
-#define __VERSION_MINOR "43"
+#define __VERSION_MINOR "44"
 #define __V__ __VERSION_MAJOR "." __VERSION_MINOR
 
 
@@ -60,5 +60,5 @@ const char __VERSION [] = {
 		0
 };
 
-#define _VNAME "AmigaSSH-" __V__
+#define _VNAME "BebboSSH-" __V__
 #endif

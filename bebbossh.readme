@@ -3,7 +3,7 @@ Author:       s.franke@bebbosoft.de
 Uploader:     s.franke@bebbosoft.de
 Architecture: m68k-amigaos
 Type:         comm/net
-Version:      1.43
+Version:      1.44
 Required:     bsdsocket.library (e.g AmiTCP)
 
 ===============================================================================
@@ -219,6 +219,10 @@ SOFTWARE, EVEN IF I HAVE ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
 
 ===============================================================================
 HISTORY
+
+bebbossh V1.44
+* now linked with --gc-sections, to save some bytes
+* fix link in the readme to OkayDokey
 
 bebbossh V1.43
 * bebboscp applies now the ssh_config file *after* getting the hostname from
@@ -537,7 +541,7 @@ RANDOM HINTS
   e.g.: list foobar:
   Get https://aminet.net/util/boot/Requester.lha 
   and run "Cancel 5" from your startup-sequence!
-  Or try https://aminet.net/util/cdity/OkayDokay14.lha.
+  Or try https://aminet.net/util/cdity/OkayDokey14.lha.
 
 * public key authentication does not work!?
   Check the file ENVARC:.ssh/authorized_keys if your 

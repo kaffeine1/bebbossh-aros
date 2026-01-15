@@ -5,7 +5,7 @@
 **Uploader:** s.franke@bebbosoft.de  
 **Architecture:** m68k-amigaos  
 **Type:** comm/net  
-**Version:** 1.43
+**Version:** 1.44
 **Required:** bsdsocket.library (e.g. AmiTCP)  
 **Replaces:** amigassh  
 
@@ -189,7 +189,7 @@ see bebbossh.readme
   e.g.: list foobar:
   Get https://aminet.net/util/boot/Requester.lha 
   and run "Cancel 5" from your startup-sequence!
-  Or try https://aminet.net/util/cdity/OkayDokay14.lha.
+  Or try https://aminet.net/util/cdity/OkayDokey14.lha.
 
 - public key authentication does not work!?
   Check the file ENVARC:.ssh/authorized_keys if your 
