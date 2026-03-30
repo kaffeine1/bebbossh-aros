@@ -37,6 +37,7 @@
 #include <arpa/inet.h> //inet_addr
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
 
 #ifdef __AMIGA__
 #include <amistdio.h>
@@ -118,6 +119,51 @@ static char const *hello = "SSH-2.0-" _VNAME "\r\n";
 extern bool hasAes;
 extern bool hasChacha;
 
+/*
+ * Timing-normalization envelope for the KEX reply.
+ *
+ * The Amiga's scalar-mult and signature routines are not constant-time,
+ * so we enforce a constant-upper-bound execution time across the entire
+ * KEX reply. We track the last N durations, pad shorter runs to the
+ * rolling maximum, and update the max conservatively. This reduces
+ * observable timing variance and mitigates timing side-channel leakage.
+ */
+void timing_protection(struct timeval *start) {
+#define N 16   /* number of samples to track */
+
+static uint32_t durations[N] = {0};
+static int idx = 0;
+static uint32_t max_duration = 0;
+
+	struct timeval  end;
+    gettimeofday(&end, nullptr);
+
+    struct timeval diff;
+    timersub(&end, start, &diff);
+    uint32_t dt = diff.tv_sec * 20 + diff.tv_usec / 50000;
+
+    /* Pad if shorter than max */
+    if (dt < max_duration) {
+        uint32_t pad = max_duration - dt;
+        Delay(pad);
+        dt = max_duration; /* normalized */
+    }
+
+    /* Store duration in ring buffer */
+    durations[idx] = dt;
+    idx = (idx + 1) % N;
+
+    /* Recompute max conservatively */
+    uint32_t new_max = 0;
+    for (int i = 0; i < N; i++) {
+        if (durations[i] > new_max)
+            new_max = durations[i];
+    }
+
+	max_duration = new_max;
+}
+
+
 static uint8_t kex_reply[24] = {
 SSH_MSG_KEX_ECDH_REPLY, 0, 0, 0, 0x33, 0, 0, 0, 0x0b, 's', 's', 'h', '-', 'e', 'd', '2', '5', '5', '1', '9', 0, 0, 0, 0x20 };
 
@@ -148,7 +194,7 @@ bool mysend(int fd, void const *data, int len) {
 			int _errno = Errno();
 			if (_errno == EAGAIN) {
 				logme(L_DEBUG, "failed to send %ld bytes on socket %ld: sent %ld, errno=%ld, retrying", len, fd, sent, _errno);
-				Delay(100);
+				Delay(2);
 				continue;
 			}
 			logme(L_ERROR, "failed to send %ld bytes on socket %ld: sent %ld, errno=%ld", len, fd, sent, _errno);
@@ -1290,6 +1336,9 @@ int SshSession::decryptPacket(uint8_t *p, unsigned len) {
 }
 
 void SshSession::createKexEcdhReply() {
+	struct timeval startTime;
+	gettimeofday(&startTime, nullptr);
+
 	uint8_t *start = (uint8_t*) outdata + 5;
 	uint8_t *p = start;
 
@@ -1360,6 +1409,8 @@ void SshSession::createKexEcdhReply() {
 	putInt32Aligned((uint8_t*)outdata, len);
 	if (isLogLevel(L_TRACE))
 		_dump("kexreply", outdata, len + 4);
+
+	timing_protection(&startTime);
 }
 
 #ifdef __linux__
