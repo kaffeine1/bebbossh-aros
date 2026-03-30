@@ -39,7 +39,9 @@
 
 #include <ed25519.h>
 #include <mime.h>
+#include <rand.h>
 #include <test.h>
+#include <ssh.h>
 #include "revision.h"
 
 #ifdef __AMIGA__
@@ -50,13 +52,18 @@
 #include "amiemul.h"
 #endif
 
+
 static char const *filename;
 static char outfilename[256];
 
+static char comment[256] = "Amiga";
+
 static void printUsage() {
-	puts(__VERSION);
-	puts("USAGE: amigasshkeygen [-f <output_keyfile>]");
-	puts("    -?\tdisplay this help");
+    puts(__VERSION__);
+    puts("USAGE: amigasshkeygen [-f <output_keyfile>] [-C <comment>]");
+    puts("    -f <file>    specify output key filename");
+    puts("    -C <comment> set key comment (default: \"Amiga\")");
+    puts("    -?           display this help");
 }
 
 static void parseParams(unsigned argc, char **argv) {
@@ -77,6 +84,14 @@ static void parseParams(unsigned argc, char **argv) {
 					goto missing;
 				strcpy(outfilename, argv[++i]);
 				continue;
+			case 'C':
+			    if (arg[2])
+			        goto invalid;
+			    if (i + 1 == argc)
+			        goto missing;
+			    strncpy(comment, argv[++i], 255);
+			    comment[255] = 0;
+			    continue;
 			default:
 				goto invalid;
 			}
@@ -102,7 +117,7 @@ extern char const * sshDir;
 __stdargs int main(int argc, char **argv) {
 	static char buf[256];
 
-	filename = concat(sshDir, ".ssh/id_ed25519");
+	filename = concat(sshDir, ".ssh/id_ed25519", NULL);
 
 	strcpy(outfilename, filename);
 
@@ -119,7 +134,7 @@ __stdargs int main(int argc, char **argv) {
 	if (0 == strcmp(outfilename, filename)) {
 		printf("Enter file in which to save the key (%s): ", outfilename);
 		fflush(stdout);
-		gets(buf, 255);
+		amigets(buf, 255);
 		if (*buf > 32) {
 			char *p = buf;
 			for (; *p > ' '; ++p)
@@ -135,7 +150,7 @@ __stdargs int main(int argc, char **argv) {
 		printf("%s already exists.\nOverwrite (y/n)? ", outfilename);
 		static char buf2[4];
 		fflush(stdout);
-		gets(buf2, 3);
+		amigets(buf2, 3);
 		if (*buf2 != 'y' && *buf2 != 'Y')
 			return 0;
 	}
@@ -144,7 +159,7 @@ __stdargs int main(int argc, char **argv) {
 	static uint8_t sk[64];
 	ge_new_keypair_ed25519(pk, sk);
 
-	static char gfx[9][20];
+	static char gfx[9][21];
 	memset(gfx, ' ', sizeof(gfx));
 	for (int i = 0; i < 32; ++i) {
 		uint16_t z0 = pk[i];
@@ -178,7 +193,7 @@ __stdargs int main(int argc, char **argv) {
 
 	BPTR out = Open(outfilename, MODE_NEWFILE);
 	if (!out) {
-		char * p = outfilename + strlen(outfilename);
+		char *p = outfilename + strlen(outfilename);
 		while (p > outfilename) {
 			--p;
 			if (*p == '/' || *p == ':')
@@ -197,55 +212,65 @@ __stdargs int main(int argc, char **argv) {
 		}
 	}
 
-	static uint8_t key[256] = {
+	/* Build OpenSSH private key blob */
+	static uint8_t key[512] = {
 			'o', 'p', 'e', 'n', 's', 's', 'h', '-', 'k', 'e', 'y', '-', 'v', '1', 0,
-			0, 0, 0, 4, 'n', 'o', 'n', 'e',
-			0, 0, 0, 4, 'n', 'o', 'n', 'e',
-			0, 0, 0, 0,
-			0, 0, 0, 1, // one key
-			0, 0, 0, 0x33,
-				0, 0, 0, 0xB, 's', 's', 'h', '-', 'e', 'd', '2', '5', '5', '1', '9', //copy
-				0, 0, 0, 0x20,
+			0, 0, 0, 4, 'n', 'o', 'n', 'e', /* ciphername */
+			0, 0, 0, 4, 'n', 'o', 'n', 'e', /* kdfname */
+			0, 0, 0, 0, /* kdfoptions (empty) */
+			0, 0, 0, 1, /* number of keys */
+			0, 0, 0, 0x33, /* public key length (51) */
+			0, 0, 0, 0x0b, 's', 's', 'h', '-', 'e', 'd', '2', '5', '5', '1', '9',
+			0, 0, 0, 0x20 /* pubkey length (32), data follows at runtime */
 	};
-	uint8_t * t = key + 62;
+
+	/* Fill public key in the header */
+	uint8_t *t = key + 62; /* 15 + 4 + 4 + 4 + 4 + 4 + 11 + 4 = 62 */
 	memcpy(t, pk, 32);
 	t += 32;
-	*(uint32_t *)t = 0x90; // TODO LEN
+
+	/* Reserve space for private block length */
+	uint8_t *privLenPos = t;
 	t += 4;
 
-	*(uint32_t *)t = 0; // TODO chksum
-	t += 4;
-	*(uint32_t *)t = 0; // TODO chksum
-	t += 4;
+	uint8_t *privStart = t;
 
-	uint8_t * pubstart = t;
-	memcpy(t, &key[62 - 4 - 0xb - 4], 0xb + 4 + 4); // copy
-	t += 0xb + 4 + 4;
+	/* Checksums (must be identical, non-zero) */
+	uint32_t cksum;
+	randfill(&cksum, 4);
+	putInt32AndInc(t, cksum);
+	putInt32AndInc(t, cksum);
 
-	memcpy(t, pk, 32);
-	t += 32;
-	uint8_t * pubend = t;
+	/* key type string */
+	putAny(t, "ssh-ed25519", 11);
 
-	*(uint32_t *)t = 0x40; // sk len
-	t += 4;
+	/* public key string */
+	putAny(t, pk, 32);
 
+	/* private key string: length + 64 bytes sk */
+	putInt32AndInc(t, 64);
 	memcpy(t, sk, 64);
 	t += 64;
 
-	*(uint32_t *)t = 0x5; // Amiga len
-	t += 4;
-	memcpy(t, "Amiga", 5);
-	t += 5;
-	int pad = 0;
-	while ((t - key - 2) & 15)
-		*t++ = ++pad;
+	/* comment string */
+	putAny(t, comment, strlen(comment));
 
+	/* padding to 8-byte alignment */
+	uint8_t pad = 1;
+	while (((t - privStart) % 8) != 0)
+		*t++ = pad++;
+
+	/* write private block length */
+	uint32_t privLen = (uint32_t) (t - privStart);
+	putInt32Aligned(privLenPos, privLen);
+
+	/* MIME-encode private key */
 	static uint8_t mime[512];
 	mimeEncode(mime, key, t - key);
 
 	Write(out, "-----BEGIN OPENSSH PRIVATE KEY-----\n", 36);
 
-	for (uint8_t * p = mime, *q = p + strlen((char *)mime); p < q; p += 72) {
+	for (uint8_t *p = mime, *q = p + strlen((char*) mime); p < q; p += 72) {
 		int l = q - p;
 		if (l > 72)
 			l = 72;
@@ -256,8 +281,15 @@ __stdargs int main(int argc, char **argv) {
 	Write(out, "-----END OPENSSH PRIVATE KEY-----\n", 34);
 	Close(out);
 
-	// write pubs
-	mimeEncode(mime, pubstart, pubend - pubstart);
+	/* write public key */
+	uint8_t pubbuf[4 + 11 + 4 + 32];
+	uint8_t *pp = pubbuf;
+
+	putAny(pp, "ssh-ed25519", 11);
+	putAny(pp, pk, 32);
+
+	mimeEncode(mime, pubbuf, pp - pubbuf);
+
 	strcat(outfilename, ".pub");
 	out = Open(outfilename, MODE_NEWFILE);
 	if (!out) {
@@ -266,12 +298,12 @@ __stdargs int main(int argc, char **argv) {
 	}
 
 	Write(out, "ssh-ed25519 ", 12);
-	Write(out, mime, strlen((char *)mime));
-	Write(out, " Amiga\n", 7);
+	Write(out, mime, strlen((char* )mime));
+	Write(out, " ", 1);
+	Write(out, comment, strlen(comment));
+	Write(out, "\n", 1);
 
 	Close(out);
 
 	return 0;
 }
-
-//char __stdiowin[128] = "CON://///AUTO/CLOSE/WAIT";

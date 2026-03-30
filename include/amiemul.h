@@ -307,6 +307,7 @@ static inline char *FGets(FILE *file, char *buf, int len) {
 #define FPuts(f,s) fputs(s,f);fflush(f)
 
 #define gets(a,b) FGets(stdin,a,b)
+#define amigets(a,b) FGets(stdin,a,b)
 
 /* Case-insensitive compare */
 #ifdef _WIN32

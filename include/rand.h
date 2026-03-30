@@ -38,6 +38,7 @@ extern "C" {
 
 /// Fill buffer with random bytes
 void randfill(void* to, unsigned len);
+inline void randombytes(void * to, unsigned len) { randfill(to, len);}
 
 /// Replace zero bytes in buffer with random non-zero values
 void unzero(void* _to, unsigned len);
