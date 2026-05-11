@@ -46,8 +46,10 @@ Runtime status on AROS One i386:
   password authentication through QEMU port forwarding.
 - Remote `exec` works for simple non-interactive commands through the current
   AROS `SystemTags()` backend. `version` and `dir` have been tested.
-- SFTP and OpenSSH `scp` transfers work for small files on `T:` and `DH0:`;
-  SFTP `mkdir`/`rmdir` has been tested on `DH0:`.
+- SFTP and OpenSSH `scp` transfers work on `T:` and `DH0:`; 1 MiB and 5 MiB
+  file round-trips and a small `telegram-amiga`-style directory tree have been
+  tested.
+- SFTP `mkdir`/`rmdir` has been tested on `DH0:`.
 - Interactive shell/PTY support is still incomplete.
 
 ## Overview

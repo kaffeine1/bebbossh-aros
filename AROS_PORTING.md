@@ -173,10 +173,15 @@ SFTP/SCP status:
 - `sftp` `ls T:` works.
 - `sftp` upload, download, compare, and remove have been tested on `T:`.
 - `sftp` upload, download, compare, and remove have been tested on `DH0:`.
+- `sftp` 1 MiB and 5 MiB upload/download round-trips on `DH0:` matched by
+  SHA-256 and byte compare.
 - `sftp` `mkdir`, upload inside the directory, `rm`, and `rmdir` have been
   tested on `DH0:`.
 - OpenSSH `scp` default mode, which uses SFTP, has been tested for upload and
-  download on `T:`.
+  download on `T:` and for a 5 MiB round-trip on `DH0:`.
+- OpenSSH `scp -r` has been tested with a temporary 336 KiB
+  `telegram-amiga`-style source tree copied to `DH0:`, copied back, and
+  verified with `diff -qr`.
 
 When using `sshpass` with `sftp -b`, pass `-oBatchMode=no`; OpenSSH otherwise
 forces batch mode authentication and will not send the password:
