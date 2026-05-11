@@ -80,6 +80,8 @@ Known Limits
 - Full PTY-style interactive program support is not complete on AROS yet.
 - Remote exec is synchronous and intended for short commands at this stage.
   Command exit status is propagated to the SSH client.
+- Shell redirection and pipes (`>`, `<`, `|`) are rejected on AROS until they
+  are stable.
 - The test password in passwd.example is not safe. Change it before use.
 - Do not distribute private host keys generated for local testing.
 

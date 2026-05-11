@@ -175,6 +175,10 @@ AROS runtime notes:
   The current backend redirects command output to a temporary `T:` file and
   sends it back over SSH after the command exits. The command return code is
   sent as the SSH `exit-status`.
+- AROS remote exec rejects shell redirection and pipes (`>`, `<`, `|`) before
+  calling `SystemTags()`. A remote `>/NIL:` test degraded the daemon, so these
+  constructs are intentionally unsupported until a safer execution backend is
+  implemented.
 - Interactive SSH sessions use the same backend for simple commands and return
   to the prompt after each command.
 - Full PTY-style interactive program support is still incomplete on AROS.
@@ -209,9 +213,10 @@ Kickstart 51.51, Workbench 40.0
 ```
 
 `dir` has also been tested successfully. A `telegram-amiga` invalid-option test
-returned SSH exit status 1. The backend is intentionally minimal: it is
-synchronous and should be used first for short development commands while
-SFTP/SCP and a fuller PTY path are stabilized.
+returned SSH exit status 1. Remote redirection such as `>/NIL:` is blocked with
+exit status 2. The backend is intentionally minimal: it is synchronous and
+should be used first for short development commands while SFTP/SCP and a fuller
+PTY path are stabilized.
 
 SFTP/SCP status:
 

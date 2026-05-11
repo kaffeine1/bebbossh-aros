@@ -833,6 +833,14 @@ bool ShellChannel::startCommand(char const * cmd){
 extern bool sanitize(char * path);
 
 #if BEBBOSSH_AROS
+static bool hasUnsupportedArosShellSyntax(const char *cmd) {
+	for (const char *p = cmd; *p; ++p) {
+		if (*p == '>' || *p == '<' || *p == '|')
+			return true;
+	}
+	return false;
+}
+
 bool ShellChannel::runArosExec(bool closeAfterCommand) {
 	char outName[96];
 	snprintf(outName, sizeof(outName), "T:bebbosshd-%lx-%lx.out",
@@ -965,6 +973,17 @@ bool ShellChannel::startCommand(){
 
 
 #if BEBBOSSH_AROS
+	if (hasUnsupportedArosShellSyntax(xbuffer)) {
+		static const char msg[] = "bebbosshd/AROS: shell redirection and pipes are not supported yet\r\n";
+		server->channelWrite(channel, msg, sizeof(msg) - 1);
+		if (hasExec()) {
+			server->closeChannel(this, 2);
+			return false;
+		}
+		prompt();
+		return true;
+	}
+
 	if (hasExec())
 		return runArosExec(true);
 
