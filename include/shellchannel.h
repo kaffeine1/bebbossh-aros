@@ -175,7 +175,7 @@ public:
 	char * cursorLeft(char * out, int slen);
 	char * cursorRight(char * out, int slen);
 #if BEBBOSSH_AROS
-	bool runArosExec();
+	bool runArosExec(bool closeAfterCommand);
 #endif
 
 	struct MsgPort * setBreakPort(struct MsgPort * p1, struct MsgPort * p2);

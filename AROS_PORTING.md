@@ -174,7 +174,9 @@ AROS runtime notes:
 - Remote `exec` is implemented for simple non-interactive commands on AROS.
   The current backend redirects command output to a temporary `T:` file and
   sends it back over SSH after the command exits.
-- Interactive shell/PTY support is still incomplete on AROS.
+- Interactive SSH sessions use the same backend for simple commands and return
+  to the prompt after each command.
+- Full PTY-style interactive program support is still incomplete on AROS.
 
 Forwarded host ports:
 
@@ -206,8 +208,8 @@ Kickstart 51.51, Workbench 40.0
 ```
 
 `dir` has also been tested successfully. The backend is intentionally minimal:
-it is synchronous, not an interactive shell, and should be used first for short
-development commands while SFTP/SCP and a fuller shell path are stabilized.
+it is synchronous and should be used first for short development commands while
+SFTP/SCP and a fuller PTY path are stabilized.
 
 SFTP/SCP status:
 

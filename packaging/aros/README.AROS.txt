@@ -67,7 +67,8 @@ Verified on AROS One i386 alt-abiv0:
 Known Limits
 ------------
 
-- Interactive shell/PTY support is not complete on AROS yet.
+- Interactive SSH sessions can run simple commands and return to the prompt.
+- Full PTY-style interactive program support is not complete on AROS yet.
 - Remote exec is synchronous and intended for short commands at this stage.
 - The test password in passwd.example is not safe. Change it before use.
 - Do not distribute private host keys generated for local testing.

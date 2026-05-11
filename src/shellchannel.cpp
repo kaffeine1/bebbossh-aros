@@ -135,7 +135,7 @@ struct MsgPort * ShellChannel::setBreakPort(struct MsgPort * pnew, struct MsgPor
 
 int ShellChannel::read(char * to, int toReadIn) {
 	int avail = getAvail();
-	int toRead = (toRead > avail) ? avail : toReadIn;
+	int toRead = (toReadIn > avail) ? avail : toReadIn;
 
 	logme(L_DEBUG, "@%ld:%ld read want %ld, have %ld %02lx", server->getSockFd(), channel, toReadIn, avail, *line);
 
@@ -833,7 +833,7 @@ bool ShellChannel::startCommand(char const * cmd){
 extern bool sanitize(char * path);
 
 #if BEBBOSSH_AROS
-bool ShellChannel::runArosExec() {
+bool ShellChannel::runArosExec(bool closeAfterCommand) {
 	char outName[96];
 	snprintf(outName, sizeof(outName), "T:bebbosshd-%lx-%lx.out",
 			(ULONG)server->getSockFd(), (ULONG)channel);
@@ -845,8 +845,13 @@ bool ShellChannel::runArosExec() {
 		server->channelWrite(channel, msg, sizeof(msg) - 1);
 		if (input)
 			Close(input);
-		server->closeChannel(this);
-		return false;
+		if (closeAfterCommand) {
+			server->closeChannel(this);
+			return false;
+		}
+
+		prompt();
+		return true;
 	}
 
 	BPTR oldDir = CurrentDir(dir);
@@ -881,8 +886,13 @@ bool ShellChannel::runArosExec() {
 		server->channelWrite(channel, msg, len);
 	}
 
-	server->closeChannel(this);
-	return false;
+	if (closeAfterCommand) {
+		server->closeChannel(this);
+		return false;
+	}
+
+	prompt();
+	return true;
 }
 #endif
 
@@ -951,13 +961,10 @@ bool ShellChannel::startCommand(){
 
 #if BEBBOSSH_AROS
 	if (hasExec())
-		return runArosExec();
+		return runArosExec(true);
 
 	if (!writeFx) {
-		static const char msg[] = "AROS shell backend not available yet\r\n";
-		server->channelWrite(channel, msg, sizeof(msg) - 1);
-		server->closeChannel(this);
-		return false;
+		return runArosExec(false);
 	}
 #endif
 
