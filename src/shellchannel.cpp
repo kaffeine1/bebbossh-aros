@@ -846,7 +846,7 @@ bool ShellChannel::runArosExec(bool closeAfterCommand) {
 		if (input)
 			Close(input);
 		if (closeAfterCommand) {
-			server->closeChannel(this);
+			server->closeChannel(this, 20);
 			return false;
 		}
 
@@ -880,14 +880,15 @@ bool ShellChannel::runArosExec(bool closeAfterCommand) {
 	}
 	DeleteFile(outName);
 
-	if (rc) {
+	if (rc && !closeAfterCommand) {
 		char msg[80];
 		int len = snprintf(msg, sizeof(msg), "bebbosshd/AROS: command returned %ld\r\n", rc);
 		server->channelWrite(channel, msg, len);
 	}
 
 	if (closeAfterCommand) {
-		server->closeChannel(this);
+		uint32_t exitStatus = (rc < 0 || rc > 255) ? 255 : (uint32_t)rc;
+		server->closeChannel(this, exitStatus);
 		return false;
 	}
 
@@ -912,6 +913,10 @@ bool ShellChannel::startCommand(){
 		char * t = xbuffer + strlen(xbuffer) + 1;
 		int len = snprintf(t, 512, "%s: invalid command\r\n", xbuffer);
 		server->channelWrite(channel, t, len);
+		if (hasExec()) {
+			server->closeChannel(this, 127);
+			return false;
+		}
 		prompt();
 		return true;
 	}

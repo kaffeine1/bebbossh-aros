@@ -352,13 +352,14 @@ int SshSession::channelWrite(uint32_t channel, void const *data, int len) {
 	return write(outdata + 5, len + 9) - 9;
 }
 
-void SshSession::closeChannel(Channel *channel) {
-	logme(L_FINE, "@%ld:%ld send SSH_MSG_CHANNEL_REQUEST exit status", sockFd, channel->getChannel());
+void SshSession::closeChannel(Channel *channel, uint32_t exitStatus) {
+	logme(L_FINE, "@%ld:%ld send SSH_MSG_CHANNEL_REQUEST exit status %ld", sockFd, channel->getChannel(), exitStatus);
 	outdata[5] = SSH_MSG_CHANNEL_REQUEST;
 	putInt32Aligned(&outdata[6] , channel->getChannel());
 	putInt32Aligned(&outdata[10] , 11);
 	strcpy(&outdata[14], "exit-status");
-	memset(&outdata[25], 0, 5);
+	outdata[25] = 0;
+	putInt32Aligned(&outdata[26], exitStatus);
 	write(outdata + 5, 25);
 
 	logme(L_FINE, "@%ld:%ld send SSH_MSG_CHANNEL_EOF", sockFd, channel->getChannel());

@@ -46,7 +46,8 @@ Runtime status on AROS One i386:
 - OpenSSH from the host completes protocol identification, key exchange, and
   password authentication through QEMU port forwarding.
 - Remote `exec` works for simple non-interactive commands through the current
-  AROS `SystemTags()` backend. `version` and `dir` have been tested.
+  AROS `SystemTags()` backend. `version` and `dir` have been tested, and the
+  command exit status is propagated to the SSH client.
 - Interactive SSH sessions can run simple AROS commands and return to the
   prompt using the same `SystemTags()` backend.
 - SFTP and OpenSSH `scp` transfers work on `T:` and `DH0:`; 1 MiB and 5 MiB
