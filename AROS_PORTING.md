@@ -60,14 +60,13 @@ The expected first build products are:
 
 ## QEMU environment
 
-The local AROS One i386 VM is configured with a VNC display and a writable
-QEMU FAT shared disk. The shared host path is:
+The local AROS One i386 VM used for validation was configured with a VNC
+display and a writable QEMU FAT shared disk. The host path is installation
+specific; in the AROS desktop this is visible as `Qemu Vfat`.
 
 ```text
-/Volumes/EXT/Macchine Virtuali/AROSOne_x86/shared/bebbossh-aros
+<VM_SHARED_DIR>
 ```
-
-In the AROS desktop this is visible as `Qemu Vfat`.
 
 Do not run `make` directly inside `Qemu Vfat:`. The AROS toolchain can read
 makefiles from the QEMU FAT handler as if they contained NUL bytes. The VM has
@@ -76,10 +75,12 @@ operations in the guest until that is fixed.
 
 ## Host cross-build for AROS One i386
 
-AROS One i386 uses the `alt-abiv0` ABI. The current working cross-toolchain is:
+AROS One i386 uses the `alt-abiv0` ABI. Set these variables for your local
+toolchain and SDK paths:
 
-```text
-/Users/kaffeine/amiga-dev/toolchains/aros-i386-abiv0
+```sh
+export AROS_ABIV0_TOOLCHAIN=<path-to-aros-i386-alt-abiv0-toolchain>
+export AROS_SDK_ROOT=<path-to-aros-one-development-sdk>
 ```
 
 From the source directory:
@@ -87,11 +88,11 @@ From the source directory:
 ```sh
 make -f Makefile.aros bebbosshd bebbosshkeygen probes \
   OUTDIR=aros-i386-abiv0-arosone \
-  CC=/Users/kaffeine/amiga-dev/toolchains/aros-i386-abiv0/i386-aros-gcc \
-  CXX=/Users/kaffeine/amiga-dev/toolchains/aros-i386-abiv0/i386-aros-g++ \
-  AR=/Users/kaffeine/amiga-dev/toolchains/aros-i386-abiv0/i386-aros-ar \
-  STRIP=/Users/kaffeine/amiga-dev/toolchains/aros-i386-abiv0/i386-aros-strip \
-  AROS_SDK_ROOT="/Volumes/AROS One DVD/Development"
+  CC="$AROS_ABIV0_TOOLCHAIN/i386-aros-gcc" \
+  CXX="$AROS_ABIV0_TOOLCHAIN/i386-aros-g++" \
+  AR="$AROS_ABIV0_TOOLCHAIN/i386-aros-ar" \
+  STRIP="$AROS_ABIV0_TOOLCHAIN/i386-aros-strip" \
+  AROS_SDK_ROOT="$AROS_SDK_ROOT"
 ```
 
 The current cross-build product is:
@@ -101,10 +102,11 @@ aros-i386-abiv0-arosone/bebbosshd
 aros-i386-abiv0-arosone/bebbosshkeygen
 ```
 
-The VM CD image with only the current binary and crypto tests is:
+The VM CD image with only the current binary and crypto tests is generated or
+stored outside the repository. Use an installation-specific path:
 
 ```text
-/Volumes/EXT/Macchine Virtuali/AROSOne_x86/bebbossh-aros-i386-bin.iso
+<TEST_ISO_PATH>
 ```
 
 ## Runtime package
@@ -116,11 +118,11 @@ runtime kit with:
 make -f Makefile.aros package-aros-runtime \
   OUTDIR=aros-i386-abiv0-arosone \
   PACKAGE_DIR=dist/bebbossh-aros-i386-abiv0 \
-  CC=/Users/kaffeine/amiga-dev/toolchains/aros-i386-abiv0/i386-aros-gcc \
-  CXX=/Users/kaffeine/amiga-dev/toolchains/aros-i386-abiv0/i386-aros-g++ \
-  AR=/Users/kaffeine/amiga-dev/toolchains/aros-i386-abiv0/i386-aros-ar \
-  STRIP=/Users/kaffeine/amiga-dev/toolchains/aros-i386-abiv0/i386-aros-strip \
-  AROS_SDK_ROOT="/Volumes/AROS One DVD/Development"
+  CC="$AROS_ABIV0_TOOLCHAIN/i386-aros-gcc" \
+  CXX="$AROS_ABIV0_TOOLCHAIN/i386-aros-g++" \
+  AR="$AROS_ABIV0_TOOLCHAIN/i386-aros-ar" \
+  STRIP="$AROS_ABIV0_TOOLCHAIN/i386-aros-strip" \
+  AROS_SDK_ROOT="$AROS_SDK_ROOT"
 ```
 
 The package target creates:
@@ -188,7 +190,7 @@ identification, key exchange, and password authentication.
 Remote command execution now works for simple non-interactive commands:
 
 ```sh
-/opt/homebrew/bin/sshpass -p test ssh \
+sshpass -p test ssh \
   -o ConnectTimeout=5 \
   -o StrictHostKeyChecking=no \
   -o UserKnownHostsFile=/tmp/bebbossh_known_hosts \
@@ -226,7 +228,7 @@ When using `sshpass` with `sftp -b`, pass `-oBatchMode=no`; OpenSSH otherwise
 forces batch mode authentication and will not send the password:
 
 ```sh
-/opt/homebrew/bin/sshpass -p test sftp \
+sshpass -p test sftp \
   -oBatchMode=no \
   -o ConnectTimeout=5 \
   -o StrictHostKeyChecking=no \
