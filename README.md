@@ -59,6 +59,9 @@ The AROS/i386 runtime kit can be generated with:
 make -f Makefile.aros package-aros-runtime OUTDIR=aros-i386-abiv0-arosone
 ```
 
+Published builds are attached to GitHub Releases as `.zip` and `.tar.gz`
+runtime kits.
+
 ## Overview
 
 **BebboSSH** is an SSH2 implementation for
