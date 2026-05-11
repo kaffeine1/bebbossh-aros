@@ -1,0 +1,22 @@
+# BebboSSH AROS/i386 example server configuration.
+#
+# Copy this file to sshd_config next to bebbosshd for PROGDIR: based use,
+# or to ENVARC:ssh/sshd_config for the classic default location.
+
+Port 22
+ListenAddress 0.0.0.0
+DebugLevel 1
+SendNoop some
+
+# Generate this private host key with:
+#   bebbosshkeygen -f ssh_host_ed25519_key
+HostKey PROGDIR:ssh_host_ed25519_key
+
+# Copy passwd.example to passwd, then edit it.
+Passwords PROGDIR:passwd
+
+# Default directory for remote exec and SFTP sessions.
+HomeDir DH0:
+
+# Used by command/shell tasks. Keep this conservative on AROS/i386.
+Stack 262144

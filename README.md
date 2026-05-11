@@ -36,6 +36,7 @@ The AROS/i386 work currently includes:
 - read-only password-file support for test media;
 - a minimal AROS remote `exec` backend for non-interactive commands;
 - SFTP/SCP path validation for AROS assigns such as `T:` and `DH0:`;
+- a reproducible AROS/i386 runtime package target;
 - QEMU/AROS One test notes in `AROS_PORTING.md`.
 
 Runtime status on AROS One i386:
@@ -51,6 +52,12 @@ Runtime status on AROS One i386:
   tested.
 - SFTP `mkdir`/`rmdir` has been tested on `DH0:`.
 - Interactive shell/PTY support is still incomplete.
+
+The AROS/i386 runtime kit can be generated with:
+
+```sh
+make -f Makefile.aros package-aros-runtime OUTDIR=aros-i386-abiv0-arosone
+```
 
 ## Overview
 

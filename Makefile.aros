@@ -8,6 +8,7 @@ ARFLAGS ?= rcs
 STRIP ?= strip
 STRIPFLAGS ?= --strip-unneeded -R.comment
 OUTDIR ?= aros-i386
+PACKAGE_DIR ?= dist/bebbossh-aros-i386
 srcdir := src
 
 AROS_SDK_ROOT ?=
@@ -61,7 +62,7 @@ TESTS = $(patsubst %.cpp,$(OUTDIR)/%,$(TEST_SOURCES))
 PROBES = $(OUTDIR)/AROSPROBE $(OUTDIR)/AROSPROBE_RET
 HEADERS = $(wildcard include/*.h)
 
-.PHONY: all bebbosshd bebbosshkeygen tests probes run-tests clean
+.PHONY: all bebbosshd bebbosshkeygen tests probes package-aros-runtime run-tests clean
 
 all: bebbosshd bebbosshkeygen tests
 
@@ -72,6 +73,9 @@ bebbosshkeygen: $(OUTDIR)/bebbosshkeygen
 tests: $(TESTS)
 
 probes: $(PROBES)
+
+package-aros-runtime: bebbosshd bebbosshkeygen
+	./scripts/package-aros-runtime.sh "$(OUTDIR)" "$(PACKAGE_DIR)"
 
 $(OUTDIR):
 	mkdir -p $(OUTDIR)

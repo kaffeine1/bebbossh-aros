@@ -107,6 +107,45 @@ The VM CD image with only the current binary and crypto tests is:
 /Volumes/EXT/Macchine Virtuali/AROSOne_x86/bebbossh-aros-i386-bin.iso
 ```
 
+## Runtime package
+
+After building `bebbosshd` and `bebbosshkeygen`, generate the distributable
+runtime kit with:
+
+```sh
+make -f Makefile.aros package-aros-runtime \
+  OUTDIR=aros-i386-abiv0-arosone \
+  PACKAGE_DIR=dist/bebbossh-aros-i386-abiv0 \
+  CC=/Users/kaffeine/amiga-dev/toolchains/aros-i386-abiv0/i386-aros-gcc \
+  CXX=/Users/kaffeine/amiga-dev/toolchains/aros-i386-abiv0/i386-aros-g++ \
+  AR=/Users/kaffeine/amiga-dev/toolchains/aros-i386-abiv0/i386-aros-ar \
+  STRIP=/Users/kaffeine/amiga-dev/toolchains/aros-i386-abiv0/i386-aros-strip \
+  AROS_SDK_ROOT="/Volumes/AROS One DVD/Development"
+```
+
+The package target creates:
+
+```text
+dist/bebbossh-aros-i386-abiv0/
+dist/bebbossh-aros-i386-abiv0.tar.gz
+dist/bebbossh-aros-i386-abiv0.zip
+```
+
+The directory contains the static AROS/i386 binaries, example config files,
+runtime README, upstream license files, porting notes, and `SHA256SUMS`.
+It intentionally does not include private host keys or real passwords.
+
+Package validation on AROS One i386:
+
+- The generated package directory was copied to `DH0:BSSHPKG` with `scp -r`.
+- `sshd_config.example` and `passwd.example` were copied to runtime names.
+- `DH0:BSSHPKG/bebbosshkeygen -f DH0:BSSHPKG/ssh_host_ed25519_key` generated
+  a fresh host key inside AROS.
+- `DH0:BSSHPKG/bebbosshd -p 2222` started from the packaged directory.
+- Through QEMU forwarding at `127.0.0.1:12222`, OpenSSH completed auth and
+  `version` returned `Kickstart 51.51, Workbench 40.0`.
+- SFTP against the packaged daemon listed the package directory successfully.
+
 If launching from an AROS Shell, use a larger stack while testing:
 
 ```text
