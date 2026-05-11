@@ -22,6 +22,15 @@ AROS/i386 porting changes are by Michele Dipace
 consistent with the upstream project. Keep COPYING, LICENSE, and upstream
 notices with redistributions.
 
+Corresponding source code for this binary release is available from the
+matching Git tag in the public repository:
+
+  https://github.com/kaffeine1/bebbossh-aros/releases
+
+For example, release v0.1.1-aros-i386 corresponds to:
+
+  https://github.com/kaffeine1/bebbossh-aros/tree/v0.1.1-aros-i386
+
 The binaries in this kit are statically linked with libcryptossh.a. There is
 no separate libcryptossh.library requirement for the current AROS/i386 port.
 
