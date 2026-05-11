@@ -35,6 +35,7 @@ The AROS/i386 work currently includes:
   `PROGDIR:ssh_host_ed25519_key` for ISO-based testing;
 - read-only password-file support for test media;
 - a minimal AROS remote `exec` backend for non-interactive commands;
+- SFTP/SCP path validation for AROS assigns such as `T:` and `DH0:`;
 - QEMU/AROS One test notes in `AROS_PORTING.md`.
 
 Runtime status on AROS One i386:
@@ -45,6 +46,8 @@ Runtime status on AROS One i386:
   password authentication through QEMU port forwarding.
 - Remote `exec` works for simple non-interactive commands through the current
   AROS `SystemTags()` backend. `version` and `dir` have been tested.
+- SFTP and OpenSSH `scp` transfers work for small files on `T:` and `DH0:`;
+  SFTP `mkdir`/`rmdir` has been tested on `DH0:`.
 - Interactive shell/PTY support is still incomplete.
 
 ## Overview

@@ -253,6 +253,14 @@ bool sanitize(char * path) {
 
 	if (colon && colon > path) {
 #if BEBBOSSH_AMIGA_API
+#if BEBBOSSH_AROS
+		struct DevProc *dp = GetDeviceProc((CONST_STRPTR)path, NULL);
+		if (dp) {
+			FreeDeviceProc(dp);
+			return true;
+		}
+		return false;
+#else
 		struct DosList * dl = AttemptLockDosList(LDF_ALL | LDF_READ);
 		if (!dl)
 			return false;
@@ -268,6 +276,7 @@ bool sanitize(char * path) {
 		UnLockDosList(LDF_ALL | LDF_READ);
 		*colon = x;
 		if (!dl)
+#endif
 #endif
 			return false;
 	}

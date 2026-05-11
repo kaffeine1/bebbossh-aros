@@ -31,6 +31,8 @@ consistent with the upstream project.
   writing back hashed passwords.
 - Added a minimal AROS remote `exec` backend using `SystemTags()` for
   non-interactive commands.
+- Adjusted SFTP path validation on AROS to use `GetDeviceProc()`, so assigns
+  such as `T:` and `DH0:` resolve correctly.
 
 ## Build inside AROS/i386
 
@@ -165,6 +167,31 @@ Kickstart 51.51, Workbench 40.0
 `dir` has also been tested successfully. The backend is intentionally minimal:
 it is synchronous, not an interactive shell, and should be used first for short
 development commands while SFTP/SCP and a fuller shell path are stabilized.
+
+SFTP/SCP status:
+
+- `sftp` `ls T:` works.
+- `sftp` upload, download, compare, and remove have been tested on `T:`.
+- `sftp` upload, download, compare, and remove have been tested on `DH0:`.
+- `sftp` `mkdir`, upload inside the directory, `rm`, and `rmdir` have been
+  tested on `DH0:`.
+- OpenSSH `scp` default mode, which uses SFTP, has been tested for upload and
+  download on `T:`.
+
+When using `sshpass` with `sftp -b`, pass `-oBatchMode=no`; OpenSSH otherwise
+forces batch mode authentication and will not send the password:
+
+```sh
+/opt/homebrew/bin/sshpass -p test sftp \
+  -oBatchMode=no \
+  -o ConnectTimeout=5 \
+  -o StrictHostKeyChecking=no \
+  -o UserKnownHostsFile=/tmp/bebbossh_known_hosts \
+  -o PreferredAuthentications=password \
+  -o PubkeyAuthentication=no \
+  -P 10022 \
+  test@127.0.0.1
+```
 
 ## Host-side verification
 
