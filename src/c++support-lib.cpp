@@ -39,7 +39,6 @@
 #include <amistdio.h>
 #else
 #include <stdio.h>
-#include <malloc.h>
 
 #define __saveds
 #endif

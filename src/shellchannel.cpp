@@ -35,7 +35,9 @@
  */
 #include <sys/socket.h>
 #include <arpa/inet.h> //inet_addr
-#ifdef __AMIGA__
+#include <stdlib.h>
+#include "platform.h"
+#if BEBBOSSH_AMIGA_API
 #include <amistdio.h>
 
 #include <dos/dosextens.h>
@@ -64,7 +66,7 @@ ShellChannel::ShellChannel(SshSession * server, uint32_t channel, ChannelType ty
 		pty(false), shell(false), exec(false),
 		running(false), done(false),
 		rows(0), cols(0),
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
 		localEcho(false),
 		stackSize(::stackSize), dir(0),
 		breakPort1(0), breakPort2(0), pending(0), waiting(0),
@@ -87,7 +89,7 @@ ShellChannel::ShellChannel(SshSession * server, uint32_t channel, ChannelType ty
 #endif
 
 ShellChannel::~ShellChannel() {
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
 	free(inBuffer);
 	if (dir)
 		UnLock(dir);
@@ -96,7 +98,7 @@ ShellChannel::~ShellChannel() {
 }
 
 
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
 
 extern void handleMsg(struct Message * msg);
 
@@ -307,18 +309,18 @@ void ShellChannel::autocomplete() {
 		unsigned ml = 0;
 		unsigned count = 0;
 		while (ExNext(lock, fib)) {
-			if (strnicmp(p, fib->fib_FileName, plen) == 0) {
-				unsigned sl = strlen(fib->fib_FileName);
+			if (strnicmp(p, (const char *)fib->fib_FileName, plen) == 0) {
+				unsigned sl = strlen((const char *)fib->fib_FileName);
 				if (sl > ml)
 					ml = sl;
 
 				if (!count++) {
-					strcpy(one, fib->fib_FileName);
+					strcpy(one, (const char *)fib->fib_FileName);
 					clen = sl;
 				} else {
 					for (int i = plen; i < clen; ++i) {
 						char a = one[i];
-						char b = fib->fib_FileName[i];
+						char b = ((const char *)fib->fib_FileName)[i];
 						if (a >= 'A' && a <= 'Z')
 							a += 'a' - 'A';
 						if (b >= 'A' && b <= 'Z')
@@ -344,7 +346,7 @@ void ShellChannel::autocomplete() {
 			*q++ = '\n';
 			// loop again
 			while (ExNext(lock, fib)) {
-				if (strnicmp(p, fib->fib_FileName, plen) == 0) {
+				if (strnicmp(p, (const char *)fib->fib_FileName, plen) == 0) {
 
 					*q++ = 0x1b;
 					*q++ = '[';
@@ -358,8 +360,8 @@ void ShellChannel::autocomplete() {
 					*q++= 'm';
 
 					// print name
-					unsigned sl = strlen(fib->fib_FileName);
-					strcpy(q, fib->fib_FileName);
+					unsigned sl = strlen((const char *)fib->fib_FileName);
+					strcpy(q, (const char *)fib->fib_FileName);
 					q += sl;
 
 					*q++ = 0x1b;
@@ -745,8 +747,8 @@ void ShellChannel::startProc() {
 		i->fh_Arg1 = (LONG)sc;
 
 		//memcpy(o, theOutput, theOutputSize);
-		o->fh_Link = (struct Message *)1; // with buffer
-		o->fh_Port = (struct MsgPort *)1; // interactive
+		o->fh_Flags = 1; // with buffer
+		o->fh_Port = 1; // interactive
 		o->fh_Type = port;
 		o->fh_Pos = -1;
 		o->fh_End = -1;
@@ -782,13 +784,13 @@ void ShellChannel::startProc() {
 	struct FileHandle * i = (struct FileHandle *)AllocDosObject(DOS_FILEHANDLE, 0);
 	struct FileHandle * o = (struct FileHandle *)AllocDosObject(DOS_FILEHANDLE, 0);
 	if (i && o) {
-		i->fh_Link = (struct Message *)5; // no buffer
-		i->fh_Port = (struct MsgPort *)1; // interactive
+		i->fh_Flags = 5; // no buffer
+		i->fh_Port = 1; // interactive
 		i->fh_Type = port;
 		i->fh_Func1 = readFx;
 		i->fh_Arg1 = (LONG)sc;
 
-		o->fh_Link = (struct Message *)1; // with buffer
+		o->fh_Flags = 1; // with buffer
 		o->fh_Type = port;
 		o->fh_Func2 = writeFx;
 		o->fh_Func3 = flushFx;
@@ -892,6 +894,15 @@ bool ShellChannel::startCommand(){
 	localEcho = xbuffer[strlen(xbuffer) - 1] == '?';
 
 
+#if BEBBOSSH_AROS
+	if (!writeFx) {
+		static const char msg[] = "AROS shell backend not available yet\r\n";
+		server->channelWrite(channel, msg, sizeof(msg) - 1);
+		server->closeChannel(this);
+		return false;
+	}
+#endif
+
 	logme(L_DEBUG, "@%ld:%ld starting task %s with cmd `%s`", server->getSockFd(), channel, server->name, xbuffer);
 	running = true;
 	ULONG tags[] = { NP_Entry, (ULONG )startProc,
@@ -936,7 +947,11 @@ bool ShellChannel::endCommand(){
 #else
 // linux
 
+#ifdef __APPLE__
+#include <util.h>
+#else
 #include <pty.h>       // declares openpty()
+#endif
 #include <utmp.h>      // for struct utmp if needed
 #include <termios.h>   // for struct termios
 #include <sys/ioctl.h> // for ioctl, TIOCSCTTY
@@ -948,6 +963,10 @@ bool ShellChannel::endCommand(){
 #include <sys/wait.h>
 #include <pwd.h>
 #include <grp.h>
+#ifdef __APPLE__
+extern char **environ;
+static int clearenv(void) { environ[0] = 0; return 0; }
+#endif
 
 
 // helper to dump a file to stdout if it exists

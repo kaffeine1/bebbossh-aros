@@ -38,9 +38,10 @@
 
 #include "log.h"
 #include "mime.h"
+#include "platform.h"
 #include "ssh.h"
 
-#ifdef __AMIGA__
+#if defined(__AMIGA__) || defined(__AROS__)
 #include <proto/dos.h>
 #include <proto/exec.h>
 #include <amistdio.h>
@@ -78,17 +79,22 @@ bool loadEd25519Key(uint8_t * pk, uint8_t * sk, char const * keyfilename) {
 
 	Seek(kfile, 0, OFFSET_END);
 	int size = Seek(kfile, 0, OFFSET_BEGINNING);
-	char * keymime = (char *)AllocVec(size, MEMF_PUBLIC);
+	char * keymime = (char *)AllocVec(size + 1, MEMF_PUBLIC);
 	uint8_t * keydata = (uint8_t *)AllocVec(size, MEMF_PUBLIC);
 
 	bool r = true;
 	if (keydata && keymime) {
 		for (int read = 0; read < size;) {
 			int in = Read(kfile, keymime + read, size - read);
+			if (in <= 0) {
+				r = false;
+				break;
+			}
 			read += in;
 		}
+		keymime[size] = 0;
 
-		char * begin = strstr(keymime, "-----BEGIN");
+		char * begin = r ? strstr(keymime, "-----BEGIN") : 0;
 		char * end = strstr(keymime, "-----END");
 		char * data = 0;
 		if (begin)

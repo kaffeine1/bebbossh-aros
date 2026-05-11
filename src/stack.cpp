@@ -33,7 +33,8 @@
  *  with robust memory handling and predictable socket lifecycle.
  * ----------------------------------------------------------------------
  */
-#ifdef __AMIGA__
+#include "platform.h"
+#if BEBBOSSH_AMIGA_API
 #include <proto/socket.h>
 #else
 #include "amiemul.h"

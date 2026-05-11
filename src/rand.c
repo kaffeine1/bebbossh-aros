@@ -38,6 +38,10 @@
 #ifdef __AMIGA__
   #include <hardware/custom.h>
   #include <proto/dos.h>
+#elif defined(__AROS__)
+  #include <time.h>
+#elif defined(__APPLE__)
+  #include <stdlib.h>
 #elif defined(__unix__)
   #include <unistd.h>
   #include <sys/random.h>
@@ -65,6 +69,18 @@ void randfill(void * _to, unsigned len) {
 		t = (t >> 31) | (t << 1);
 		*to++ = x;
 	}
+#elif defined(__AROS__)
+    unsigned char *to = (unsigned char *)_to;
+    static int seeded;
+    if (!seeded) {
+        srand((unsigned)time(0) ^ (unsigned)(uintptr_t)_to);
+        seeded = 1;
+    }
+    for (unsigned i = 0; i < len; ++i) {
+        to[i] = (unsigned char)(rand() & 0xff);
+    }
+#elif defined(__APPLE__)
+    arc4random_buf(_to, len);
 #elif defined(__unix__)
     unsigned char *to = (unsigned char *)_to;
     if (getrandom(to, len, 0) < 0) {

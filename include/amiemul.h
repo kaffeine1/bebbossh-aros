@@ -25,7 +25,7 @@
 #include <unistd.h>
 #include <netdb.h>
 
-#ifdef __unix__
+#if defined(__unix__) || defined(__APPLE__)
   #include <unistd.h>
   #include <termios.h>
   #include <sys/ioctl.h>
@@ -268,7 +268,7 @@ static inline DPTR CreateDir(const char *path) {
 extern "C" { void free(void *);}
 
 /* Socket handling */
-#ifdef __unix__
+#if defined(__unix__) || defined(__APPLE__)
   #define CloseSocket(s)     ::close(s)
   #define IoctlSocket(s,f,p) ioctl((s),(f),(p))
 #elif defined(_WIN32)
@@ -279,7 +279,7 @@ extern "C" { void free(void *);}
 #define IsInteractive(f) isatty(fileno(f))
 static inline int Errno(void) { return errno; }
 
-#ifdef __unix__
+#if defined(__unix__) || defined(__APPLE__)
   #define Delay(n) usleep((n) * 20000)
 #elif defined(_WIN32)
   #define Delay(n) Sleep((n) * 20)

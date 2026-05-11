@@ -35,8 +35,9 @@
  */
 #include <sys/socket.h>
 #include <arpa/inet.h> //inet_addr
+#include "platform.h"
 
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
 #include <proto/socket.h>
 #endif
 

@@ -3,8 +3,10 @@
  */
 #include <sys/socket.h>
 #include <arpa/inet.h> //inet_addr
+#include <netdb.h>
 #include <forwardchannel.h>
-#ifdef __AMIGA__
+#include "platform.h"
+#if BEBBOSSH_AMIGA_API
 #include <proto/exec.h>
 #include <proto/socket.h>
 
@@ -20,7 +22,8 @@ extern pthread_mutex_t theLock;
 #include "channel.h"
 #include "log.h"
 
-extern Stack<Listener> listeners;
+extern Stack<Listener> *listenersPtr;
+#define listeners (*listenersPtr)
 
 ForwardChannel::ForwardChannel(SshSession * server, uint32_t channel)
 : Channel(server, channel, C_FORWARD), listener(this)
@@ -114,4 +117,3 @@ void ForwardListener::close() {
 
 	fwc->closeChannel();
 }
-

@@ -1,4 +1,6 @@
-#ifdef __AMIGA__
+#include "platform.h"
+
+#if BEBBOSSH_AMIGA_API
 char const * sshDir = "envarc:";
 char const * sshDotDir = "envarc:.ssh";
 char const * keyFile;

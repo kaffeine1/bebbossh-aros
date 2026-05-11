@@ -11,13 +11,45 @@
 
 ---
 
+## AROS/i386 fork status
+
+This repository is a derivative work / fork of the original BebboSSH project by
+Stefan "Bebbo" Franke.
+
+- Original upstream source: https://franke.ms/git/bebbo/bebbossh
+- AROS/i386 porting changes: Copyright (C) 2026 Michele Dipace
+  <michele.dipace@kaffeine.net>
+- License of the AROS/i386 modifications: GNU GPL v3 or later, consistent with
+  the upstream project license.
+
+The current porting target is AROS i386. x86_64 support is intentionally
+deferred until the i386 build and runtime behaviour are stable.
+
+The AROS/i386 work currently includes:
+
+- an AROS-specific cross-build makefile (`Makefile.aros`);
+- compatibility headers for AROS/i386 builds;
+- startup/runtime fixes for AROS One `alt-abiv0`;
+- fallback loading of `PROGDIR:sshd_config` and
+  `PROGDIR:ssh_host_ed25519_key` for ISO-based testing;
+- read-only password-file support for test media;
+- QEMU/AROS One test notes in `AROS_PORTING.md`.
+
+Runtime status on AROS One i386:
+
+- `bebbosshd` starts, loads an Ed25519 host key, binds port 22, and listens.
+- OpenSSH from the host completes protocol identification, key exchange, and
+  password authentication through QEMU port forwarding.
+- The AROS command/shell backend is still incomplete and currently reports
+  `AROS shell backend not available yet` for remote command execution.
+
 ## 📖 Overview
 
 **BebboSSH** is an SSH2 implementation for
 - Amiga systems (68000+).
 - Linux systems (all cpu should do).  
 
-📦 **Source Code:** https://franke.ms/git/bebbo/bebbossh
+📦 **Original Source Code:** https://franke.ms/git/bebbo/bebbossh
 
 It requires a server that supports the included cryptographic algorithms.
 The supported cryptographic methods are
@@ -115,6 +147,11 @@ Some components are derived from **SUPERCOP** (Bernstein, Lange, Schwabe, et al.
 - Field arithmetic helpers  
 
 Combined use: The project as a whole is GPLv3+, but PD-marked files remain PD.  
+
+The AROS/i386 porting changes in this repository are licensed under GPLv3 or
+later. Existing upstream copyright notices, license files, and public-domain
+notices must be preserved when redistributing this fork or binaries built from
+it.
 
 ---
 

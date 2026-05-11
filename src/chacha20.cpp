@@ -37,10 +37,7 @@
 #include "chacha20.h"
 #include "fastmath32.h"
 
-#ifdef __AMIGA__
-#else
-#include <endian.h>
-#endif
+#include "compat_endian.h"
 
 #undef DEBUG
 #ifdef DEBUG

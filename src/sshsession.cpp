@@ -38,8 +38,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
+#include <sys/errno.h>
+#include "platform.h"
 
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
 #include <amistdio.h>
 
 #include <proto/dos.h>
@@ -54,6 +56,7 @@ extern struct SignalSemaphore theLock;
 
 extern pthread_mutex_t  theLock;
 
+#if BEBBOSSH_PAM_AUTH
 // --- PAM authentication ---
 #include <security/pam_appl.h>
 #include <security/pam_misc.h>
@@ -85,6 +88,7 @@ static int conv_func(int num_msg,
     }
     return PAM_SUCCESS;
 }
+#endif
 
 #endif
 
@@ -105,7 +109,8 @@ static int conv_func(int num_msg,
 char const * AES128 = "aes128-gcm@openssh.com";
 char const * CHACHA20 = "chacha20-poly1305@openssh.com";
 
-extern Stack<Listener> listeners;
+extern Stack<Listener> *listenersPtr;
+#define listeners (*listenersPtr)
 extern char* splitLine(char *&s);
 
 extern uint8_t hostPK[32];
@@ -268,7 +273,7 @@ bool SshSession::isAlive() const {
 }
 
 ShellChannel* SshSession::findShellChannelByBreakPort(struct MsgPort *mp) const {
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
 	for (int i = 0; i < channels.getMax(); ++i) {
 		Channel *c = channels[i];
 		if (c && c->isSession()) {
@@ -836,11 +841,16 @@ int SshSession::consumeSocketData(char *indata, int len) {
 }
 
 bool SshSession::login(uint8_t *user, uint8_t *pass) {
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
 	BPTR pwd = Open(passwords, MODE_READWRITE);
+	bool readOnly = false;
 	if (!pwd) {
-		logme(L_ERROR, "can't open `%s`", passwords);
-		return false;
+		pwd = Open(passwords, MODE_OLDFILE);
+		readOnly = true;
+		if (!pwd) {
+			logme(L_ERROR, "can't open `%s`", passwords);
+			return false;
+		}
 	}
 
 	bool r = false;
@@ -870,6 +880,10 @@ bool SshSession::login(uint8_t *user, uint8_t *pass) {
 			logme(L_INFO, "@%ld user `%s` with unhashed password", sockFd, user);
 			if (0 == strcmp(p, (char*) pass)) {
 				r = true;
+				if (readOnly) {
+					logme(L_INFO, "@%ld password file is read-only, keeping unhashed password", sockFd);
+					break;
+				}
 
 				// update password file
 				randfill(outdata + 32, 32);
@@ -913,7 +927,7 @@ bool SshSession::login(uint8_t *user, uint8_t *pass) {
 	else
 		logme(L_INFO, "@%ld login failed for user `%s`", sockFd, user);
 	return r;
-#else
+#elif BEBBOSSH_PAM_AUTH
     pam_handle_t *pamh = NULL;
     struct pam_conv conv = { conv_func, (void*)pass };
 
@@ -930,7 +944,9 @@ bool SshSession::login(uint8_t *user, uint8_t *pass) {
     pam_end(pamh, retval);
 
     return (retval == PAM_SUCCESS);
- #endif
+#else
+	return false;
+#endif
 }
 
 bool SshSession::handleChannelEof(uint8_t *p) {
@@ -1185,7 +1201,7 @@ static bool authorizeKey(uint8_t *hostBase64, uint8_t *buffer) {
 	bool r = false;
 	while (!r) {
 		char *p = (char*) buffer;
-		if (!fgets(p, 256, f))
+		if (!FGets(f, p, 256))
 			break;
 
 		// split
@@ -1413,7 +1429,7 @@ void SshSession::createKexEcdhReply() {
 	timing_protection(&startTime);
 }
 
-#ifdef __linux__
+#if BEBBOSSH_POSIX_SHELL
 int SshSession::getHandle() const {
 	int sz = channels.getMax();
 	for (int i = 0; i < sz; ++i) {

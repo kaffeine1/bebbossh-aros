@@ -38,8 +38,9 @@
 #include <sys/socket.h>
 #include <arpa/inet.h> //inet_addr
 #include <unistd.h>    //write
+#include "platform.h"
 
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
 #include <amistdio.h>
 #include <clib/alib_protos.h>
 #include <devices/timer.h>
@@ -49,6 +50,9 @@
 #include <proto/exec.h>
 #include <proto/socket.h>
 #include <proto/timer.h>
+#if BEBBOSSH_AROS
+#include <bsdsocket/socketbasetags.h>
+#endif
 
 #define DPTR BPTR
 
@@ -73,7 +77,7 @@
 
 static __far char theBuffer[2*CHUNKSIZE - 256];
 
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
 struct SignalSemaphore theLock;
 
 /* DOS FileHandle functions */
@@ -100,10 +104,14 @@ char const * homeDir = "RAM:";
 BPTR curDir, orgDir;
 
 char const * bsdName = "bsdsocket.library";
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
 char const * configName = "ENVARC:ssh/sshd_config";
 char const * passwords = "ENVARC:ssh/passwd";
 char const * hostKeyName = "ENVARC:ssh/ssh_host_ed25519_key";
+#if BEBBOSSH_AROS
+static char const * arosFallbackHostKeyName = "PROGDIR:ssh_host_ed25519_key";
+static char const * arosFallbackConfigName = "PROGDIR:sshd_config";
+#endif
 #else
 char const * configName = "/etc/ssh/sshd_config";
 char const * passwords = "/etc/ssh/passwd";
@@ -138,10 +146,12 @@ enum Errors {
 };
 Errors error;
 
-Stack<Listener> listeners;
-static Stack<SshSession> clients;
+Stack<Listener> *listenersPtr;
+static Stack<SshSession> *clientsPtr;
+#define listeners (*listenersPtr)
+#define clients (*clientsPtr)
 
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
 struct MsgPort * timerPort;
 struct timerequest * timerIO;
 struct Device * TimerBase = 0;
@@ -311,11 +321,11 @@ void handleMsg(struct Message * msg) {
 		case ACTION_FINDINPUT: { // FINDINPUT from console? strange...
 			ShellChannel *sc = findByBreakPort(packet->dp_Port);
 			struct FileHandle *fh = (struct FileHandle*) BADDR(packet->dp_Arg1);
-			char const * name = getBSTR(packet->dp_Arg3);
+			char const * name = getBSTR((BPTR) packet->dp_Arg3);
 			logme(L_DEBUG, "ACTION_FINDINPUT: %s lock=%08lX name=%s @%08lX %08lX", sc->getName(), (void *)packet->dp_Arg2, name, fh->fh_Type, packet->dp_Port);
 
 			memset(fh, 0, sizeof(struct FileHandle));
-			fh->fh_Port = (struct MsgPort *)1;
+			fh->fh_Port = 1;
 			fh->fh_Type = port;
 			fh->fh_Pos = fh->fh_End = -1;
 			fh->fh_Arg1 = (LONG)sc;
@@ -436,7 +446,7 @@ void cleanup() {
 		logme(L_FINE, "closing listen socket %ld", acceptSock);
 		CloseSocket(acceptSock);
 	}
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
 	if (SocketBase) {
 		logme(L_FINE, "closing %s", bsdName);
 		CloseLibrary(SocketBase);
@@ -484,10 +494,16 @@ void abortAll() {
 }
 
 static bool init() {
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
+#if BEBBOSSH_AROS
+	readFx = writeFx = flushFx = 0;
+	theInput = theOutput = 0;
+	theInputSize = 0;
+#else
 	grabFx();
 	if (!theOutput || !theInput)
 		logme(L_ERROR, "no working i/o");
+#endif
 
 	curDir = Lock(homeDir, SHARED_LOCK);
 	if (curDir)
@@ -539,7 +555,7 @@ static bool init() {
 	}
 	logme(L_FINE, "create listen socket %ld", acceptSock);
 
-#ifdef __linux__
+#if BEBBOSSH_LINUX
 	int yes = 1;
 	setsockopt(acceptSock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
 #endif
@@ -560,6 +576,13 @@ void parseNoop(char const * s) {
 
 void readIni() {
 	BPTR ini = Open(configName, MODE_OLDFILE);
+#if BEBBOSSH_AROS
+	if (!ini) {
+		ini = Open(arosFallbackConfigName, MODE_OLDFILE);
+		if (ini)
+			configName = arosFallbackConfigName;
+	}
+#endif
 	if (!ini) {
 		logme(L_WARN, "can't open `%s`", configName);
 		return;
@@ -718,23 +741,46 @@ static void parseParams(unsigned argc, char **argv) {
 }
 
 __stdargs int main(int argc, char *argv[]) {
+#if BEBBOSSH_AROS
+	Printf("bebbosshd/AROS: start\n");
+#endif
+	listenersPtr = new Stack<Listener>();
+	clientsPtr = new Stack<SshSession>();
 	atexit(cleanup);
 
 	InitSemaphore(&theLock);
 
 	readIni();
+#if BEBBOSSH_AROS
+	Printf("bebbosshd/AROS: config read\n");
+#endif
 
 	parseParams(argc, argv);
+#if BEBBOSSH_AROS
+	Printf("bebbosshd/AROS: params parsed, port %ld\n", (LONG)serverPort);
+#endif
 
 	if (!loadEd25519Key(hostPK, hostSK, hostKeyName)) {
+#if BEBBOSSH_AROS
+		Printf("bebbosshd/AROS: trying PROGDIR host key\n");
+		if (!loadEd25519Key(hostPK, hostSK, arosFallbackHostKeyName))
+			return error = ERR_KEYFILE;
+#else
 		return error = ERR_KEYFILE;
+#endif
 	}
+#if BEBBOSSH_AROS
+	Printf("bebbosshd/AROS: host key loaded\n");
+#endif
 
 	do { // while (0);
 		if (!init())
 			break;
+#if BEBBOSSH_AROS
+		Printf("bebbosshd/AROS: init ok\n");
+#endif
 
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
 		thisTask = SysBase->ThisTask;
 		logme(L_TRACE, "self %08lX mp %08lX", thisTask, &((struct Process *)thisTask)->pr_MsgPort);
 
@@ -749,6 +795,9 @@ __stdargs int main(int argc, char *argv[]) {
 		server.sin_family = AF_INET;
 		server.sin_addr.s_addr = serverAddress;
 		server.sin_port = htons(serverPort);
+#if BEBBOSSH_AROS
+		Printf("bebbosshd/AROS: binding port %ld\n", (LONG)serverPort);
+#endif
 
 		//Bind
 		if ( bind(acceptSock,(struct sockaddr *)&server , sizeof(server)) < 0) {
@@ -763,6 +812,9 @@ __stdargs int main(int argc, char *argv[]) {
 
 		//Listen
 		listen(acceptSock, 3);
+#if BEBBOSSH_AROS
+		Printf("bebbosshd/AROS: listening\n");
+#endif
 
 		//Accept and incoming connection
 		logme(L_INFO, "waiting for incoming connections on %ld.%ld.%ld.%ld:%ld",
@@ -813,7 +865,7 @@ __stdargs int main(int argc, char *argv[]) {
 					pruneDeadClients();
 			}
 
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
 			ULONG signales = SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | portMask | timerMask;
 			WaitSelect(listeners.getMax() + 1, &readfds, NULL, NULL, 0, &signales);
 
@@ -851,6 +903,7 @@ __stdargs int main(int argc, char *argv[]) {
 			if (sn < acceptSock) sn = acceptSock;
 
 			uint32_t csz = clients.getMax();
+#if BEBBOSSH_POSIX_SHELL
 			for (int i = 0; i < csz; ++i) {
 				auto c = clients[i];
 				if (c) {
@@ -862,6 +915,7 @@ __stdargs int main(int argc, char *argv[]) {
 					}
 				}
 			}
+#endif
 			select(sn + 1, &readfds, NULL, NULL, 0);
 #endif
 
@@ -899,7 +953,7 @@ __stdargs int main(int argc, char *argv[]) {
 				}
 			}
 
-#ifdef __linux__
+#if BEBBOSSH_POSIX_SHELL
 			for (int i = 0; i < csz; ++i) {
 				auto c = clients[i];
 				if (c) {

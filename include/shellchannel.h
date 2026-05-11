@@ -39,6 +39,9 @@
 #ifndef SHELLCHANNEL_H_
 #define SHELLCHANNEL_H_
 
+#include <stdlib.h>
+
+#include "platform.h"
 #include "channel.h"
 
 /**
@@ -106,7 +109,7 @@ class ShellChannel : public Channel {
 
 	unsigned rows, cols;
 
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
 	bool localEcho;
 
 	unsigned stackSize;
@@ -159,7 +162,7 @@ public:
 	}
 	void prompt();
 
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
 	bool isPending() const { return pending != 0;}
 	void setPending(struct Message * m) { pending = m;}
 	bool isWaiting() const { return waiting != 0;}
@@ -190,7 +193,7 @@ public:
 #endif
 };
 
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
 static inline struct DosPacket * getDosPacket (struct Message * m){
 	return (struct DosPacket*) m->mn_Node.ln_Name;
 }

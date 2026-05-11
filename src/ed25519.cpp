@@ -18,11 +18,13 @@
  */
 
 #define REPLACE_STDIO
-#ifdef __AMIGA__
+#if defined(__AMIGA__) || defined(__AROS__)
 #include <amistdio.h>
 #include <proto/dos.h>
 #include <proto/exec.h>
+#ifdef __AMIGA__
 #include <stabs.h>
+#endif
 #else
 #include "amiemul.h"
 #endif
