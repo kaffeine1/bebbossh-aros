@@ -1,5 +1,5 @@
 # Native AROS/i386 build for the first porting milestone.
-# Builds only the SSH daemon and the crypto self-tests, using a static library.
+# Builds the SSH daemon, key generator, and crypto self-tests, using a static library.
 
 CC ?= gcc
 CXX ?= g++
@@ -50,19 +50,24 @@ SSHD_SOURCES = bebbosshd.cpp sshsession.cpp forwardchannel.cpp sftpchannel.cpp \
         shellchannel.cpp channel.cpp stack.cpp c++support.cpp home.cpp \
         aros_startup_flags.c
 
+KEYGEN_SOURCES = bebbosshkeygen.cpp c++support.cpp home.cpp
+
 TEST_SOURCES = testAES.cpp testChacha20.cpp testEd25519.cpp testGCM.cpp testSHA512.cpp
 
 LIB_OBJECTS = $(patsubst %.cpp,$(OUTDIR)/%.o,$(patsubst %.c,$(OUTDIR)/%.o,$(LIB_SOURCES)))
 SSHD_OBJECTS = $(patsubst %.cpp,$(OUTDIR)/%.o,$(patsubst %.c,$(OUTDIR)/%.o,$(SSHD_SOURCES)))
+KEYGEN_OBJECTS = $(patsubst %.cpp,$(OUTDIR)/%.o,$(patsubst %.c,$(OUTDIR)/%.o,$(KEYGEN_SOURCES)))
 TESTS = $(patsubst %.cpp,$(OUTDIR)/%,$(TEST_SOURCES))
 PROBES = $(OUTDIR)/AROSPROBE $(OUTDIR)/AROSPROBE_RET
 HEADERS = $(wildcard include/*.h)
 
-.PHONY: all bebbosshd tests probes run-tests clean
+.PHONY: all bebbosshd bebbosshkeygen tests probes run-tests clean
 
-all: bebbosshd tests
+all: bebbosshd bebbosshkeygen tests
 
 bebbosshd: $(OUTDIR)/bebbosshd
+
+bebbosshkeygen: $(OUTDIR)/bebbosshkeygen
 
 tests: $(TESTS)
 
@@ -77,6 +82,12 @@ $(OUTDIR)/libcryptossh.a: $(LIB_OBJECTS)
 
 $(OUTDIR)/bebbosshd: $(SSHD_OBJECTS) $(OUTDIR)/libcryptossh.a
 	$(CXX) $(LDFLAGS) $(STARTUP) $(SSHD_OBJECTS) $(LIBS) -o $@
+ifneq ($(strip $(AROS_SDK_ROOT)),)
+	$(STRIP) $(STRIPFLAGS) $@
+endif
+
+$(OUTDIR)/bebbosshkeygen: $(KEYGEN_OBJECTS) $(OUTDIR)/libcryptossh.a
+	$(CXX) $(LDFLAGS) $(STARTUP) $(KEYGEN_OBJECTS) $(LIBS) -o $@
 ifneq ($(strip $(AROS_SDK_ROOT)),)
 	$(STRIP) $(STRIPFLAGS) $@
 endif

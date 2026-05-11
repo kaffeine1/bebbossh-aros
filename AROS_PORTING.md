@@ -19,8 +19,8 @@ consistent with the upstream project.
 - Added `include/platform.h` to separate Amiga API usage from Linux/POSIX-only
   server paths.
 - Added `include/compat_endian.h` for hosts without Linux `<endian.h>`.
-- Added `Makefile.aros` for a native AROS/i386 build of `bebbosshd` and the
-  crypto self-tests.
+- Added `Makefile.aros` for AROS/i386 builds of `bebbosshd`,
+  `bebbosshkeygen`, and the crypto self-tests.
 - Kept m68k assembly out of the AROS build.
 - Kept the interactive AmigaDOS shell path enabled for AROS, while leaving the
   Linux PTY/PAM path Linux-only.
@@ -47,6 +47,7 @@ make -f Makefile.aros run-tests
 The expected first build products are:
 
 - `aros-i386/bebbosshd`
+- `aros-i386/bebbosshkeygen`
 - `aros-i386/testAES`
 - `aros-i386/testChacha20`
 - `aros-i386/testEd25519`
@@ -80,7 +81,7 @@ AROS One i386 uses the `alt-abiv0` ABI. The current working cross-toolchain is:
 From the source directory:
 
 ```sh
-make -f Makefile.aros bebbosshd probes \
+make -f Makefile.aros bebbosshd bebbosshkeygen probes \
   OUTDIR=aros-i386-abiv0-arosone \
   CC=/Users/kaffeine/amiga-dev/toolchains/aros-i386-abiv0/i386-aros-gcc \
   CXX=/Users/kaffeine/amiga-dev/toolchains/aros-i386-abiv0/i386-aros-g++ \
@@ -93,6 +94,7 @@ The current cross-build product is:
 
 ```text
 aros-i386-abiv0-arosone/bebbosshd
+aros-i386-abiv0-arosone/bebbosshkeygen
 ```
 
 The VM CD image with only the current binary and crypto tests is:
@@ -121,6 +123,9 @@ AROS runtime notes:
 - If the password file can only be opened read-only, plaintext test passwords
   are accepted without rewriting the file to `{ssha256}` format. This is useful
   for ISO-based tests.
+- `bebbosshkeygen` is built as a static AROS/i386 executable and has been
+  launched successfully on AROS One i386 far enough to generate ED25519
+  randomart.
 - The interactive shell backend is temporarily disabled on AROS until it is
   reworked around AROS file handles. SFTP/server startup remains the first
   runtime target.

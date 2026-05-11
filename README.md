@@ -28,6 +28,7 @@ deferred until the i386 build and runtime behaviour are stable.
 The AROS/i386 work currently includes:
 
 - an AROS-specific cross-build makefile (`Makefile.aros`);
+- static AROS/i386 builds of `bebbosshd` and `bebbosshkeygen`;
 - compatibility headers for AROS/i386 builds;
 - startup/runtime fixes for AROS One `alt-abiv0`;
 - fallback loading of `PROGDIR:sshd_config` and
@@ -38,6 +39,7 @@ The AROS/i386 work currently includes:
 Runtime status on AROS One i386:
 
 - `bebbosshd` starts, loads an Ed25519 host key, binds port 22, and listens.
+- `bebbosshkeygen` starts on AROS One i386 and reaches ED25519 key generation.
 - OpenSSH from the host completes protocol identification, key exchange, and
   password authentication through QEMU port forwarding.
 - The AROS command/shell backend is still incomplete and currently reports
