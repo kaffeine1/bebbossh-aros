@@ -49,9 +49,11 @@ Runtime status on AROS One i386:
   AROS `SystemTags()` backend. `version` and `dir` have been tested, and the
   command exit status is propagated to the SSH client.
 - AROS remote exec intentionally rejects shell redirection and pipes (`>`, `<`,
-  `|`) until they are stable.
+  `|`) until they are stable. A rejected redirection returns SSH exit status 2
+  and leaves the daemon usable.
 - Interactive SSH sessions can run simple AROS commands and return to the
-  prompt using the same `SystemTags()` backend.
+  prompt using the same `SystemTags()` backend. Simple piped multi-command
+  input such as `dir`, `version`, `exit` has been tested.
 - SFTP and OpenSSH `scp` transfers work on `T:` and `DH0:`; 1 MiB and 5 MiB
   file round-trips and a small `telegram-amiga`-style directory tree have been
   tested.
@@ -66,6 +68,56 @@ make -f Makefile.aros package-aros-runtime OUTDIR=aros-i386-abiv0-arosone
 
 Published builds are attached to GitHub Releases as `.zip` and `.tar.gz`
 runtime kits.
+
+### AROS automation workflow
+
+For current AROS One i386 automation, prefer non-interactive SSH commands and
+SFTP/SCP transfers on persistent volumes such as `DH0:`:
+
+```sh
+sshpass -p test ssh \
+  -o StrictHostKeyChecking=no \
+  -o UserKnownHostsFile=/tmp/bebbossh_aros_known_hosts \
+  -p 10022 test@127.0.0.1 \
+  'DH0:TGTEST/telegram-test --help'
+```
+
+Avoid `RAM:` in the current VM setup and do not use remote shell redirection or
+pipes (`>`, `<`, `|`) yet.
+
+The host-side smoke test used for the AROS automation workflow is:
+
+```sh
+scripts/aros-ssh-smoke-test.sh
+```
+
+It validates `version`, redirection rejection, daemon health after rejection,
+`telegram-amiga` command exit status propagation, and an SCP round trip on
+`DH0:TGTEST`.
+
+### AROS autostart
+
+After copying the runtime kit to a persistent directory such as
+`DH0:BSSHPKG`, add this to `S:User-Startup`:
+
+```text
+;BEGIN BebboSSHd AROS
+Stack 262144
+If EXISTS DH0:BSSHPKG/bebbosshd
+    Run DH0:BSSHPKG/bebbosshd
+EndIf
+;END BebboSSHd AROS
+```
+
+This intentionally avoids `>NIL:` while the AROS redirection path is being
+hardened. The default build keeps startup status messages at debug level, so a
+normal autostart should not leave a daemon output window. For diagnostics, use
+`DebugLevel debug` or launch with `-v5`.
+
+When replacing an existing `bebbosshd` on AROS over SCP/SFTP, delete the old
+file first and then upload the new one. This avoids stale trailing bytes on
+filesystems or transfer paths that do not truncate an overwritten executable
+reliably.
 
 ## Overview
 

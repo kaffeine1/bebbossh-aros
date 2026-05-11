@@ -901,6 +901,24 @@ bool ShellChannel::runArosExec(bool closeAfterCommand) {
 	}
 
 	prompt();
+	unsigned len = xpos - line;
+	if (len) {
+		xend = xpos = line;
+		if (len + 1 > inBufferLen) {
+			char *newBuffer = (char *)realloc(inBuffer, len + 1);
+			if (!newBuffer) {
+				logme(L_ERROR, "out of memory for %ld of data", len + 1);
+				server->closeChannel(this);
+				return false;
+			}
+			inBuffer = newBuffer;
+			inBufferLen = len + 1;
+		}
+		memcpy(inBuffer, line, len);
+		inBuffer[len] = 0;
+		return handleData(inBuffer, len) >= 0;
+	}
+
 	return true;
 }
 #endif
@@ -1021,15 +1039,17 @@ bool ShellChannel::endCommand(){
 	unsigned len = xpos - line;
 	xend = xpos = line;
 
-	if (len > inBufferLen) {
-		inBuffer = (char *)realloc(inBuffer, len);
+	if (len + 1 > inBufferLen) {
+		inBuffer = (char *)realloc(inBuffer, len + 1);
 		if (!inBuffer) {
-			logme(L_ERROR, "out of memory for %ld of data", len);
+			logme(L_ERROR, "out of memory for %ld of data", len + 1);
 			server->closeChannel(this);
 			return false;
 		}
+		inBufferLen = len + 1;
 	}
 	memcpy(inBuffer, line, len);
+	inBuffer[len] = 0;
 
 	return handleData(inBuffer, len);
 }

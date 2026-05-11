@@ -148,6 +148,30 @@ Package validation on AROS One i386:
   `version` returned `Kickstart 51.51, Workbench 40.0`.
 - SFTP against the packaged daemon listed the package directory successfully.
 
+To start `bebbosshd` automatically after AROS boot, install the package in a
+persistent directory such as `DH0:BSSHPKG` and add this stanza to
+`S:User-Startup`:
+
+```text
+;BEGIN BebboSSHd AROS
+Stack 262144
+If EXISTS DH0:BSSHPKG/bebbosshd
+    Run DH0:BSSHPKG/bebbosshd
+EndIf
+;END BebboSSHd AROS
+```
+
+The current autostart recommendation intentionally avoids `Run >NIL:` while
+the AROS redirection path is being hardened. Startup status messages are logged
+at debug level, so the normal `DebugLevel 1` package configuration should not
+leave a daemon output window at boot. For diagnostics, temporarily use
+`DebugLevel debug` or launch `bebbosshd` with `-v5`.
+
+When replacing `DH0:BSSHPKG/bebbosshd` through SCP/SFTP, delete the existing
+file first, then upload the new binary and download it back for a byte compare.
+This avoids stale trailing bytes if an existing executable is overwritten
+without truncation.
+
 If launching from an AROS Shell, use a larger stack while testing:
 
 ```text
@@ -181,6 +205,9 @@ AROS runtime notes:
   implemented.
 - Interactive SSH sessions use the same backend for simple commands and return
   to the prompt after each command.
+- Interactive shell stdin now drains command lines already received in the same
+  SSH packet after an AROS command completes, which keeps piped sequences such
+  as `dir`, `version`, `exit` moving through the minimal shell backend.
 - Full PTY-style interactive program support is still incomplete on AROS.
 
 Forwarded host ports:
@@ -217,6 +244,32 @@ returned SSH exit status 1. Remote redirection such as `>/NIL:` is blocked with
 exit status 2. The backend is intentionally minimal: it is synchronous and
 should be used first for short development commands while SFTP/SCP and a fuller
 PTY path are stabilized.
+
+The repeatable host-side smoke test for the current AROS automation workflow is:
+
+```sh
+scripts/aros-ssh-smoke-test.sh
+```
+
+Defaults:
+
+```text
+BEBBOSSH_AROS_HOST=127.0.0.1
+BEBBOSSH_AROS_PORT=10022
+BEBBOSSH_AROS_USER=test
+BEBBOSSH_AROS_PASS=test
+BEBBOSSH_AROS_TELEGRAM_TEST=DH0:TGTEST/telegram-test
+BEBBOSSH_AROS_WORKDIR=DH0:TGTEST
+```
+
+It validates:
+
+- `version` over non-interactive SSH.
+- rejection of `version >/NIL:` with exit status 2.
+- daemon health after the rejected redirection.
+- `telegram-test --help` exit status 0.
+- `telegram-test --definitely-invalid-option` exit status 1.
+- SCP upload/download byte comparison on `DH0:TGTEST`.
 
 SFTP/SCP status:
 
