@@ -34,6 +34,7 @@ The AROS/i386 work currently includes:
 - fallback loading of `PROGDIR:sshd_config` and
   `PROGDIR:ssh_host_ed25519_key` for ISO-based testing;
 - read-only password-file support for test media;
+- a minimal AROS remote `exec` backend for non-interactive commands;
 - QEMU/AROS One test notes in `AROS_PORTING.md`.
 
 Runtime status on AROS One i386:
@@ -42,8 +43,9 @@ Runtime status on AROS One i386:
 - `bebbosshkeygen` starts on AROS One i386 and reaches ED25519 key generation.
 - OpenSSH from the host completes protocol identification, key exchange, and
   password authentication through QEMU port forwarding.
-- The AROS command/shell backend is still incomplete and currently reports
-  `AROS shell backend not available yet` for remote command execution.
+- Remote `exec` works for simple non-interactive commands through the current
+  AROS `SystemTags()` backend. `version` and `dir` have been tested.
+- Interactive shell/PTY support is still incomplete.
 
 ## Overview
 

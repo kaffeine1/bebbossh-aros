@@ -29,6 +29,8 @@ consistent with the upstream project.
 - Added `PROGDIR:` fallbacks for ISO-based AROS One testing.
 - Added read-only password-file support so test ISOs can authenticate without
   writing back hashed passwords.
+- Added a minimal AROS remote `exec` backend using `SystemTags()` for
+  non-interactive commands.
 
 ## Build inside AROS/i386
 
@@ -126,9 +128,10 @@ AROS runtime notes:
 - `bebbosshkeygen` is built as a static AROS/i386 executable and has been
   launched successfully on AROS One i386 far enough to generate ED25519
   randomart.
-- The interactive shell backend is temporarily disabled on AROS until it is
-  reworked around AROS file handles. SFTP/server startup remains the first
-  runtime target.
+- Remote `exec` is implemented for simple non-interactive commands on AROS.
+  The current backend redirects command output to a temporary `T:` file and
+  sends it back over SSH after the command exits.
+- Interactive shell/PTY support is still incomplete on AROS.
 
 Forwarded host ports:
 
@@ -141,15 +144,27 @@ loads the host key, binds port 22, and listens. OpenSSH from macOS reaches the
 server through QEMU forwarding at `127.0.0.1:10022`, completes SSH protocol
 identification, key exchange, and password authentication.
 
-Remote command execution is not complete yet. The AROS shell backend currently
-reports:
+Remote command execution now works for simple non-interactive commands:
 
-```text
-AROS shell backend not available yet
+```sh
+/opt/homebrew/bin/sshpass -p test ssh \
+  -o ConnectTimeout=5 \
+  -o StrictHostKeyChecking=no \
+  -o UserKnownHostsFile=/tmp/bebbossh_known_hosts \
+  -o PreferredAuthentications=password \
+  -o PubkeyAuthentication=no \
+  -p 10022 test@127.0.0.1 version
 ```
 
-Native in-guest compilation therefore still needs either an enabled shell
-service or manual/VNC launch of an AROS shell.
+This has returned:
+
+```text
+Kickstart 51.51, Workbench 40.0
+```
+
+`dir` has also been tested successfully. The backend is intentionally minimal:
+it is synchronous, not an interactive shell, and should be used first for short
+development commands while SFTP/SCP and a fuller shell path are stabilized.
 
 ## Host-side verification
 

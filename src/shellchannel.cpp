@@ -826,10 +826,65 @@ void ShellChannel::startProc() {
 
 bool ShellChannel::startCommand(char const * cmd){
 	strncpy(xbuffer, cmd, CHUNKSIZE - 1);
+	xbuffer[CHUNKSIZE - 1] = 0;
 	return startCommand();
 }
 
 extern bool sanitize(char * path);
+
+#if BEBBOSSH_AROS
+bool ShellChannel::runArosExec() {
+	char outName[96];
+	snprintf(outName, sizeof(outName), "T:bebbosshd-%lx-%lx.out",
+			(ULONG)server->getSockFd(), (ULONG)channel);
+
+	BPTR input = Open("NIL:", MODE_OLDFILE);
+	BPTR output = Open(outName, MODE_NEWFILE);
+	if (!output) {
+		static const char msg[] = "bebbosshd/AROS: cannot create command output file\r\n";
+		server->channelWrite(channel, msg, sizeof(msg) - 1);
+		if (input)
+			Close(input);
+		server->closeChannel(this);
+		return false;
+	}
+
+	BPTR oldDir = CurrentDir(dir);
+	LONG rc = SystemTags(xbuffer,
+			SYS_Input, input ? input : Input(),
+			SYS_Output, output,
+			SYS_Error, output,
+			SYS_UserShell, (ULONG)TRUE,
+			TAG_DONE);
+	CurrentDir(oldDir);
+
+	if (input)
+		Close(input);
+	Close(output);
+
+	output = Open(outName, MODE_OLDFILE);
+	if (output) {
+		char buf[2048];
+		for (;;) {
+			LONG got = Read(output, buf, sizeof(buf));
+			if (got <= 0)
+				break;
+			server->channelWrite(channel, buf, got);
+		}
+		Close(output);
+	}
+	DeleteFile(outName);
+
+	if (rc) {
+		char msg[80];
+		int len = snprintf(msg, sizeof(msg), "bebbosshd/AROS: command returned %ld\r\n", rc);
+		server->channelWrite(channel, msg, len);
+	}
+
+	server->closeChannel(this);
+	return false;
+}
+#endif
 
 bool ShellChannel::startCommand(){
 	char * c = xbuffer;
@@ -895,6 +950,9 @@ bool ShellChannel::startCommand(){
 
 
 #if BEBBOSSH_AROS
+	if (hasExec())
+		return runArosExec();
+
 	if (!writeFx) {
 		static const char msg[] = "AROS shell backend not available yet\r\n";
 		server->channelWrite(channel, msg, sizeof(msg) - 1);
