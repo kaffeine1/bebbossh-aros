@@ -208,6 +208,9 @@ AROS runtime notes:
 - Interactive shell stdin now drains command lines already received in the same
   SSH packet after an AROS command completes, which keeps piped sequences such
   as `dir`, `version`, `exit` moving through the minimal shell backend.
+- A bare `dir` in the interactive SSH shell is translated to `list lformat %N`
+  so directory listings are readable one entry per line. Non-interactive
+  `ssh ... dir` keeps the native AROS `dir` output.
 - Full PTY-style interactive program support is still incomplete on AROS.
 
 Forwarded host ports:

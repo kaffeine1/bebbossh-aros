@@ -991,6 +991,14 @@ bool ShellChannel::startCommand(){
 
 
 #if BEBBOSSH_AROS
+	if (!hasExec() && keywordLen == 3 && 0 == strnicmp(xbuffer, "dir", 3)) {
+		char *args = xbuffer + 3;
+		while (*args && *args <= ' ')
+			++args;
+		if (!*args)
+			strcpy(xbuffer, "list lformat %N");
+	}
+
 	if (hasUnsupportedArosShellSyntax(xbuffer)) {
 		static const char msg[] = "bebbosshd/AROS: shell redirection and pipes are not supported yet\r\n";
 		server->channelWrite(channel, msg, sizeof(msg) - 1);
@@ -999,6 +1007,23 @@ bool ShellChannel::startCommand(){
 			return false;
 		}
 		prompt();
+		unsigned len = xpos - line;
+		if (len) {
+			xend = xpos = line;
+			if (len + 1 > inBufferLen) {
+				char *newBuffer = (char *)realloc(inBuffer, len + 1);
+				if (!newBuffer) {
+					logme(L_ERROR, "out of memory for %ld of data", len + 1);
+					server->closeChannel(this);
+					return false;
+				}
+				inBuffer = newBuffer;
+				inBufferLen = len + 1;
+			}
+			memcpy(inBuffer, line, len);
+			inBuffer[len] = 0;
+			return handleData(inBuffer, len) >= 0;
+		}
 		return true;
 	}
 

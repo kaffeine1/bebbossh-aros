@@ -103,6 +103,9 @@ Known Limits
 - Simple piped stdin for multi-command interactive sessions has been tested
   with dir, version, and exit. Non-interactive SSH exec remains the recommended
   automation path.
+- In an interactive SSH shell, a bare dir command is normalized to one entry
+  per line for readability. Non-interactive ssh ... dir keeps native AROS dir
+  formatting.
 - Full PTY-style interactive program support is not complete on AROS yet.
 - Remote exec is synchronous and intended for short commands at this stage.
   Command exit status is propagated to the SSH client.

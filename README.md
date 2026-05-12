@@ -53,7 +53,8 @@ Runtime status on AROS One i386:
   and leaves the daemon usable.
 - Interactive SSH sessions can run simple AROS commands and return to the
   prompt using the same `SystemTags()` backend. Simple piped multi-command
-  input such as `dir`, `version`, `exit` has been tested.
+  input such as `dir`, `version`, `exit` has been tested. A bare interactive
+  `dir` is normalized to one name per line for readability.
 - SFTP and OpenSSH `scp` transfers work on `T:` and `DH0:`; 1 MiB and 5 MiB
   file round-trips and a small `telegram-amiga`-style directory tree have been
   tested.
