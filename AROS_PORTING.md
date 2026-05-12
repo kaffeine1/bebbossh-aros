@@ -196,9 +196,12 @@ AROS runtime notes:
   launched successfully on AROS One i386 far enough to generate ED25519
   randomart.
 - Remote `exec` is implemented for simple non-interactive commands on AROS.
-  The current backend redirects command output to a temporary `T:` file and
-  sends it back over SSH after the command exits. The command return code is
-  sent as the SSH `exit-status`.
+  The backend runs `SystemTags()` inside a child task, redirects command output
+  to a temporary `T:` file, and sends it back over SSH after the command exits.
+  The command return code is sent as the SSH `exit-status`.
+- Non-PTY exec has a soft 30-second timeout. The daemon remains responsive
+  while the child task runs; on timeout it writes a warning and sends a break to
+  the command task.
 - AROS remote exec rejects shell redirection and pipes (`>`, `<`, `|`) before
   calling `SystemTags()`. A remote `>/NIL:` test degraded the daemon, so these
   constructs are intentionally unsupported until a safer execution backend is
@@ -252,9 +255,9 @@ Kickstart 51.51, Workbench 40.0
 
 `dir` has also been tested successfully. A `telegram-amiga` invalid-option test
 returned SSH exit status 1. Remote redirection such as `>/NIL:` is blocked with
-exit status 2. Non-PTY exec is intentionally synchronous and should be used for
-short automation commands. Interactive programs should be launched with
-`ssh -tt`.
+exit status 2. Non-PTY exec is intended for short automation commands and now
+runs outside the daemon's main loop. Interactive programs should be launched
+with `ssh -tt`.
 
 The repeatable host-side smoke test for the current AROS automation workflow is:
 
@@ -286,6 +289,7 @@ It validates:
 - a piped interactive shell sequence using `dir`, `cd`, `version`, and `exit`.
 - SCP upload/download byte comparison on `DH0:TGTEST`.
 - SFTP `mkdir`, upload, download, compare, remove, and `rmdir` on `DH0:TGTEST`.
+- overwrite truncation on `DH0:` by uploading a smaller file over a larger one.
 
 SFTP/SCP status:
 
@@ -301,6 +305,20 @@ SFTP/SCP status:
 - OpenSSH `scp -r` has been tested with a temporary 336 KiB
   `telegram-amiga`-style source tree copied to `DH0:`, copied back, and
   verified with `diff -qr`.
+- OpenSSH `scp` overwrite of a smaller file over a larger file has been tested
+  on `DH0:` and verified by byte compare.
+- AROS SFTP upload permission mapping keeps AmigaDOS execute protection
+  allowed. This avoids byte-correct uploaded binaries failing at boot with
+  `File non eseguibile` after OpenSSH sends Unix-style `0644` permissions.
+
+Clean install status:
+
+- The generated runtime kit was copied to a fresh `DH0:` directory.
+- `sshd_config.example` and `passwd.example` were copied to runtime names.
+- `bebbosshkeygen -f <install-dir>/ssh_host_ed25519_key` generated a fresh host
+  key on AROS One i386.
+- `bebbosshd -p 2222` launched from that directory and answered `version`
+  through the QEMU host forward at `127.0.0.1:12222`.
 
 When using `sshpass` with `sftp -b`, pass `-oBatchMode=no`; OpenSSH otherwise
 forces batch mode authentication and will not send the password:

@@ -376,7 +376,11 @@ void setAttrs(uint8_t * p, uint8_t * path) {
 	if (flags & SSH_FILEXFER_ATTR_PERMISSIONS) {
 		uint32_t protect = getInt32(p);
 		p += 4;
+#if BEBBOSSH_AROS
+		SetProtection((char* )path, ssh2amode(protect) & ~FIBF_EXECUTE);
+#else
 		SetProtection((char* )path, ssh2amode(protect));
+#endif
 	}
 	struct timeval tv;
 	if (flags & SSH2_FILEXFER_ATTR_ACMODTIME) {
@@ -681,10 +685,21 @@ int SftpChannel::handleData(char *data, unsigned outerLen) {
 
 			logme(L_DEBUG, "@%ld:%ld sftp SSH_FXP_OPEN for %s flags=%ld->mode=%ld", server->getSockFd(), channel, path, flags, mode);
 
+#if BEBBOSSH_AROS
+			if ((flags & SSH2_FXF_WRITE) && (flags & SSH2_FXF_CREAT) &&
+					!(flags & SSH2_FXF_EXCL) && !(flags & SSH2_FXF_APPEND)) {
+				DeleteFile((char *)path);
+				mode = MODE_NEWFILE;
+			}
+#endif
+
 			BPTR file = Open((char* )path, mode);
 
 			if (file && mode == MODE_NEWFILE) { // reopen shared
 				Close(file);
+#if BEBBOSSH_AROS
+				SetProtection((char* )path, 0);
+#endif
 				file = Open((char* )path, MODE_READWRITE);
 			}
 

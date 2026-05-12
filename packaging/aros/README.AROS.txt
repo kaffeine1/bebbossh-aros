@@ -95,6 +95,10 @@ Verified on AROS One i386 alt-abiv0:
 - SFTP mkdir/rmdir on DH0:.
 - 1 MiB and 5 MiB file round-trips.
 - A small telegram-amiga style directory tree round-trip with scp -r.
+- scp overwrite of a smaller file over a larger file on DH0:, verified by byte
+  compare.
+- Clean install in a fresh DH0: directory, including host key generation with
+  bebbosshkeygen and daemon startup from that directory.
 
 Known Limits
 ------------
@@ -110,8 +114,11 @@ Known Limits
   telegram-test --telegram-client-console 1 1 workflow has been tested with
   ssh -tt.
 - Full PTY-style interactive program support is not complete on AROS yet.
-- Remote exec is synchronous and intended for short commands at this stage.
-  Command exit status is propagated to the SSH client.
+- Remote exec is intended for short commands at this stage. On AROS it runs in
+  a child task so the daemon main loop remains responsive, and command exit
+  status is propagated to the SSH client.
+- Non-PTY exec has a soft 30-second timeout that sends a break to the command
+  task and reports the timeout to the client.
 - Known interactive commands are rejected in non-PTY exec mode with exit status
   2 and a message asking the caller to use ssh -tt, so they do not block the
   daemon's synchronous exec path.
@@ -135,6 +142,13 @@ For the current telegram-amiga style automation workflow:
 Use DH0: or another persistent volume for uploads. Avoid RAM: in VM setups
 where RAM: file operations have shown freezes. Avoid remote redirection and
 pipes until they are explicitly supported.
+
+OpenSSH scp/SFTP overwrite of a smaller file over a larger file has been
+verified on DH0: and should truncate the destination correctly.
+
+AROS SFTP uploads keep AmigaDOS execute protection allowed, so uploaded
+binaries should remain runnable even when OpenSSH sends Unix-style 0644
+permissions.
 
 For batch SFTP with sshpass, force password authentication in batch mode:
 

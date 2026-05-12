@@ -131,6 +131,14 @@ class ShellChannel : public Channel {
 
 	History history;
 
+#if BEBBOSSH_AROS
+	bool arosExecFileMode;
+	bool arosExecTimedOut;
+	LONG arosExecRc;
+	char arosExecOutName[96];
+	struct timeval arosExecStarted;
+#endif
+
 #else
 	pid_t pid;
 	int master;
@@ -176,6 +184,7 @@ public:
 	char * cursorLeft(char * out, int slen);
 	char * cursorRight(char * out, int slen);
 #if BEBBOSSH_AROS
+	bool startArosExecFile(bool closeAfterCommand);
 	bool runArosExec(bool closeAfterCommand);
 #endif
 
