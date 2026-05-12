@@ -52,9 +52,15 @@ Runtime status on AROS One i386:
   `|`) until they are stable. A rejected redirection returns SSH exit status 2
   and leaves the daemon usable.
 - Interactive SSH sessions can run simple AROS commands and return to the
-  prompt using the same `SystemTags()` backend. Simple piped multi-command
-  input such as `dir`, `version`, `exit` has been tested. A bare interactive
-  `dir` is normalized to one name per line for readability.
+  prompt. Simple piped multi-command input such as `dir`, `cd`, `version`,
+  and `exit` has been tested. A bare interactive `dir` is normalized to one
+  name per line for readability.
+- PTY exec works for bounded interactive programs. The
+  `telegram-test --telegram-client-console 1 1` workflow has been tested over
+  `ssh -tt`.
+- Known interactive commands are rejected in non-PTY exec mode with exit status
+  2 and a message asking the caller to use `ssh -tt`, so they do not block the
+  daemon's main loop.
 - SFTP and OpenSSH `scp` transfers work on `T:` and `DH0:`; 1 MiB and 5 MiB
   file round-trips and a small `telegram-amiga`-style directory tree have been
   tested.
@@ -92,9 +98,10 @@ The host-side smoke test used for the AROS automation workflow is:
 scripts/aros-ssh-smoke-test.sh
 ```
 
-It validates `version`, redirection rejection, daemon health after rejection,
-`telegram-amiga` command exit status propagation, and an SCP round trip on
-`DH0:TGTEST`.
+It validates `version`, redirection rejection, non-PTY interactive-command
+rejection, daemon health after both guards, `telegram-amiga` command exit
+status propagation, PTY exec, an interactive shell sequence, and SCP/SFTP round
+trips on `DH0:TGTEST`.
 
 ### AROS autostart
 

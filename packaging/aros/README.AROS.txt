@@ -101,14 +101,20 @@ Known Limits
 
 - Interactive SSH sessions can run simple commands and return to the prompt.
 - Simple piped stdin for multi-command interactive sessions has been tested
-  with dir, version, and exit. Non-interactive SSH exec remains the recommended
-  automation path.
+  with dir, cd, version, and exit. Non-interactive SSH exec remains the
+  recommended automation path for short commands.
 - In an interactive SSH shell, a bare dir command is normalized to one entry
   per line for readability. Non-interactive ssh ... dir keeps native AROS dir
   formatting.
+- PTY exec can run bounded console-style programs. The
+  telegram-test --telegram-client-console 1 1 workflow has been tested with
+  ssh -tt.
 - Full PTY-style interactive program support is not complete on AROS yet.
 - Remote exec is synchronous and intended for short commands at this stage.
   Command exit status is propagated to the SSH client.
+- Known interactive commands are rejected in non-PTY exec mode with exit status
+  2 and a message asking the caller to use ssh -tt, so they do not block the
+  daemon's synchronous exec path.
 - Shell redirection and pipes (`>`, `<`, `|`) are rejected on AROS until they
   are stable. Rejected redirection returns SSH exit status 2.
 - The test password in passwd.example is not safe. Change it before use.

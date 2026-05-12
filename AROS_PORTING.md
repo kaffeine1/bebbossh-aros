@@ -203,6 +203,9 @@ AROS runtime notes:
   calling `SystemTags()`. A remote `>/NIL:` test degraded the daemon, so these
   constructs are intentionally unsupported until a safer execution backend is
   implemented.
+- Known interactive commands are rejected in non-PTY exec mode with exit status
+  2 and a message asking the caller to use `ssh -tt`. This prevents commands
+  such as `more ?` from blocking the daemon's synchronous non-PTY exec path.
 - Interactive SSH sessions use the same backend for simple commands and return
   to the prompt after each command.
 - Interactive shell stdin now drains command lines already received in the same
@@ -211,7 +214,12 @@ AROS runtime notes:
 - A bare `dir` in the interactive SSH shell is translated to `list lformat %N`
   so directory listings are readable one entry per line. Non-interactive
   `ssh ... dir` keeps the native AROS `dir` output.
-- Full PTY-style interactive program support is still incomplete on AROS.
+- AROS PTY exec uses synthetic DOS file handles allocated with
+  `AllocDosObject()`, avoiding the old private `Input()` file-handle copy. A
+  bounded `telegram-test --telegram-client-console 1 1` run has been tested
+  through `ssh -tt`.
+- Full PTY-style interactive program support is still incomplete on AROS, but
+  bounded console-style programs can now receive stdin and produce output.
 
 Forwarded host ports:
 
@@ -244,9 +252,9 @@ Kickstart 51.51, Workbench 40.0
 
 `dir` has also been tested successfully. A `telegram-amiga` invalid-option test
 returned SSH exit status 1. Remote redirection such as `>/NIL:` is blocked with
-exit status 2. The backend is intentionally minimal: it is synchronous and
-should be used first for short development commands while SFTP/SCP and a fuller
-PTY path are stabilized.
+exit status 2. Non-PTY exec is intentionally synchronous and should be used for
+short automation commands. Interactive programs should be launched with
+`ssh -tt`.
 
 The repeatable host-side smoke test for the current AROS automation workflow is:
 
@@ -270,9 +278,14 @@ It validates:
 - `version` over non-interactive SSH.
 - rejection of `version >/NIL:` with exit status 2.
 - daemon health after the rejected redirection.
+- rejection of known interactive commands in non-PTY exec mode.
+- daemon health after the non-PTY interactive-command guard.
 - `telegram-test --help` exit status 0.
 - `telegram-test --definitely-invalid-option` exit status 1.
+- `version` through PTY exec.
+- a piped interactive shell sequence using `dir`, `cd`, `version`, and `exit`.
 - SCP upload/download byte comparison on `DH0:TGTEST`.
+- SFTP `mkdir`, upload, download, compare, remove, and `rmdir` on `DH0:TGTEST`.
 
 SFTP/SCP status:
 

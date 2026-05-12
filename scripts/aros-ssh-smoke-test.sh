@@ -37,35 +37,70 @@ expect_rc() {
 
 need ssh
 need scp
+need sftp
 need sshpass
 
 rm -f "$known_hosts"
 
-echo "1/6 ssh version"
+echo "1/10 ssh version"
 expect_rc 0 run_ssh version
 
-echo "2/6 rejected redirection"
+echo "2/10 rejected redirection"
 expect_rc 2 run_ssh "version >/NIL:"
 
-echo "3/6 daemon still healthy after redirection rejection"
+echo "3/10 daemon still healthy after redirection rejection"
 expect_rc 0 run_ssh version
 
-echo "4/6 telegram-amiga help command"
+echo "4/10 non-PTY interactive command guard"
+expect_rc 2 run_ssh "more ?"
+
+echo "5/10 daemon still healthy after non-PTY guard"
+expect_rc 0 run_ssh version
+
+echo "6/10 telegram-amiga help command"
 expect_rc 0 run_ssh "$telegram_test --help"
 
-echo "5/6 telegram-amiga nonzero exit propagation"
+echo "7/10 telegram-amiga nonzero exit propagation"
 expect_rc 1 run_ssh "$telegram_test --definitely-invalid-option"
 
-echo "6/6 scp round trip on $workdir"
+echo "8/10 PTY exec command"
+pty_out=$(mktemp "${TMPDIR:-/tmp}/bebbossh-aros-pty.XXXXXX")
+(sleep 1; :) | sshpass -p "$pass" ssh -tt $ssh_base_opts -p "$port" "$user@$host" version > "$pty_out" 2>&1
+grep "Kickstart" "$pty_out" >/dev/null
+
+echo "9/10 interactive shell sequence"
+shell_out=$(mktemp "${TMPDIR:-/tmp}/bebbossh-aros-shell.XXXXXX")
+(sleep 1; printf 'dir\ncd %s\nversion\ncd DH0:\nexit\n' "$workdir") | \
+  sshpass -p "$pass" ssh -tt $ssh_base_opts -p "$port" "$user@$host" > "$shell_out" 2>&1
+grep "Kickstart" "$shell_out" >/dev/null
+
+echo "10/10 scp and sftp round trips on $workdir"
 local_file=$(mktemp "${TMPDIR:-/tmp}/bebbossh-aros-scp.XXXXXX")
 back_file=$(mktemp "${TMPDIR:-/tmp}/bebbossh-aros-scp-back.XXXXXX")
 remote_file="$workdir/bebbossh-aros-smoke-test.txt"
-trap 'rm -f "$local_file" "$back_file"' EXIT HUP INT TERM
+sftp_back_file=$(mktemp "${TMPDIR:-/tmp}/bebbossh-aros-sftp-back.XXXXXX")
+sftp_batch=$(mktemp "${TMPDIR:-/tmp}/bebbossh-aros-sftp-batch.XXXXXX")
+sftp_dir="$workdir/bebbossh-aros-sftp-test"
+sftp_remote_file="$sftp_dir/payload.txt"
+trap 'rm -f "$local_file" "$back_file" "$sftp_back_file" "$sftp_batch" "$pty_out" "$shell_out"' EXIT HUP INT TERM
 
 printf 'bebbossh-aros smoke test\nhost=%s\nport=%s\n' "$host" "$port" > "$local_file"
 sshpass -p "$pass" scp $ssh_base_opts -P "$port" "$local_file" "$user@$host:$remote_file"
 sshpass -p "$pass" scp $ssh_base_opts -P "$port" "$user@$host:$remote_file" "$back_file"
 cmp "$local_file" "$back_file"
 expect_rc 0 run_ssh "delete $remote_file"
+
+cat > "$sftp_batch" <<EOF
+-rm $sftp_remote_file
+-rmdir $sftp_dir
+mkdir $sftp_dir
+put $local_file $sftp_remote_file
+get $sftp_remote_file $sftp_back_file
+rm $sftp_remote_file
+rmdir $sftp_dir
+EOF
+
+sshpass -p "$pass" sftp -oBatchMode=no $ssh_base_opts -P "$port" -b "$sftp_batch" "$user@$host"
+cmp "$local_file" "$sftp_back_file"
 
 echo "ok"

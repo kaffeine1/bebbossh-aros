@@ -170,6 +170,7 @@ public:
 
 	void cmdCD(char * q);
 	bool startCommand();
+	bool drainBufferedInput();
 	void autocomplete();
 	char * redrawRestOfLine(char *);
 	char * cursorLeft(char * out, int slen);
