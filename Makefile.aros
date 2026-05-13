@@ -8,6 +8,7 @@ ARFLAGS ?= rcs
 STRIP ?= strip
 STRIPFLAGS ?= --strip-unneeded -R.comment
 STRIP_OUTPUTS ?= $(if $(strip $(AROS_SDK_ROOT)),yes,)
+POST_LINK ?= :
 OUTDIR ?= aros-i386
 PACKAGE_DIR ?= dist/bebbossh-aros-i386
 AROS_TARGET_TRIPLET ?= i386-aros
@@ -91,30 +92,35 @@ $(OUTDIR)/bebbosshd: $(SSHD_OBJECTS) $(OUTDIR)/libcryptossh.a
 ifneq ($(strip $(STRIP_OUTPUTS)),)
 	$(STRIP) $(STRIPFLAGS) $@
 endif
+	$(POST_LINK)
 
 $(OUTDIR)/bebbosshkeygen: $(KEYGEN_OBJECTS) $(OUTDIR)/libcryptossh.a
 	$(CXX) $(LDFLAGS) $(STARTUP) $(KEYGEN_OBJECTS) $(LIBS) -o $@
 ifneq ($(strip $(STRIP_OUTPUTS)),)
 	$(STRIP) $(STRIPFLAGS) $@
 endif
+	$(POST_LINK)
 
 $(OUTDIR)/test%: $(OUTDIR)/test%.o $(OUTDIR)/c++support-lib.o $(OUTDIR)/libcryptossh.a
 	$(CXX) $(LDFLAGS) $(STARTUP) $(CFLAGS) $(CXXFLAGS) $< $(OUTDIR)/c++support-lib.o $(LIBS) -o $@
 ifneq ($(strip $(STRIP_OUTPUTS)),)
 	$(STRIP) $(STRIPFLAGS) $@
 endif
+	$(POST_LINK)
 
 $(OUTDIR)/AROSPROBE: $(OUTDIR)/aros_probe.o $(OUTDIR)/aros_startup_flags.o
 	$(CC) $(LDFLAGS) $(STARTUP) $^ $(SDK_LIBS) -o $@
 ifneq ($(strip $(STRIP_OUTPUTS)),)
 	$(STRIP) $(STRIPFLAGS) $@
 endif
+	$(POST_LINK)
 
 $(OUTDIR)/AROSPROBE_RET: $(OUTDIR)/aros_probe_ret.o $(OUTDIR)/aros_startup_flags.o
 	$(CC) $(LDFLAGS) $(STARTUP) $^ $(SDK_LIBS) -o $@
 ifneq ($(strip $(STRIP_OUTPUTS)),)
 	$(STRIP) $(STRIPFLAGS) $@
 endif
+	$(POST_LINK)
 
 $(OUTDIR)/%.o: $(srcdir)/%.cpp $(MAKEFILE_LIST) $(HEADERS) | $(OUTDIR)
 	$(CXX) -c $(CFLAGS) $(CXXFLAGS) $< -o $@

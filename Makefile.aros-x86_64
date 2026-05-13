@@ -9,5 +9,6 @@ PACKAGE_DIR ?= dist/bebbossh-aros-x86_64
 AROS_TARGET_TRIPLET ?= x86_64-aros
 SDK_GCC_VERSION ?= 10.5.0
 STRIP_OUTPUTS ?= yes
+POST_LINK = printf '\013' | dd of=$@ bs=1 seek=8 conv=notrunc 2>/dev/null
 
 include Makefile.aros

@@ -103,6 +103,11 @@ SDK has the same legacy `startup.o`, `libcrtprog.a`, `libcrt.a`,
 path. The generated x86_64 crosstools instead build and link correctly through
 the compiler driver's configured sysroot.
 
+AROS One x86_64 currently ships ELF64 AROS commands with ELF ABI version 11.
+The x86_64 wrapper therefore patches `EI_ABIVERSION` to 11 after linking and
+stripping. Binaries left at ABI version 1 are rejected by the AROS One x86_64
+Shell as not executable before their startup code runs.
+
 The first runtime validation goal for x86_64 is deliberately small:
 
 - `bebbosshkeygen` starts and creates an Ed25519 host key.

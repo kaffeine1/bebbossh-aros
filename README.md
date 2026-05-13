@@ -113,6 +113,10 @@ Do not set `AROS_SDK_ROOT` for generated x86_64 AROS crosstools unless that SDK
 also provides the legacy `startup.o` and `libcrt*`/`libstdc.static` layout used
 by the i386 AROS One SDK path.
 
+`Makefile.aros-x86_64` marks generated ELF files with AROS ABI version 11,
+matching the current AROS One x86_64 runtime. Without this marker AROS One
+x86_64 rejects otherwise valid ELF64 AROS binaries as not executable.
+
 ### AROS automation workflow
 
 For current AROS One i386 automation, prefer non-interactive SSH commands and
