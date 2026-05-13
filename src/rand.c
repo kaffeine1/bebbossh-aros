@@ -39,7 +39,13 @@
   #include <hardware/custom.h>
   #include <proto/dos.h>
 #elif defined(__AROS__)
+  #include <stdint.h>
+  #include <sys/time.h>
   #include <time.h>
+  #include <dos/dos.h>
+  #include <exec/memory.h>
+  #include <proto/dos.h>
+  #include <proto/exec.h>
 #elif defined(__APPLE__)
   #include <stdlib.h>
 #elif defined(__unix__)
@@ -71,13 +77,48 @@ void randfill(void * _to, unsigned len) {
 	}
 #elif defined(__AROS__)
     unsigned char *to = (unsigned char *)_to;
+    static uint64_t state;
     static int seeded;
+
+    struct timeval tv;
+    struct DateStamp ds;
+    uint64_t entropy = (uint64_t)(uintptr_t)_to ^ ((uint64_t)len << 32);
+
+    if (gettimeofday(&tv, 0) == 0)
+        entropy ^= ((uint64_t)tv.tv_sec << 32) ^ (uint64_t)tv.tv_usec;
+
+    DateStamp(&ds);
+    entropy ^= ((uint64_t)(uint32_t)ds.ds_Days << 33) ^
+            ((uint64_t)(uint32_t)ds.ds_Minute << 17) ^
+            (uint32_t)ds.ds_Tick;
+    entropy ^= ((uint64_t)(uintptr_t)FindTask(0) << 7) ^
+            (uint64_t)(uintptr_t)&entropy;
+    entropy ^= ((uint64_t)AvailMem(MEMF_LARGEST) << 29) ^
+            (uint64_t)AvailMem(MEMF_ANY);
+    entropy ^= ((uint64_t)(unsigned)time(0) << 21) ^
+            (uint64_t)(unsigned)clock();
+
     if (!seeded) {
-        srand((unsigned)time(0) ^ (unsigned)(uintptr_t)_to);
+        state = entropy ^ UINT64_C(0x9e3779b97f4a7c15);
         seeded = 1;
+    } else {
+        state ^= entropy + UINT64_C(0x9e3779b97f4a7c15) + (state << 6) + (state >> 2);
     }
+
     for (unsigned i = 0; i < len; ++i) {
-        to[i] = (unsigned char)(rand() & 0xff);
+        if ((i & 31) == 0) {
+            if (gettimeofday(&tv, 0) == 0)
+                state ^= ((uint64_t)tv.tv_usec << 11) ^ (uint64_t)tv.tv_sec;
+            state ^= ((uint64_t)AvailMem(MEMF_LARGEST) << 13) ^
+                    (uint64_t)(uintptr_t)FindTask(0);
+        }
+
+        state += UINT64_C(0x9e3779b97f4a7c15);
+        uint64_t x = state;
+        x = (x ^ (x >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
+        x = (x ^ (x >> 27)) * UINT64_C(0x94d049bb133111eb);
+        x ^= x >> 31;
+        to[i] = (unsigned char)(x >> ((i & 7) * 8));
     }
 #elif defined(__APPLE__)
     arc4random_buf(_to, len);

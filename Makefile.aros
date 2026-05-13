@@ -1,4 +1,4 @@
-# Native AROS/i386 build for the first porting milestone.
+# Native or SDK-based AROS build.
 # Builds the SSH daemon, key generator, and crypto self-tests, using a static library.
 
 CC ?= gcc
@@ -7,8 +7,10 @@ AR ?= ar
 ARFLAGS ?= rcs
 STRIP ?= strip
 STRIPFLAGS ?= --strip-unneeded -R.comment
+STRIP_OUTPUTS ?= $(if $(strip $(AROS_SDK_ROOT)),yes,)
 OUTDIR ?= aros-i386
 PACKAGE_DIR ?= dist/bebbossh-aros-i386
+AROS_TARGET_TRIPLET ?= i386-aros
 srcdir := src
 
 AROS_SDK_ROOT ?=
@@ -20,10 +22,10 @@ SDK_LIBS =
 STARTUP =
 else
 SDK_GCC_VERSION ?= 6.5.0
-SDK_GCC_ROOT := $(AROS_SDK_ROOT)/lib/gcc/i386-aros/$(SDK_GCC_VERSION)
+SDK_GCC_ROOT ?= $(AROS_SDK_ROOT)/lib/gcc/$(AROS_TARGET_TRIPLET)/$(SDK_GCC_VERSION)
 SDK_CPPFLAGS = -nostdinc \
 	-isystem "$(SDK_GCC_ROOT)/include/c++" \
-	-isystem "$(SDK_GCC_ROOT)/include/c++/i386-aros" \
+	-isystem "$(SDK_GCC_ROOT)/include/c++/$(AROS_TARGET_TRIPLET)" \
 	-isystem "$(SDK_GCC_ROOT)/include" \
 	-isystem "$(SDK_GCC_ROOT)/include-fixed" \
 	-I"$(AROS_SDK_ROOT)/include/aros/posixc" \
@@ -32,7 +34,7 @@ SDK_CPPFLAGS = -nostdinc \
 SDK_LDFLAGS = -nostdlib -L"$(AROS_SDK_ROOT)/lib" -L"$(SDK_GCC_ROOT)"
 SDK_LIBS = -lautoinit -lcrtprog -lcrt -lstdlib -lstdc.static \
 	-lamiga -laros -ldos -lexec -lutility -lgcc -lautoinit
-STARTUP = "$(AROS_SDK_ROOT)/lib/startup.o"
+STARTUP ?= "$(AROS_SDK_ROOT)/lib/startup.o"
 endif
 
 CFLAGS ?= $(SDK_CPPFLAGS) -Iinclude -O2 -fno-builtin -D__AROS__ -include compat_endian.h
@@ -86,38 +88,38 @@ $(OUTDIR)/libcryptossh.a: $(LIB_OBJECTS)
 
 $(OUTDIR)/bebbosshd: $(SSHD_OBJECTS) $(OUTDIR)/libcryptossh.a
 	$(CXX) $(LDFLAGS) $(STARTUP) $(SSHD_OBJECTS) $(LIBS) -o $@
-ifneq ($(strip $(AROS_SDK_ROOT)),)
+ifneq ($(strip $(STRIP_OUTPUTS)),)
 	$(STRIP) $(STRIPFLAGS) $@
 endif
 
 $(OUTDIR)/bebbosshkeygen: $(KEYGEN_OBJECTS) $(OUTDIR)/libcryptossh.a
 	$(CXX) $(LDFLAGS) $(STARTUP) $(KEYGEN_OBJECTS) $(LIBS) -o $@
-ifneq ($(strip $(AROS_SDK_ROOT)),)
+ifneq ($(strip $(STRIP_OUTPUTS)),)
 	$(STRIP) $(STRIPFLAGS) $@
 endif
 
 $(OUTDIR)/test%: $(OUTDIR)/test%.o $(OUTDIR)/c++support-lib.o $(OUTDIR)/libcryptossh.a
 	$(CXX) $(LDFLAGS) $(STARTUP) $(CFLAGS) $(CXXFLAGS) $< $(OUTDIR)/c++support-lib.o $(LIBS) -o $@
-ifneq ($(strip $(AROS_SDK_ROOT)),)
+ifneq ($(strip $(STRIP_OUTPUTS)),)
 	$(STRIP) $(STRIPFLAGS) $@
 endif
 
 $(OUTDIR)/AROSPROBE: $(OUTDIR)/aros_probe.o $(OUTDIR)/aros_startup_flags.o
 	$(CC) $(LDFLAGS) $(STARTUP) $^ $(SDK_LIBS) -o $@
-ifneq ($(strip $(AROS_SDK_ROOT)),)
+ifneq ($(strip $(STRIP_OUTPUTS)),)
 	$(STRIP) $(STRIPFLAGS) $@
 endif
 
 $(OUTDIR)/AROSPROBE_RET: $(OUTDIR)/aros_probe_ret.o $(OUTDIR)/aros_startup_flags.o
 	$(CC) $(LDFLAGS) $(STARTUP) $^ $(SDK_LIBS) -o $@
-ifneq ($(strip $(AROS_SDK_ROOT)),)
+ifneq ($(strip $(STRIP_OUTPUTS)),)
 	$(STRIP) $(STRIPFLAGS) $@
 endif
 
-$(OUTDIR)/%.o: $(srcdir)/%.cpp Makefile.aros $(HEADERS) | $(OUTDIR)
+$(OUTDIR)/%.o: $(srcdir)/%.cpp $(MAKEFILE_LIST) $(HEADERS) | $(OUTDIR)
 	$(CXX) -c $(CFLAGS) $(CXXFLAGS) $< -o $@
 
-$(OUTDIR)/%.o: $(srcdir)/%.c Makefile.aros $(HEADERS) | $(OUTDIR)
+$(OUTDIR)/%.o: $(srcdir)/%.c $(MAKEFILE_LIST) $(HEADERS) | $(OUTDIR)
 	$(CC) -c $(CFLAGS) $< -o $@
 
 run-tests: tests

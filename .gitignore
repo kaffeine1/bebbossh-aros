@@ -12,3 +12,4 @@ dist/
 /.clang-format
 /linux/
 /aros-i386*/
+/aros-x86_64*/

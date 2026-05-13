@@ -314,7 +314,7 @@ void handleMsg(struct Message * msg) {
 			logme(L_DEBUG, "ACTION_CHANGE_SIGNAL %s new port %08lX old port %08lX", sc->getName(), (void *)packet->dp_Arg2, oport);
 
 			packet->dp_Res1 = DOSTRUE;
-			packet->dp_Res2 = (LONG) oport; // report old/current port
+			packet->dp_Res2 = (SIPTR) oport; // report old/current port
 		}
 			break;
 		case ACTION_FINDOUTPUT:
@@ -328,7 +328,7 @@ void handleMsg(struct Message * msg) {
 			fh->fh_Port = 1;
 			fh->fh_Type = port;
 			fh->fh_Pos = fh->fh_End = -1;
-			fh->fh_Arg1 = (LONG)sc;
+			fh->fh_Arg1 = (SIPTR)sc;
 
 			if (sc) {
 				packet->dp_Res1 = DOSTRUE;
@@ -445,42 +445,54 @@ void cleanup() {
 	if (acceptSock != -1) {
 		logme(L_FINE, "closing listen socket %ld", acceptSock);
 		CloseSocket(acceptSock);
+		acceptSock = -1;
 	}
 #if BEBBOSSH_AMIGA_API
 	if (SocketBase) {
 		logme(L_FINE, "closing %s", bsdName);
 		CloseLibrary(SocketBase);
+		SocketBase = 0;
 	}
 
 	if (TimerBase) {
 		logme(L_FINE, "closing timer.device");
-		if (timerOn && CheckIO(&timerIO->tr_node)) {
-			logme(L_DEBUG, "abort IO");
-			AbortIO(&timerIO->tr_node);
+		if (timerOn && timerIO) {
+			if (!CheckIO(&timerIO->tr_node)) {
+				logme(L_DEBUG, "abort IO");
+				AbortIO(&timerIO->tr_node);
+			}
 			WaitIO(&timerIO->tr_node);
 		}
+		timerOn = false;
 		CloseDevice(&timerIO->tr_node);
+		TimerBase = 0;
 	}
 
 	if (timerIO) {
 		logme(L_FINE, "free timer request");
 		free(timerIO);
+		timerIO = 0;
 	}
 
 	if (timerPort) {
 		logme(L_FINE, "free timer message port");
 		DeleteMsgPort(timerPort);
+		timerPort = 0;
 	}
 
 	if (port) {
 		logme(L_FINE, "free default message port");
 		DeleteMsgPort(port);
+		port = 0;
 	}
 
 	if (orgDir)
 		CurrentDir(orgDir);
-	if (curDir)
+	orgDir = 0;
+	if (curDir) {
 		UnLock(curDir);
+		curDir = 0;
+	}
 #endif
 }
 

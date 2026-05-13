@@ -1,7 +1,13 @@
-# BebboSSH AROS/i386 Porting Notes
+# BebboSSH AROS Porting Notes
 
-Current target: AROS i386 first. x86_64 is intentionally deferred until the
-i386 port builds and runs cleanly.
+This is a multi-target AROS porting tree. The same source is used for i386 and
+x86_64, while makefiles, package names, release tags, and validation status are
+kept target-specific.
+
+| Target | Status | Build entry point | Notes |
+| --- | --- | --- | --- |
+| AROS i386 `alt-abiv0` | stable / validated | `Makefile.aros` | current published runtime kits |
+| AROS x86_64 | builds / runtime validation pending | `Makefile.aros-x86_64` | use native GCC or host crosstools with integrated sysroot |
 
 This port is maintained as a derivative of Stefan "Bebbo" Franke's original
 BebboSSH source tree:
@@ -10,7 +16,7 @@ BebboSSH source tree:
 https://franke.ms/git/bebbo/bebbossh
 ```
 
-AROS/i386 porting changes are by Michele Dipace
+AROS porting changes are by Michele Dipace
 <michele.dipace@kaffeine.net> and are licensed under GPLv3 or later,
 consistent with the upstream project.
 
@@ -19,8 +25,9 @@ consistent with the upstream project.
 - Added `include/platform.h` to separate Amiga API usage from Linux/POSIX-only
   server paths.
 - Added `include/compat_endian.h` for hosts without Linux `<endian.h>`.
-- Added `Makefile.aros` for AROS/i386 builds of `bebbosshd`,
-  `bebbosshkeygen`, and the crypto self-tests.
+- Added `Makefile.aros` for shared AROS builds of `bebbosshd`,
+  `bebbosshkeygen`, and the crypto self-tests, with target triplet overrides.
+- Added `Makefile.aros-x86_64` as an experimental AROS x86_64 build wrapper.
 - Kept m68k assembly out of the AROS build.
 - Kept the interactive AmigaDOS shell path enabled for AROS, while leaving the
   Linux PTY/PAM path Linux-only.
@@ -29,12 +36,15 @@ consistent with the upstream project.
 - Added `PROGDIR:` fallbacks for ISO-based AROS One testing.
 - Added read-only password-file support so test ISOs can authenticate without
   writing back hashed passwords.
+- Hardened the AROS `randfill()` fallback by mixing wall-clock time,
+  microseconds, DOS ticks, current task address, heap state, and stack address
+  into an internal 64-bit mixer instead of seeding `rand()` from `time(0)`.
 - Added a minimal AROS remote `exec` backend using `SystemTags()` for
   non-interactive commands.
 - Adjusted SFTP path validation on AROS to use `GetDeviceProc()`, so assigns
   such as `T:` and `DH0:` resolve correctly.
 
-## Build inside AROS/i386
+## Stable AROS i386 build
 
 The current AROS One VM freezes during basic `RAM:` operations such as
 `makedir` and source copies, so the reliable path for now is host-side
@@ -48,7 +58,7 @@ make -f Makefile.aros all
 make -f Makefile.aros run-tests
 ```
 
-The expected first build products are:
+The expected default build products are:
 
 - `aros-i386/bebbosshd`
 - `aros-i386/bebbosshkeygen`
@@ -57,6 +67,73 @@ The expected first build products are:
 - `aros-i386/testEd25519`
 - `aros-i386/testGCM`
 - `aros-i386/testSHA512`
+
+## Experimental AROS x86_64 build
+
+The x86_64 wrapper can be used either inside an AROS x86_64 development
+environment or from host-side `x86_64-aros` crosstools whose GCC was configured
+with an AROS sysroot:
+
+```sh
+make -f Makefile.aros-x86_64 bebbosshd bebbosshkeygen
+make -f Makefile.aros-x86_64 package-aros-runtime
+```
+
+The expected first build products are:
+
+```text
+aros-x86_64/bebbosshd
+aros-x86_64/bebbosshkeygen
+```
+
+For host-side crosstools with an integrated sysroot, override the tool commands
+and let the compiler driver provide startup objects and default AROS libraries:
+
+```sh
+make -f Makefile.aros-x86_64 package-aros-runtime \
+  CC=<toolchain>/x86_64-aros-gcc \
+  CXX=<toolchain>/x86_64-aros-g++ \
+  AR=<toolchain>/x86_64-aros-ar \
+  STRIP=<toolchain>/x86_64-aros-strip
+```
+
+Do not set `AROS_SDK_ROOT` for generated x86_64 AROS crosstools unless that
+SDK has the same legacy `startup.o`, `libcrtprog.a`, `libcrt.a`,
+`libstdlib.a`, and `libstdc.static.a` layout expected by the AROS One i386 SDK
+path. The generated x86_64 crosstools instead build and link correctly through
+the compiler driver's configured sysroot.
+
+The first runtime validation goal for x86_64 is deliberately small:
+
+- `bebbosshkeygen` starts and creates an Ed25519 host key.
+- `bebbosshd` starts, binds, and authenticates from a modern OpenSSH client.
+- Non-PTY exec returns complete output and exit status for simple commands
+  such as `version`.
+- SFTP/SCP upload and download work on a persistent volume such as `DH0:`.
+- PTY and interactive shell tests run after the non-PTY path is stable.
+
+The AROS-specific task launch code now uses real `struct TagItem` arrays with
+`IPTR` payloads, and synthetic DOS file handles store channel pointers through
+`SIPTR` fields. This avoids the known pointer truncation risks from the i386
+implementation when compiling for x86_64.
+
+## Release naming
+
+Use architecture-specific release tags and assets so users can identify the
+correct kit without reading the build log:
+
+```text
+v0.2.1-aros-i386
+bebbossh-aros-i386-<version>.zip
+bebbossh-aros-i386-<version>.tar.gz
+
+v0.3.0-aros-x86_64-alpha1
+bebbossh-aros-x86_64-<version>.zip
+bebbossh-aros-x86_64-<version>.tar.gz
+```
+
+Only mark x86_64 releases stable after the same smoke-test class used for i386
+passes on an AROS x86_64 system.
 
 ## QEMU environment
 
@@ -133,8 +210,9 @@ dist/bebbossh-aros-i386-abiv0.tar.gz
 dist/bebbossh-aros-i386-abiv0.zip
 ```
 
-The directory contains the static AROS/i386 binaries, example config files,
-runtime README, upstream license files, porting notes, and `SHA256SUMS`.
+The directory contains the static AROS binaries for the selected target,
+example config files, runtime README, upstream license files, porting notes,
+and `SHA256SUMS`.
 It intentionally does not include private host keys or real passwords.
 
 Package validation on AROS One i386:
@@ -182,7 +260,8 @@ bebbosshd -v5
 AROS runtime notes:
 
 - The classic Amiga `grabFx()` file-handle hack is disabled on AROS because it
-  reads private memory before `BADDR(Input())` and can fault on AROS/i386.
+  reads private memory before `BADDR(Input())` and can fault on the validated
+  AROS i386 runtime.
 - AROS logging does not read the m68k custom chip at `0xdff000`.
 - If `ENVARC:ssh/sshd_config` is missing, AROS builds fall back to
   `PROGDIR:sshd_config`.
@@ -192,8 +271,13 @@ AROS runtime notes:
 - If the password file can only be opened read-only, plaintext test passwords
   are accepted without rewriting the file to `{ssha256}` format. This is useful
   for ISO-based tests.
-- `bebbosshkeygen` is built as a static AROS/i386 executable and has been
-  launched successfully on AROS One i386 far enough to generate ED25519
+- AROS does not provide a known system CSPRNG in this porting environment. The
+  current `randfill()` path is a best-effort fallback that mixes several local
+  runtime sources and is materially stronger than the original `time(0)` seed,
+  but it should be replaced if a real AROS CSPRNG or entropy device becomes
+  available.
+- `bebbosshkeygen` is built as a static AROS executable. The i386 build has
+  been launched successfully on AROS One i386 far enough to generate ED25519
   randomart.
 - Remote `exec` is implemented for simple non-interactive commands on AROS.
   The backend runs `SystemTags()` inside a child task, redirects command output

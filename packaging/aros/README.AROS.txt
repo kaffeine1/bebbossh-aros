@@ -1,7 +1,7 @@
-BebboSSH AROS/i386 Runtime Kit
-==============================
+BebboSSH AROS Runtime Kit
+=========================
 
-This kit contains the AROS/i386 alt-abiv0 port of BebboSSH server tools:
+This kit contains BebboSSH server tools for AROS:
 
 - bebbosshd
 - bebbosshkeygen
@@ -10,6 +10,11 @@ This kit contains the AROS/i386 alt-abiv0 port of BebboSSH server tools:
 - README.AROS.txt
 - COPYING, LICENSE, README.md, AROS_PORTING.md
 
+The CPU architecture is determined by the release asset name and the binaries
+inside the kit. Published i386 kits use names such as bebbossh-aros-i386-*.
+Future x86_64 kits should use names such as bebbossh-aros-x86_64-* and must be
+validated separately.
+
 Legal and Attribution
 ---------------------
 
@@ -17,7 +22,7 @@ This is a derivative of Stefan "Bebbo" Franke's BebboSSH project:
 
   https://franke.ms/git/bebbo/bebbossh
 
-AROS/i386 porting changes are by Michele Dipace
+AROS porting changes are by Michele Dipace
 <michele.dipace@kaffeine.net> and are licensed under GPLv3 or later,
 consistent with the upstream project. Keep COPYING, LICENSE, and upstream
 notices with redistributions.
@@ -27,12 +32,12 @@ matching Git tag in the public repository:
 
   https://github.com/kaffeine1/bebbossh-aros/releases
 
-For example, release v0.1.3-aros-i386 corresponds to:
+For example, release v0.2.1-aros-i386 corresponds to:
 
-  https://github.com/kaffeine1/bebbossh-aros/tree/v0.1.3-aros-i386
+  https://github.com/kaffeine1/bebbossh-aros/tree/v0.2.1-aros-i386
 
 The binaries in this kit are statically linked with libcryptossh.a. There is
-no separate libcryptossh.library requirement for the current AROS/i386 port.
+no separate libcryptossh.library requirement for the current AROS port.
 
 Install
 -------
@@ -87,7 +92,7 @@ a release or test VM update.
 Current Runtime Status
 ----------------------
 
-Verified on AROS One i386 alt-abiv0:
+Verified for the published AROS One i386 alt-abiv0 runtime kit:
 
 - SSH protocol identification, KEX, and password authentication.
 - Remote exec for simple non-interactive commands such as version and dir.
@@ -99,6 +104,11 @@ Verified on AROS One i386 alt-abiv0:
   compare.
 - Clean install in a fresh DH0: directory, including host key generation with
   bebbosshkeygen and daemon startup from that directory.
+
+AROS x86_64 is an experimental parallel target. Build artifacts produced with
+Makefile.aros-x86_64 must be validated on an AROS x86_64 system before they
+are treated as a release kit, and should be distributed with x86_64-specific
+asset names.
 
 Known Limits
 ------------
@@ -124,6 +134,9 @@ Known Limits
   daemon's synchronous exec path.
 - Shell redirection and pipes (`>`, `<`, `|`) are rejected on AROS until they
   are stable. Rejected redirection returns SSH exit status 2.
+- The AROS random fallback mixes multiple local runtime entropy sources because
+  no system CSPRNG is currently used by this port. Replace it with a real AROS
+  CSPRNG if one becomes available.
 - The test password in passwd.example is not safe. Change it before use.
 - Do not distribute private host keys generated for local testing.
 

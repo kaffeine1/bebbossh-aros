@@ -1,0 +1,13 @@
+# Experimental AROS x86_64 build wrapper.
+# Prefer an x86_64-aros GCC whose sysroot is already configured, or run this
+# inside an AROS x86_64 development environment. Do not set AROS_SDK_ROOT for
+# generated x86_64 crosstools unless that SDK provides the legacy startup and
+# crt libraries expected by Makefile.aros.
+
+OUTDIR ?= aros-x86_64
+PACKAGE_DIR ?= dist/bebbossh-aros-x86_64
+AROS_TARGET_TRIPLET ?= x86_64-aros
+SDK_GCC_VERSION ?= 10.5.0
+STRIP_OUTPUTS ?= yes
+
+include Makefile.aros

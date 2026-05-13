@@ -769,7 +769,7 @@ void ShellChannel::startProc() {
 					SYS_Input, input ? input : Input(),
 					SYS_Output, output,
 					SYS_Error, output,
-					SYS_UserShell, (ULONG)TRUE,
+					SYS_UserShell, (IPTR)TRUE,
 					TAG_DONE);
 			CurrentDir(oldDir);
 			Close(output);
@@ -793,27 +793,27 @@ void ShellChannel::startProc() {
 		i->fh_Type = port;
 		i->fh_Pos = -1;
 		i->fh_End = -1;
-		i->fh_Arg1 = (LONG)sc;
+		i->fh_Arg1 = (SIPTR)sc;
 
 		o->fh_Flags = 1; // with buffer
 		o->fh_Port = 1; // interactive
 		o->fh_Type = port;
 		o->fh_Pos = -1;
 		o->fh_End = -1;
-		o->fh_Arg1 = (LONG)sc;
+		o->fh_Arg1 = (SIPTR)sc;
 
 		e->fh_Flags = 1; // with buffer
 		e->fh_Port = 1; // interactive
 		e->fh_Type = port;
 		e->fh_Pos = -1;
 		e->fh_End = -1;
-		e->fh_Arg1 = (LONG)sc;
+		e->fh_Arg1 = (SIPTR)sc;
 
 		SystemTags(sc->xbuffer,
 				SYS_Input, MKBADDR(i),
 				SYS_Output, MKBADDR(o),
 				SYS_Error, MKBADDR(e),
-				SYS_UserShell, (ULONG) TRUE,
+				SYS_UserShell, (IPTR)TRUE,
 				NP_StackSize, sc->stackSize,
 				TAG_DONE
 				);
@@ -834,7 +834,7 @@ void ShellChannel::startProc() {
 
 		memcpy(i, theInput, theInputSize);
 		i->fh_Type = port;
-		i->fh_Arg1 = (LONG)sc;
+		i->fh_Arg1 = (SIPTR)sc;
 
 		//memcpy(o, theOutput, theOutputSize);
 		o->fh_Flags = 1; // with buffer
@@ -851,14 +851,14 @@ void ShellChannel::startProc() {
 			o->fh_Func3 = theOutput->fh_Func3;
 		}
 
-		o->fh_Arg1 = (LONG)sc;
+		o->fh_Arg1 = (SIPTR)sc;
 
 		SystemTags(sc->xbuffer,
 				SYS_Input, MKBADDR(i),
 				SYS_Output, MKBADDR(o),
-				SYS_UserShell, (ULONG) TRUE,
+				SYS_UserShell, (IPTR)TRUE,
 				NP_StackSize, sc->stackSize,
-				NP_ExitCode, (ULONG) endProc,
+				NP_ExitCode, (IPTR)endProc,
 				TAG_DONE
 				);
 	}
@@ -878,13 +878,13 @@ void ShellChannel::startProc() {
 		i->fh_Port = 1; // interactive
 		i->fh_Type = port;
 		i->fh_Func1 = readFx;
-		i->fh_Arg1 = (LONG)sc;
+		i->fh_Arg1 = (SIPTR)sc;
 
 		o->fh_Flags = 1; // with buffer
 		o->fh_Type = port;
 		o->fh_Func2 = writeFx;
 		o->fh_Func3 = flushFx;
-		o->fh_Arg1 = (LONG)sc;
+		o->fh_Arg1 = (SIPTR)sc;
 
 		struct TagItem tags[6];
 		tags[0].ti_Tag = SYS_Input;
@@ -892,11 +892,11 @@ void ShellChannel::startProc() {
 		tags[1].ti_Tag = SYS_Output;
 		tags[1].ti_Data = MKBADDR(o);
 		tags[2].ti_Tag = SYS_UserShell;
-		tags[2].ti_Data = (ULONG)TRUE;
+		tags[2].ti_Data = (IPTR)TRUE;
 		tags[3].ti_Tag = NP_StackSize;
 		tags[3].ti_Data = sc->stackSize;
 		tags[4].ti_Tag = NP_ExitCode;
-		tags[4].ti_Data = (ULONG)endProc;
+		tags[4].ti_Data = (IPTR)endProc;
 		tags[5].ti_Tag = TAG_DONE;
 		SystemTagList(sc->xbuffer, tags);
 
@@ -978,14 +978,16 @@ bool ShellChannel::startArosExecFile(bool closeAfterCommand) {
 
 	logme(L_DEBUG, "@%ld:%ld starting AROS exec task %s with cmd `%s`", server->getSockFd(), channel, server->name, xbuffer);
 	running = true;
-	ULONG tags[] = { NP_Entry, (ULONG )startProc,
-			NP_StackSize, stackSize,
-			NP_Cli, 1,
-			NP_Name, (ULONG )server->name,
-			NP_CurrentDir, (ULONG)DupLock(dir),
-			NP_ExitData, (ULONG)this,
-			TAG_END};
-	CreateNewProcTagList((struct TagItem *)tags);
+	struct TagItem tags[] = {
+			{ NP_Entry, (IPTR)startProc },
+			{ NP_StackSize, stackSize },
+			{ NP_Cli, 1 },
+			{ NP_Name, (IPTR)server->name },
+			{ NP_CurrentDir, (IPTR)DupLock(dir) },
+			{ NP_ExitData, (IPTR)this },
+			{ TAG_DONE, 0 }
+	};
+	CreateNewProcTagList(tags);
 	return true;
 }
 
@@ -1015,7 +1017,7 @@ bool ShellChannel::runArosExec(bool closeAfterCommand) {
 			SYS_Input, input ? input : Input(),
 			SYS_Output, output,
 			SYS_Error, output,
-			SYS_UserShell, (ULONG)TRUE,
+			SYS_UserShell, (IPTR)TRUE,
 			TAG_DONE);
 	CurrentDir(oldDir);
 
@@ -1153,14 +1155,16 @@ bool ShellChannel::startCommand(){
 
 	logme(L_DEBUG, "@%ld:%ld starting task %s with cmd `%s`", server->getSockFd(), channel, server->name, xbuffer);
 	running = true;
-	ULONG tags[] = { NP_Entry, (ULONG )startProc,
-			NP_StackSize, stackSize,
-			NP_Cli, 1,
-			NP_Name, (ULONG )server->name,
-			NP_CurrentDir, (ULONG)DupLock(dir),
-			NP_ExitData, (ULONG)this,
-			TAG_END};
-	CreateNewProcTagList((struct TagItem *)tags);
+	struct TagItem tags[] = {
+			{ NP_Entry, (IPTR)startProc },
+			{ NP_StackSize, stackSize },
+			{ NP_Cli, 1 },
+			{ NP_Name, (IPTR)server->name },
+			{ NP_CurrentDir, (IPTR)DupLock(dir) },
+			{ NP_ExitData, (IPTR)this },
+			{ TAG_DONE, 0 }
+	};
+	CreateNewProcTagList(tags);
 	return true;
 }
 
