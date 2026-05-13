@@ -6,9 +6,11 @@ CXX ?= g++
 AR ?= ar
 ARFLAGS ?= rcs
 STRIP ?= strip
+OBJCOPY ?= objcopy
 STRIPFLAGS ?= --strip-unneeded -R.comment
 STRIP_OUTPUTS ?= $(if $(strip $(AROS_SDK_ROOT)),yes,)
 POST_LINK ?= :
+TARGET_CFLAGS ?=
 OUTDIR ?= aros-i386
 PACKAGE_DIR ?= dist/bebbossh-aros-i386
 AROS_TARGET_TRIPLET ?= i386-aros
@@ -38,7 +40,7 @@ SDK_LIBS = -lautoinit -lcrtprog -lcrt -lstdlib -lstdc.static \
 STARTUP ?= "$(AROS_SDK_ROOT)/lib/startup.o"
 endif
 
-CFLAGS ?= $(SDK_CPPFLAGS) -Iinclude -O2 -fno-builtin -D__AROS__ -include compat_endian.h
+CFLAGS ?= $(SDK_CPPFLAGS) -Iinclude -O2 -fno-builtin -D__AROS__ -include compat_endian.h $(TARGET_CFLAGS)
 CXXFLAGS ?= -fno-exceptions -fno-rtti
 LDFLAGS ?= $(SDK_LDFLAGS) -L$(OUTDIR)
 LIBS = -lcryptossh $(SDK_LIBS)

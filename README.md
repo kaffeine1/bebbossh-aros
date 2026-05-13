@@ -116,6 +116,16 @@ by the i386 AROS One SDK path.
 `Makefile.aros-x86_64` marks generated ELF files with AROS ABI version 11,
 matching the current AROS One x86_64 runtime. Without this marker AROS One
 x86_64 rejects otherwise valid ELF64 AROS binaries as not executable.
+The wrapper also builds with x86_64-safe code model and unwind-table settings
+so the final AROS ELF64 binaries keep relocation records to `R_X86_64_64`.
+When using host-side crosstools, pass the matching `OBJCOPY` if it is not named
+`objcopy`.
+
+Do not use `Qemu Vfat` as proof that an x86_64 executable is valid. On the
+current AROS One x86_64 VM, even a native AROS command copied through the QEMU
+FAT shared disk can be rejected as not executable after copying to `DH0:`.
+Use a byte-preserving transfer path, such as an ISO image or a native AROS
+volume, before judging runtime validity.
 
 ### AROS automation workflow
 

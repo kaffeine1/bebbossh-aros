@@ -108,6 +108,12 @@ The x86_64 wrapper therefore patches `EI_ABIVERSION` to 11 after linking and
 stripping. Binaries left at ABI version 1 are rejected by the AROS One x86_64
 Shell as not executable before their startup code runs.
 
+The wrapper also uses an x86_64-safe code model and disables unwind-table and
+hot/cold partition output that introduced unsupported relocation records in
+early builds. The intended final relocation shape is only `R_X86_64_64`;
+`R_X86_64_32`, `R_X86_64_PC32`, and `R_X86_64_PLT32` should not appear in the
+linked AROS ELF64 executables.
+
 The first runtime validation goal for x86_64 is deliberately small:
 
 - `bebbosshkeygen` starts and creates an Ed25519 host key.
@@ -154,6 +160,13 @@ Do not run `make` directly inside `Qemu Vfat:`. The AROS toolchain can read
 makefiles from the QEMU FAT handler as if they contained NUL bytes. The VM has
 also frozen during copies and `makedir` on `RAM:`, so avoid large file
 operations in the guest until that is fixed.
+
+For x86_64 runtime validation, do not treat `Qemu Vfat` as a reliable executable
+transfer path. In the current AROS One x86_64 VM, a native AROS command copied
+through the QEMU FAT shared disk and then protected `RWED` on `DH0:` was still
+rejected by the Shell as not executable. Prefer an ISO image, a native AROS
+volume, or another byte-preserving transfer path before concluding that a
+generated x86_64 binary is invalid.
 
 ## Host cross-build for AROS One i386
 
