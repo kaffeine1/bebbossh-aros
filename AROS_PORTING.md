@@ -168,6 +168,13 @@ rejected by the Shell as not executable. Prefer an ISO image, a native AROS
 volume, or another byte-preserving transfer path before concluding that a
 generated x86_64 binary is invalid.
 
+Current x86_64 runtime status: ISO transfer to `CD0:` has been validated with a
+native AROS command copied to `DH0:` and executed successfully. Generated
+x86_64 probe binaries are no longer rejected as non-executable, but the
+host-sysroot probe currently fails or hangs during startup/runtime on AROS One
+x86_64. Keep x86_64 marked experimental until a minimal probe returns cleanly
+from an AROS Shell.
+
 ## Host cross-build for AROS One i386
 
 AROS One i386 uses the `alt-abiv0` ABI. Set these variables for your local
