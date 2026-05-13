@@ -30,7 +30,7 @@ assets per target.
 | Target | Status | Build entry point | Release assets |
 | --- | --- | --- | --- |
 | AROS i386 `alt-abiv0` | stable / validated | `Makefile.aros` | `bebbossh-aros-i386-*` |
-| AROS x86_64 | builds / runtime validation pending | `Makefile.aros-x86_64` | future `bebbossh-aros-x86_64-*` |
+| AROS x86_64 | keygen validated / daemon pending | `Makefile.aros-x86_64` | future `bebbossh-aros-x86_64-*` |
 
 The AROS port currently includes:
 
@@ -44,6 +44,7 @@ The AROS port currently includes:
 - a minimal AROS remote `exec` backend for non-interactive commands;
 - SFTP/SCP path validation for AROS assigns such as `T:` and `DH0:`;
 - reproducible AROS runtime package targets;
+- an experimental AROS x86_64 keygen path using minimal startup/runtime code;
 - QEMU/AROS One test notes in `AROS_PORTING.md`.
 
 Runtime status on AROS One i386:
@@ -92,26 +93,25 @@ make -f Makefile.aros package-aros-runtime OUTDIR=aros-i386-abiv0-arosone
 Published builds are attached to GitHub Releases as `.zip` and `.tar.gz`
 runtime kits.
 
-The experimental AROS x86_64 build wrapper is:
+The experimental AROS x86_64 build wrapper currently defaults to the validated
+`bebbosshkeygen` path:
 
 ```sh
-make -f Makefile.aros-x86_64 bebbosshd bebbosshkeygen
+make -f Makefile.aros-x86_64 bebbosshkeygen
 ```
 
-For host-side x86_64 crosstools, prefer a compiler configured with its AROS
-sysroot and override only the tool commands:
+For host-side x86_64 crosstools, point `AROS_SDK_ROOT` at the matching AROS
+x86_64 SDK and override the tool commands:
 
 ```sh
-make -f Makefile.aros-x86_64 package-aros-runtime \
+make -f Makefile.aros-x86_64 bebbosshkeygen \
   CC=<toolchain>/x86_64-aros-gcc \
   CXX=<toolchain>/x86_64-aros-g++ \
   AR=<toolchain>/x86_64-aros-ar \
-  STRIP=<toolchain>/x86_64-aros-strip
+  STRIP=<toolchain>/x86_64-aros-strip \
+  OBJCOPY=<toolchain>/x86_64-aros-objcopy \
+  AROS_SDK_ROOT=<path-to-aros-x86_64-sdk>
 ```
-
-Do not set `AROS_SDK_ROOT` for generated x86_64 AROS crosstools unless that SDK
-also provides the legacy `startup.o` and `libcrt*`/`libstdc.static` layout used
-by the i386 AROS One SDK path.
 
 `Makefile.aros-x86_64` marks generated ELF files with AROS ABI version 11,
 matching the current AROS One x86_64 runtime. Without this marker AROS One
@@ -126,6 +126,12 @@ current AROS One x86_64 VM, even a native AROS command copied through the QEMU
 FAT shared disk can be rejected as not executable after copying to `DH0:`.
 Use a byte-preserving transfer path, such as an ISO image or a native AROS
 volume, before judging runtime validity.
+
+Current x86_64 status: `bebbosshkeygen` has been validated on AROS One x86_64
+from ISO transfer after copying to a persistent `AROS:` directory and applying
+`Protect <file> RWED`; it generates both private and public Ed25519 key files.
+`bebbosshd` x86_64 and the x86_64 entropy path remain experimental and are not
+ready for a stable security release.
 
 ### AROS automation workflow
 

@@ -793,7 +793,7 @@ __stdargs int main(int argc, char *argv[]) {
 #endif
 
 #if BEBBOSSH_AMIGA_API
-		thisTask = SysBase->ThisTask;
+		thisTask = FindTask(NULL);
 		logme(L_TRACE, "self %08lX mp %08lX", thisTask, &((struct Process *)thisTask)->pr_MsgPort);
 
 		ULONG portMask = (1 << port->mp_SigBit);

@@ -7,7 +7,7 @@ kept target-specific.
 | Target | Status | Build entry point | Notes |
 | --- | --- | --- | --- |
 | AROS i386 `alt-abiv0` | stable / validated | `Makefile.aros` | current published runtime kits |
-| AROS x86_64 | builds / runtime validation pending | `Makefile.aros-x86_64` | use native GCC or host crosstools with integrated sysroot |
+| AROS x86_64 | keygen validated / daemon pending | `Makefile.aros-x86_64` | wrapper defaults to the validated keygen path |
 
 This port is maintained as a derivative of Stefan "Bebbo" Franke's original
 BebboSSH source tree:
@@ -28,6 +28,9 @@ consistent with the upstream project.
 - Added `Makefile.aros` for shared AROS builds of `bebbosshd`,
   `bebbosshkeygen`, and the crypto self-tests, with target triplet overrides.
 - Added `Makefile.aros-x86_64` as an experimental AROS x86_64 build wrapper.
+- Added an AROS x86_64 minimal startup/runtime path for `bebbosshkeygen`,
+  avoiding the standard init/exit cleanup path that currently crashes on the
+  test VM.
 - Kept m68k assembly out of the AROS build.
 - Kept the interactive AmigaDOS shell path enabled for AROS, while leaving the
   Linux PTY/PAM path Linux-only.
@@ -75,33 +78,28 @@ environment or from host-side `x86_64-aros` crosstools whose GCC was configured
 with an AROS sysroot:
 
 ```sh
-make -f Makefile.aros-x86_64 bebbosshd bebbosshkeygen
-make -f Makefile.aros-x86_64 package-aros-runtime
+make -f Makefile.aros-x86_64 bebbosshkeygen
 ```
 
-The expected first build products are:
+The currently validated x86_64 build product is:
 
 ```text
-aros-x86_64/bebbosshd
 aros-x86_64/bebbosshkeygen
 ```
 
-For host-side crosstools with an integrated sysroot, override the tool commands
-and let the compiler driver provide startup objects and default AROS libraries:
+For host-side crosstools, set `AROS_SDK_ROOT` to an AROS x86_64 SDK that
+provides `startup.o` and the static AROS libraries, and override the tool
+commands as needed:
 
 ```sh
-make -f Makefile.aros-x86_64 package-aros-runtime \
+make -f Makefile.aros-x86_64 bebbosshkeygen \
   CC=<toolchain>/x86_64-aros-gcc \
   CXX=<toolchain>/x86_64-aros-g++ \
   AR=<toolchain>/x86_64-aros-ar \
-  STRIP=<toolchain>/x86_64-aros-strip
+  STRIP=<toolchain>/x86_64-aros-strip \
+  OBJCOPY=<toolchain>/x86_64-aros-objcopy \
+  AROS_SDK_ROOT=<path-to-aros-x86_64-sdk>
 ```
-
-Do not set `AROS_SDK_ROOT` for generated x86_64 AROS crosstools unless that
-SDK has the same legacy `startup.o`, `libcrtprog.a`, `libcrt.a`,
-`libstdlib.a`, and `libstdc.static.a` layout expected by the AROS One i386 SDK
-path. The generated x86_64 crosstools instead build and link correctly through
-the compiler driver's configured sysroot.
 
 AROS One x86_64 currently ships ELF64 AROS commands with ELF ABI version 11.
 The x86_64 wrapper therefore patches `EI_ABIVERSION` to 11 after linking and
@@ -114,9 +112,24 @@ early builds. The intended final relocation shape is only `R_X86_64_64`;
 `R_X86_64_32`, `R_X86_64_PC32`, and `R_X86_64_PLT32` should not appear in the
 linked AROS ELF64 executables.
 
+`bebbosshkeygen` x86_64 currently uses a minimal AROS runtime source
+(`src/aros_mincrt.c`) and disables standard AROS init/exit symbol sets. The
+standard startup path reached `main()` in early tests, but crashed during
+startup cleanup or runtime library calls on return. The keygen path has been
+validated from an ISO transfer on AROS One x86_64 by copying to a persistent
+`AROS:` directory, applying `Protect <file> RWED`, generating an Ed25519 key,
+and verifying that both the private key and `.pub` file are written.
+
+The x86_64 random fallback is intentionally still marked experimental. The
+stable i386 path mixes wall-clock time, DOS ticks, task and memory state; the
+x86_64 minimal-runtime keygen currently avoids the OS entropy calls that crash
+on the test VM. Do not publish a stable x86_64 security release until the x86_64
+entropy source is upgraded and revalidated.
+
 The first runtime validation goal for x86_64 is deliberately small:
 
-- `bebbosshkeygen` starts and creates an Ed25519 host key.
+- `bebbosshkeygen` starts and creates an Ed25519 host key. Done on AROS One
+  x86_64 via ISO transfer.
 - `bebbosshd` starts, binds, and authenticates from a modern OpenSSH client.
 - Non-PTY exec returns complete output and exit status for simple commands
   such as `version`.
@@ -168,12 +181,11 @@ rejected by the Shell as not executable. Prefer an ISO image, a native AROS
 volume, or another byte-preserving transfer path before concluding that a
 generated x86_64 binary is invalid.
 
-Current x86_64 runtime status: ISO transfer to `CD0:` has been validated with a
-native AROS command copied to `DH0:` and executed successfully. Generated
-x86_64 probe binaries are no longer rejected as non-executable, but the
-host-sysroot probe currently fails or hangs during startup/runtime on AROS One
-x86_64. Keep x86_64 marked experimental until a minimal probe returns cleanly
-from an AROS Shell.
+Current x86_64 runtime status: ISO transfer to `CD0:` has been validated with
+native AROS commands and generated `bebbosshkeygen` binaries copied to an
+`AROS:` directory and executed successfully. `bebbosshkeygen` can generate
+Ed25519 private/public key files on AROS One x86_64. Keep x86_64 marked
+experimental until the daemon starts cleanly and the entropy path is hardened.
 
 ## Host cross-build for AROS One i386
 

@@ -31,7 +31,9 @@
  *  - Contributions must preserve author attribution and GPL licensing
  * ----------------------------------------------------------------------
  */
-#if defined(__AMIGA__) || defined(__AROS__)
+#if defined(__AROS__)
+#include <proto/dos.h>
+#elif defined(__AMIGA__)
 #include <proto/dos.h>
 #include <amistdio.h>
 #else
@@ -61,11 +63,10 @@ void logme(enum DebugLevel lvl, char const *fmt, ...) {
 		struct DateStamp ds;
 		DateStamp(&ds);
 		ms = (ds.ds_Tick % TICKS_PER_SECOND) * 20;
-		fprintf(stderr, "[aros:%ld.%02ld.%03d] [%s] ", ds.ds_Days, ds.ds_Minute, ms, LEVELNAMES[lvl]);
-		vfprintf(stderr, fmt, args);
-		fputs("\r\n", stderr);
+		Printf("[aros:%ld.%02ld.%03ld] [%s] ", ds.ds_Days, ds.ds_Minute, (LONG)ms, LEVELNAMES[lvl]);
+		VFPrintf(Output(), fmt, (RAWARG)args);
+		Printf("\n");
 		va_end(args);
-		fflush(stderr);
 		return;
 #elif defined(__AMIGA__)
 		static volatile struct Custom * c = (struct Custom *)0xdff000;
@@ -96,12 +97,14 @@ void logme(enum DebugLevel lvl, char const *fmt, ...) {
 	    ti = tv.tv_sec;                 // proper wall-clock seconds
 	    ms = tv.tv_usec / 1000;         // milliseconds (0...999)
 #endif
+#if !defined(__AROS__)
 		struct tm const  * t = gmtime(&ti);
 		fprintf(stderr, "[%04ld.%02ld.%02ld-%02ld:%02ld:%02ld.%03ld] [%s] ", t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec, ms, LEVELNAMES[lvl]);
 		vfprintf(stderr, fmt, args);
 		fputs("\r\n", stderr);
 		va_end(args);
 		fflush(stderr);
+#endif
 	}
 }
 
@@ -129,7 +132,11 @@ void parseLogLevel(char const * l) {
 void setLogLevel(enum DebugLevel lvl) {
 	*DEBUG_LEVEL = lvl;
 	if (isLogLevel(L_INFO))
+#if defined(__AROS__)
+		Printf("loglevel %ld\n", (LONG)lvl);
+#else
 		printf("loglevel %ld\n", lvl);
+#endif
 }
 
 short isLogLevel(enum DebugLevel lvl) {

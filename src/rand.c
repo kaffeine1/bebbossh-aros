@@ -80,6 +80,29 @@ void randfill(void * _to, unsigned len) {
     static uint64_t state;
     static int seeded;
 
+#if defined(__x86_64__)
+    static uint64_t counter;
+    uint64_t entropy = (uint64_t)(uintptr_t)_to ^
+            ((uint64_t)len << 32) ^
+            (uint64_t)(uintptr_t)&state ^
+            (++counter * UINT64_C(0x9e3779b97f4a7c15));
+
+    if (!seeded) {
+        state = entropy ^ UINT64_C(0xd1b54a32d192ed03);
+        seeded = 1;
+    } else {
+        state ^= entropy + UINT64_C(0x9e3779b97f4a7c15) + (state << 6) + (state >> 2);
+    }
+
+    for (unsigned i = 0; i < len; ++i) {
+        state += UINT64_C(0x9e3779b97f4a7c15);
+        uint64_t x = state;
+        x = (x ^ (x >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
+        x = (x ^ (x >> 27)) * UINT64_C(0x94d049bb133111eb);
+        x ^= x >> 31;
+        to[i] = (unsigned char)(x >> ((i & 7) * 8));
+    }
+#else
     struct timeval tv;
     struct DateStamp ds;
     uint64_t entropy = (uint64_t)(uintptr_t)_to ^ ((uint64_t)len << 32);
@@ -120,6 +143,7 @@ void randfill(void * _to, unsigned len) {
         x ^= x >> 31;
         to[i] = (unsigned char)(x >> ((i & 7) * 8));
     }
+#endif
 #elif defined(__APPLE__)
     arc4random_buf(_to, len);
 #elif defined(__unix__)
