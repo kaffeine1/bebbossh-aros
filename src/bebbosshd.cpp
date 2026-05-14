@@ -100,7 +100,11 @@ uint8_t hostSK[64];
 /* config stuff */
 int serverPort = 22;
 int serverAddress = INADDR_ANY;
+#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
+unsigned stackSize = 1048576;
+#else
 unsigned stackSize = 4096;
+#endif
 char const * homeDir = "RAM:";
 BPTR curDir, orgDir;
 
