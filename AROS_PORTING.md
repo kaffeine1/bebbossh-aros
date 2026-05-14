@@ -368,12 +368,13 @@ AROS runtime notes:
 - Interactive `dir` in the SSH shell is translated to `list ... lformat %N`
   so directory listings are readable one entry per line. Non-interactive
   `ssh ... dir` keeps the native AROS `dir` output.
-- AROS PTY exec uses synthetic DOS file handles allocated with
-  `AllocDosObject()`, avoiding the old private `Input()` file-handle copy. A
-  bounded `telegram-test --telegram-client-console 1 1` run has been tested
-  through `ssh -tt`.
-- Full PTY-style interactive program support is still incomplete on AROS, but
-  bounded console-style programs can now receive stdin and produce output.
+- AROS PTY exec for simple commands is routed through the same output-file
+  command backend used by non-PTY exec. The earlier synthetic DOS file-handle
+  backend caused hosted AROS traps on `version`/`list` and is no longer used for
+  the minimal automation path.
+- Full PTY-style interactive program support is still incomplete on AROS.
+  Stdin-driven console programs should remain guarded until a stable file-handle
+  or console-device backend is implemented.
 
 Forwarded host ports:
 
@@ -425,6 +426,7 @@ BEBBOSSH_AROS_USER=test
 BEBBOSSH_AROS_PASS=test
 BEBBOSSH_AROS_TELEGRAM_TEST=DH0:TGTEST/telegram-test
 BEBBOSSH_AROS_WORKDIR=DH0:TGTEST
+BEBBOSSH_AROS_SHELL_HOME=DH0:
 BEBBOSSH_AROS_TRANSFER_SIZES="1048576 5242880"
 ```
 

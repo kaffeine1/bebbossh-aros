@@ -8,6 +8,7 @@ pass=${BEBBOSSH_AROS_PASS:-test}
 known_hosts=${BEBBOSSH_AROS_KNOWN_HOSTS:-/tmp/bebbossh_aros_known_hosts}
 telegram_test=${BEBBOSSH_AROS_TELEGRAM_TEST:-DH0:TGTEST/telegram-test}
 workdir=${BEBBOSSH_AROS_WORKDIR:-DH0:TGTEST}
+shell_home=${BEBBOSSH_AROS_SHELL_HOME:-DH0:}
 transfer_sizes=${BEBBOSSH_AROS_TRANSFER_SIZES:-"1048576 5242880"}
 
 ssh_base_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=$known_hosts -o ConnectTimeout=8 -o PreferredAuthentications=password -o PubkeyAuthentication=no"
@@ -71,7 +72,7 @@ grep "Kickstart" "$pty_out" >/dev/null
 
 echo "9/10 interactive shell sequence"
 shell_out=$(mktemp "${TMPDIR:-/tmp}/bebbossh-aros-shell.XXXXXX")
-(sleep 1; printf 'dir\ncd %s\nversion\ncd DH0:\nexit\n' "$workdir") | \
+(sleep 1; printf 'dir\ncd %s\nversion\ncd %s\nexit\n' "$workdir" "$shell_home") | \
   sshpass -p "$pass" ssh -tt $ssh_base_opts -p "$port" "$user@$host" > "$shell_out" 2>&1
 grep "Kickstart" "$shell_out" >/dev/null
 

@@ -68,9 +68,8 @@ Runtime status on AROS One i386:
   prompt. Simple piped multi-command input such as `dir`, `cd`, `version`,
   and `exit` has been tested. Interactive `dir`, including `dir <path>`, is
   normalized to one name per line for readability.
-- PTY exec works for bounded interactive programs. The
-  `telegram-test --telegram-client-console 1 1` workflow has been tested over
-  `ssh -tt`.
+- PTY exec for simple commands is routed through the same stable AROS command
+  backend as non-PTY exec. Full stdin-driven PTY programs remain incomplete.
 - Known interactive commands are rejected in non-PTY exec mode with exit status
   2 and a message asking the caller to use `ssh -tt`, so they do not block the
   daemon's main loop.
@@ -85,7 +84,8 @@ Runtime status on AROS One i386:
 - A clean package install was tested by copying the runtime kit to a fresh
   `DH0:` directory, generating a host key with `bebbosshkeygen`, and starting a
   separate daemon from that directory.
-- Full PTY-style interactive program support is still incomplete.
+- Full PTY-style interactive program support is still incomplete; use the
+  minimal shell for short commands and non-PTY exec for automation.
 
 Hosted AROS i386 automation status:
 
@@ -180,7 +180,9 @@ It validates `version`, redirection rejection, non-PTY interactive-command
 rejection, daemon health after both guards, `telegram-amiga` command exit
 status propagation, PTY exec, an interactive shell sequence, and SCP/SFTP round
 trips on `DH0:TGTEST`. By default it also performs 1 MiB and 5 MiB transfer
-stress round-trips; override this with `BEBBOSSH_AROS_TRANSFER_SIZES`.
+stress round-trips; override this with `BEBBOSSH_AROS_TRANSFER_SIZES`. Hosted
+AROS tests can set `BEBBOSSH_AROS_WORKDIR=SYS:TGTEST` and
+`BEBBOSSH_AROS_SHELL_HOME=SYS:`.
 
 ### AROS autostart
 

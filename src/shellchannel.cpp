@@ -1306,8 +1306,17 @@ bool ShellChannel::startCommand(){
 		return finishArosExecImmediate(2);
 	}
 
-	if (hasExec() && !hasPty())
+	if (hasExec())
 		return startArosExecFile(true);
+
+	if (isArosInteractiveOnlyExec(xbuffer, keywordLen)) {
+		static const char msg[] = "bebbosshd/AROS: interactive command is not supported in the minimal shell yet\r\n";
+		server->channelWrite(channel, msg, sizeof(msg) - 1);
+		prompt();
+		return drainBufferedInput();
+	}
+
+	return runArosExec(false);
 #endif
 
 	logme(L_DEBUG, "@%ld:%ld starting task %s with cmd `%s`", server->getSockFd(), channel, server->name, xbuffer);
