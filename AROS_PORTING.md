@@ -7,7 +7,7 @@ kept target-specific.
 | Target | Status | Build entry point | Notes |
 | --- | --- | --- | --- |
 | AROS i386 `alt-abiv0` | stable / validated | `Makefile.aros` | current published runtime kits |
-| AROS x86_64 | keygen validated / daemon pending | `Makefile.aros-x86_64` | wrapper defaults to the validated keygen path |
+| AROS x86_64 | experimental / non-PTY exec validated | `Makefile.aros-x86_64` | hosted AROS x64 smoke passed for short exec commands |
 
 This port is maintained as a derivative of Stefan "Bebbo" Franke's original
 BebboSSH source tree:
@@ -28,9 +28,9 @@ consistent with the upstream project.
 - Added `Makefile.aros` for shared AROS builds of `bebbosshd`,
   `bebbosshkeygen`, and the crypto self-tests, with target triplet overrides.
 - Added `Makefile.aros-x86_64` as an experimental AROS x86_64 build wrapper.
-- Added an AROS x86_64 minimal startup/runtime path for `bebbosshkeygen`,
-  avoiding the standard init/exit cleanup path that currently crashes on the
-  test VM.
+- Added an AROS x86_64 minimal startup/runtime path for `bebbosshkeygen` and
+  `bebbosshd`, avoiding standard runtime paths that were unstable on the test
+  VM.
 - Kept m68k assembly out of the AROS build.
 - Kept the interactive AmigaDOS shell path enabled for AROS, while leaving the
   Linux PTY/PAM path Linux-only.
@@ -78,13 +78,14 @@ environment or from host-side `x86_64-aros` crosstools whose GCC was configured
 with an AROS sysroot:
 
 ```sh
-make -f Makefile.aros-x86_64 bebbosshkeygen
+make -f Makefile.aros-x86_64 bebbosshkeygen bebbosshd
 ```
 
-The currently validated x86_64 build product is:
+The currently validated x86_64 build products are:
 
 ```text
 aros-x86_64/bebbosshkeygen
+aros-x86_64/bebbosshd
 ```
 
 For host-side crosstools, set `AROS_SDK_ROOT` to an AROS x86_64 SDK that
@@ -92,7 +93,7 @@ provides `startup.o` and the static AROS libraries, and override the tool
 commands as needed:
 
 ```sh
-make -f Makefile.aros-x86_64 bebbosshkeygen \
+make -f Makefile.aros-x86_64 bebbosshkeygen bebbosshd \
   CC=<toolchain>/x86_64-aros-gcc \
   CXX=<toolchain>/x86_64-aros-g++ \
   AR=<toolchain>/x86_64-aros-ar \
@@ -131,8 +132,11 @@ The first runtime validation goal for x86_64 is deliberately small:
 - `bebbosshkeygen` starts and creates an Ed25519 host key. Done on AROS One
   x86_64 via ISO transfer.
 - `bebbosshd` starts, binds, and authenticates from a modern OpenSSH client.
+  Done in hosted AROS x86_64 with TAP networking.
 - Non-PTY exec returns complete output and exit status for simple commands
-  such as `version`.
+  such as `C:Version` and `C:Echo OK`. Done in hosted AROS x86_64.
+- Explicit missing commands return SSH exit status 127 and leave the daemon
+  usable. Done in hosted AROS x86_64.
 - SFTP/SCP upload and download work on a persistent volume such as `DH0:`.
 - PTY and interactive shell tests run after the non-PTY path is stable.
 
@@ -151,7 +155,7 @@ v0.2.1-aros-i386
 bebbossh-aros-i386-<version>.zip
 bebbossh-aros-i386-<version>.tar.gz
 
-v0.3.0-aros-x86_64-alpha1
+v0.3.0-aros-x86_64
 bebbossh-aros-x86_64-<version>.zip
 bebbossh-aros-x86_64-<version>.tar.gz
 ```
@@ -184,8 +188,13 @@ generated x86_64 binary is invalid.
 Current x86_64 runtime status: ISO transfer to `CD0:` has been validated with
 native AROS commands and generated `bebbosshkeygen` binaries copied to an
 `AROS:` directory and executed successfully. `bebbosshkeygen` can generate
-Ed25519 private/public key files on AROS One x86_64. Keep x86_64 marked
-experimental until the daemon starts cleanly and the entropy path is hardened.
+Ed25519 private/public key files on AROS One x86_64. In hosted AROS x86_64,
+`bebbosshd` starts with AROSTCP/TAP networking, authenticates OpenSSH password
+clients, returns complete output and exit status 0 for `C:Version` and
+`C:Echo OK`, returns exit status 127 for an explicit missing command, and stays
+usable after that failure. Keep x86_64 marked experimental until SFTP/SCP,
+interactive shell behavior, and the entropy path are validated to the same
+level as i386.
 
 ## Host cross-build for AROS One i386
 

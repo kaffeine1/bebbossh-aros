@@ -30,7 +30,7 @@ assets per target.
 | Target | Status | Build entry point | Release assets |
 | --- | --- | --- | --- |
 | AROS i386 `alt-abiv0` | stable / validated | `Makefile.aros` | `bebbossh-aros-i386-*` |
-| AROS x86_64 | keygen validated / daemon pending | `Makefile.aros-x86_64` | future `bebbossh-aros-x86_64-*` |
+| AROS x86_64 | experimental / non-PTY exec validated | `Makefile.aros-x86_64` | `bebbossh-aros-x86_64-*` |
 
 The AROS port currently includes:
 
@@ -44,7 +44,8 @@ The AROS port currently includes:
 - a minimal AROS remote `exec` backend for non-interactive commands;
 - SFTP/SCP path validation for AROS assigns such as `T:` and `DH0:`;
 - reproducible AROS runtime package targets;
-- an experimental AROS x86_64 keygen path using minimal startup/runtime code;
+- an experimental AROS x86_64 daemon/keygen path using minimal startup/runtime
+  code;
 - QEMU/AROS One test notes in `AROS_PORTING.md`.
 
 Runtime status on AROS One i386:
@@ -93,18 +94,18 @@ make -f Makefile.aros package-aros-runtime OUTDIR=aros-i386-abiv0-arosone
 Published builds are attached to GitHub Releases as `.zip` and `.tar.gz`
 runtime kits.
 
-The experimental AROS x86_64 build wrapper currently defaults to the validated
-`bebbosshkeygen` path:
+The experimental AROS x86_64 build wrapper builds the validated keygen and the
+daemon used for hosted AROS smoke tests:
 
 ```sh
-make -f Makefile.aros-x86_64 bebbosshkeygen
+make -f Makefile.aros-x86_64 bebbosshkeygen bebbosshd
 ```
 
 For host-side x86_64 crosstools, point `AROS_SDK_ROOT` at the matching AROS
 x86_64 SDK and override the tool commands:
 
 ```sh
-make -f Makefile.aros-x86_64 bebbosshkeygen \
+make -f Makefile.aros-x86_64 bebbosshkeygen bebbosshd \
   CC=<toolchain>/x86_64-aros-gcc \
   CXX=<toolchain>/x86_64-aros-g++ \
   AR=<toolchain>/x86_64-aros-ar \
@@ -130,8 +131,13 @@ volume, before judging runtime validity.
 Current x86_64 status: `bebbosshkeygen` has been validated on AROS One x86_64
 from ISO transfer after copying to a persistent `AROS:` directory and applying
 `Protect <file> RWED`; it generates both private and public Ed25519 key files.
-`bebbosshd` x86_64 and the x86_64 entropy path remain experimental and are not
-ready for a stable security release.
+`bebbosshd` x86_64 has been validated in hosted AROS x86_64 for short
+non-interactive OpenSSH commands: `C:Version` and `C:Echo OK` return complete
+output and exit status 0, an explicit missing command returns exit status 127,
+and the daemon remains usable afterwards. SFTP/SCP and interactive shell
+coverage on x86_64 are still below the i386 release level, and the x86_64
+entropy path remains experimental, so x86_64 builds are published as
+experimental/pre-release kits.
 
 ### AROS automation workflow
 

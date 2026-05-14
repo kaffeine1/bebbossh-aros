@@ -12,7 +12,7 @@ This kit contains BebboSSH server tools for AROS:
 
 The CPU architecture is determined by the release asset name and the binaries
 inside the kit. Published i386 kits use names such as bebbossh-aros-i386-*.
-Future x86_64 kits should use names such as bebbossh-aros-x86_64-* and must be
+Published x86_64 kits use names such as bebbossh-aros-x86_64-* and are
 validated separately.
 
 Legal and Attribution
@@ -105,10 +105,12 @@ Verified for the published AROS One i386 alt-abiv0 runtime kit:
 - Clean install in a fresh DH0: directory, including host key generation with
   bebbosshkeygen and daemon startup from that directory.
 
-AROS x86_64 is an experimental parallel target. Build artifacts produced with
-Makefile.aros-x86_64 must be validated on an AROS x86_64 system before they
-are treated as a release kit, and should be distributed with x86_64-specific
-asset names.
+AROS x86_64 is an experimental parallel target. The current x86_64 kit has
+been validated in hosted AROS x86_64 for short non-interactive OpenSSH
+commands: C:Version and C:Echo OK return complete output and exit status 0,
+an explicit missing command returns exit status 127, and the daemon remains
+usable afterwards. SFTP/SCP and interactive shell behavior on x86_64 still need
+the same depth of validation as the i386 kit.
 
 Known Limits
 ------------
