@@ -30,8 +30,9 @@ assets per target.
 | Target | Status | Build entry point | Release assets |
 | --- | --- | --- | --- |
 | AROS i386 `alt-abiv0` | stable / validated | `Makefile.aros` | `bebbossh-aros-i386-*` |
-| AROS i386 hosted | automation validated | `Makefile.aros` | hosted test kits only |
-| AROS x86_64 hosted | offline automation validated | `Makefile.aros-x86_64` | `bebbossh-aros-x86_64-*` |
+| AROS i386 hosted | automation validated, paced transfer stress validated | `Makefile.aros` | hosted test kits only |
+| AROS x86_64 hosted | automation validated, paced transfer stress validated | `Makefile.aros-x86_64` | `bebbossh-aros-x86_64-*` |
+| AROS x86_64 AROS One | keygen validated, daemon validation pending | `Makefile.aros-x86_64` | pre-release kits only |
 
 The AROS port currently includes:
 
@@ -185,6 +186,19 @@ trips on `DH0:TGTEST`. By default it also performs 1 MiB and 5 MiB transfer
 stress round-trips; override this with `BEBBOSSH_AROS_TRANSFER_SIZES`. Hosted
 AROS tests can set `BEBBOSSH_AROS_WORKDIR=SYS:TGTEST` and
 `BEBBOSSH_AROS_SHELL_HOME=SYS:`.
+
+For repeated transfer stress, use:
+
+```sh
+BEBBOSSH_AROS_PORT=10022 \
+BEBBOSSH_AROS_WORKDIR=SYS:TGTEST \
+./scripts/aros-transfer-stress-test.sh
+```
+
+The transfer stress script deliberately defaults to a one-second delay between
+cycles. Hosted AROS i386 and x86_64 both showed intermittent authentication
+failures under zero-delay SCP/SFTP connection storms, while paced transfer
+stress remained stable.
 
 ### AROS autostart
 

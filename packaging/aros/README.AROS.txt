@@ -141,7 +141,12 @@ Known Limits
   are stable. Rejected redirection returns SSH exit status 2.
 - The AROS random fallback mixes multiple local runtime entropy sources because
   no system CSPRNG is currently used by this port. Replace it with a real AROS
-  CSPRNG if one becomes available.
+  CSPRNG if one becomes available. Minimal-runtime builds avoid fragile AROS OS
+  entropy calls and mix CPU cycle counter jitter, addresses, buffer identity,
+  length, and an internal counter instead.
+- Very rapid SCP/SFTP connection storms can produce intermittent OpenSSH
+  authentication failures in hosted AROS tests. Use the packaged transfer
+  stress script with its default one-second pacing for repeatable automation.
 - The test password in passwd.example is not safe. Change it before use.
 - Do not distribute private host keys generated for local testing.
 

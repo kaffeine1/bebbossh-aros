@@ -361,6 +361,11 @@ AROS runtime notes:
   runtime sources and is materially stronger than the original `time(0)` seed,
   but it should be replaced if a real AROS CSPRNG or entropy device becomes
   available.
+- AROS minimal-runtime builds avoid AROS OS entropy calls that have proven
+  fragile in the x86_64 validation VM. That path mixes CPU cycle counter jitter,
+  stack/data/function addresses, output buffer identity, length, and an internal
+  counter through a SplitMix64-style diffuser. Non-minimal AROS builds use the
+  richer AROS source mix where the C runtime and OS calls are available.
 - `bebbosshkeygen` is built as a static AROS executable. The i386 build has
   been launched successfully on AROS One i386 far enough to generate ED25519
   randomart.
@@ -465,6 +470,26 @@ It validates:
 - SCP upload/download byte comparison on `DH0:TGTEST`.
 - SFTP `mkdir`, upload, download, compare, remove, and `rmdir` on `DH0:TGTEST`.
 - SCP and SFTP transfer stress round-trips for the configured byte sizes.
+
+For repeated SCP/SFTP stress beyond the smoke test:
+
+```sh
+scripts/aros-transfer-stress-test.sh
+```
+
+Additional defaults:
+
+```text
+BEBBOSSH_AROS_STRESS_ITERATIONS=20
+BEBBOSSH_AROS_STRESS_SIZES="257 4096 65536 1048576"
+BEBBOSSH_AROS_STRESS_DELAY=1
+```
+
+Hosted validation found that `BEBBOSSH_AROS_STRESS_DELAY=0` can reproduce
+intermittent OpenSSH password/authentication failures during rapid SCP/SFTP
+connection storms on both i386 and x86_64. The daemon remains healthy
+afterwards and isolated retries pass. Keep the default one-second pacing for
+automation until the connection-storm behavior is fixed in the daemon.
 
 SFTP/SCP status:
 

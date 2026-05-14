@@ -49,6 +49,28 @@ BEBBOSSH_AROS_TELEGRAM_TEST=SYS:TGTEST/telegram-test \
 
 Use `BEBBOSSH_AROS_PORT=10022` for hosted i386.
 
+## Transfer Stress
+
+For repeated SCP/SFTP validation:
+
+```sh
+BEBBOSSH_AROS_PORT=10022 \
+BEBBOSSH_AROS_WORKDIR=SYS:TGTEST \
+./scripts/aros-transfer-stress-test.sh
+```
+
+Defaults:
+
+```text
+BEBBOSSH_AROS_STRESS_ITERATIONS=20
+BEBBOSSH_AROS_STRESS_SIZES="257 4096 65536 1048576"
+BEBBOSSH_AROS_STRESS_DELAY=1
+```
+
+Keep the default delay for downstream automation. Zero-delay connection storms
+can trigger intermittent OpenSSH password/authentication failures on hosted
+AROS even though the daemon remains healthy and isolated retries pass.
+
 ## Current Validation
 
 The hosted x86_64 and i386 runtimes have passed this smoke test with
@@ -57,7 +79,8 @@ plus 5 MiB transfer stress. Both runtimes also passed the telegram-amiga
 offline checks for JSON, getUpdates, inbox, sendMessage, client-state, and
 TLS-status.
 
-During one i386 validation run OpenSSH reported a transient SFTP/SCP
-`incorrect signature`. The daemon remained responsive, an isolated SCP retry
-passed, a full smoke rerun passed, and the hosted runtime log showed no trap.
-Keep transfer stress enabled when validating future i386 changes.
+During validation, zero-delay transfer stress produced intermittent OpenSSH
+failures (`incorrect signature` once on i386, and password/authentication
+failures on both i386 and x86_64). The daemon remained responsive, isolated SCP
+retries passed, paced stress passed, and hosted runtime logs showed no trap.
+Keep paced transfer stress enabled when validating future changes.
