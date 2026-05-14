@@ -136,6 +136,8 @@ class ShellChannel : public Channel {
 	bool arosExecTimedOut;
 	LONG arosExecRc;
 	char arosExecOutName[96];
+	char arosExecArgs[1024];
+	char arosExecCommandName[512];
 	struct timeval arosExecStarted;
 #endif
 
@@ -185,6 +187,8 @@ public:
 	char * cursorRight(char * out, int slen);
 #if BEBBOSSH_AROS
 	bool startArosExecFile(bool closeAfterCommand);
+	bool startArosLoadedExecFile(bool closeAfterCommand);
+	bool finishArosExecImmediate(uint32_t exitStatus);
 	bool runArosExec(bool closeAfterCommand);
 #endif
 
@@ -195,6 +199,9 @@ public:
 
 	static void startProc();
 	static void endProc();
+#if BEBBOSSH_AROS
+	static void endArosExecProc(IPTR rc, IPTR data);
+#endif
 
 	int read(char * to, int len);
 	int write(char * from, int len);

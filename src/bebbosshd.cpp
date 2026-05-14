@@ -36,6 +36,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
 #include <arpa/inet.h> //inet_addr
 #include <unistd.h>    //write
 #include "platform.h"
@@ -470,7 +471,11 @@ void cleanup() {
 
 	if (timerIO) {
 		logme(L_FINE, "free timer request");
+#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
+		DeleteIORequest(timerIO);
+#else
 		free(timerIO);
+#endif
 		timerIO = 0;
 	}
 
@@ -517,9 +522,11 @@ static bool init() {
 		logme(L_ERROR, "no working i/o");
 #endif
 
+#if !(BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT))
 	curDir = Lock(homeDir, SHARED_LOCK);
 	if (curDir)
 		orgDir = CurrentDir(curDir);
+#endif
 
 	port = CreateMsgPort();
 	if (0 == port) {
@@ -535,7 +542,11 @@ static bool init() {
 	}
 	logme(L_FINE, "got timer message port");
 
+#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
+	timerIO = (struct timerequest *)CreateIORequest(timerPort, sizeof(struct timerequest));
+#else
 	timerIO = (struct timerequest *)CreateExtIO(timerPort, sizeof(struct timerequest));
+#endif
 	if (0 == timerIO) {
 		error = ERR_EXT_IO;
 		return false;
@@ -699,6 +710,11 @@ static void printUsage() {
 	puts("    -?            display this help");
 	puts("    -p <port>     use the given port <port>");
 	puts("    -v <n>        set verbosity, defaults to 0 = OFF");
+#if BEBBOSSH_AROS
+	puts("    -A <file>     use the given password file");
+	puts("    -H <dir>      use the given home directory");
+	puts("    -K <file>     use the given Ed25519 host key");
+#endif
 }
 
 static void parseParams(unsigned argc, char **argv) {
@@ -731,6 +747,38 @@ static void parseParams(unsigned argc, char **argv) {
 					goto missing;
 				setLogLevel((DebugLevel)atoi(argv[++i]));
 				continue;
+#if BEBBOSSH_AROS
+			case 'A':
+				if (arg[2]) {
+					passwords = strdup(&arg[2]);
+					continue;
+				}
+
+				if (i + 1 == argc)
+					goto missing;
+				passwords = strdup(argv[++i]);
+				continue;
+			case 'H':
+				if (arg[2]) {
+					homeDir = strdup(&arg[2]);
+					continue;
+				}
+
+				if (i + 1 == argc)
+					goto missing;
+				homeDir = strdup(argv[++i]);
+				continue;
+			case 'K':
+				if (arg[2]) {
+					hostKeyName = strdup(&arg[2]);
+					continue;
+				}
+
+				if (i + 1 == argc)
+					goto missing;
+				hostKeyName = strdup(argv[++i]);
+				continue;
+#endif
 			default:
 				goto invalid;
 			}
@@ -762,7 +810,14 @@ __stdargs int main(int argc, char *argv[]) {
 
 	InitSemaphore(&theLock);
 
+#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
+	hostKeyName = "PROGDIR:HOSTKEY";
+	passwords = "PROGDIR:PASSWD";
+	homeDir = "AROS:";
+	setLogLevel(L_NONE);
+#else
 	readIni();
+#endif
 #if BEBBOSSH_AROS
 	logme(L_DEBUG, "bebbosshd/AROS: config read");
 #endif
@@ -775,8 +830,9 @@ __stdargs int main(int argc, char *argv[]) {
 	if (!loadEd25519Key(hostPK, hostSK, hostKeyName)) {
 #if BEBBOSSH_AROS
 		logme(L_DEBUG, "bebbosshd/AROS: trying PROGDIR host key");
-		if (!loadEd25519Key(hostPK, hostSK, arosFallbackHostKeyName))
+		if (!loadEd25519Key(hostPK, hostSK, arosFallbackHostKeyName)) {
 			return error = ERR_KEYFILE;
+		}
 #else
 		return error = ERR_KEYFILE;
 #endif
@@ -824,6 +880,12 @@ __stdargs int main(int argc, char *argv[]) {
 
 		//Listen
 		listen(acceptSock, 3);
+#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
+		{
+			long flags = 1;
+			IoctlSocket(acceptSock, FIONBIO, (char *)&flags);
+		}
+#endif
 #if BEBBOSSH_AROS
 		logme(L_DEBUG, "bebbosshd/AROS: listening");
 #endif
@@ -854,6 +916,7 @@ __stdargs int main(int argc, char *argv[]) {
 
 			static fd_set readfds;
 			FD_ZERO(&readfds);
+			int selectMax = acceptSock;
 
 			// accept new until cancel signalled.
 			if (!stopped)
@@ -869,8 +932,11 @@ __stdargs int main(int argc, char *argv[]) {
 					// only wait if there is room for data
 					logme(L_ULTRA, "waiting for %ld", l->getSockFd());
 					if (l->isOpen() && l->isBufferFree()) {
+						int fd = l->getSockFd();
 						++n;
-						FD_SET(l->getSockFd(), &readfds);
+						FD_SET(fd, &readfds);
+						if (fd > selectMax)
+							selectMax = fd;
 					}
 				}
 				if (!n)
@@ -879,7 +945,16 @@ __stdargs int main(int argc, char *argv[]) {
 
 #if BEBBOSSH_AMIGA_API
 			ULONG signales = SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | portMask | timerMask;
-			WaitSelect(listeners.getMax() + 1, &readfds, NULL, NULL, 0, &signales);
+#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
+			struct timeval waitTimeout;
+			waitTimeout.tv_sec = 1;
+			waitTimeout.tv_usec = 0;
+			select(selectMax + 1, &readfds, NULL, NULL, &waitTimeout);
+			signales = 0;
+			checkFinished();
+#else
+			WaitSelect(selectMax + 1, &readfds, NULL, NULL, 0, &signales);
+#endif
 
 			logme(L_ULTRA, "got signal mask %08lX", signales);
 
