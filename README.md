@@ -66,8 +66,8 @@ Runtime status on AROS One i386:
   and leaves the daemon usable.
 - Interactive SSH sessions can run simple AROS commands and return to the
   prompt. Simple piped multi-command input such as `dir`, `cd`, `version`,
-  and `exit` has been tested. A bare interactive `dir` is normalized to one
-  name per line for readability.
+  and `exit` has been tested. Interactive `dir`, including `dir <path>`, is
+  normalized to one name per line for readability.
 - PTY exec works for bounded interactive programs. The
   `telegram-test --telegram-client-console 1 1` workflow has been tested over
   `ssh -tt`.
@@ -76,10 +76,11 @@ Runtime status on AROS One i386:
   daemon's main loop.
 - SFTP and OpenSSH `scp` transfers work on `T:` and `DH0:`; 1 MiB and 5 MiB
   file round-trips and a small `telegram-amiga`-style directory tree have been
-  tested. Overwriting a larger file with a smaller file on `DH0:` has been
-  verified to truncate correctly. AROS SFTP uploads also keep the AmigaDOS
-  execute protection allowed, so uploaded binaries can be started without a
-  manual `protect +e` step.
+  tested. The SFTP server now honors explicit client read offsets instead of
+  relying on sequential file position. Overwriting a larger file with a smaller
+  file on `DH0:` has been verified to truncate correctly. AROS SFTP uploads
+  also keep the AmigaDOS execute protection allowed, so uploaded binaries can
+  be started without a manual `protect +e` step.
 - SFTP `mkdir`/`rmdir` has been tested on `DH0:`.
 - A clean package install was tested by copying the runtime kit to a fresh
   `DH0:` directory, generating a host key with `bebbosshkeygen`, and starting a
@@ -178,7 +179,8 @@ scripts/aros-ssh-smoke-test.sh
 It validates `version`, redirection rejection, non-PTY interactive-command
 rejection, daemon health after both guards, `telegram-amiga` command exit
 status propagation, PTY exec, an interactive shell sequence, and SCP/SFTP round
-trips on `DH0:TGTEST`.
+trips on `DH0:TGTEST`. By default it also performs 1 MiB and 5 MiB transfer
+stress round-trips; override this with `BEBBOSSH_AROS_TRANSFER_SIZES`.
 
 ### AROS autostart
 

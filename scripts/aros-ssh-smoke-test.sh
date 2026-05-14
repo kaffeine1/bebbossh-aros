@@ -8,6 +8,7 @@ pass=${BEBBOSSH_AROS_PASS:-test}
 known_hosts=${BEBBOSSH_AROS_KNOWN_HOSTS:-/tmp/bebbossh_aros_known_hosts}
 telegram_test=${BEBBOSSH_AROS_TELEGRAM_TEST:-DH0:TGTEST/telegram-test}
 workdir=${BEBBOSSH_AROS_WORKDIR:-DH0:TGTEST}
+transfer_sizes=${BEBBOSSH_AROS_TRANSFER_SIZES:-"1048576 5242880"}
 
 ssh_base_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=$known_hosts -o ConnectTimeout=8 -o PreferredAuthentications=password -o PubkeyAuthentication=no"
 
@@ -102,5 +103,26 @@ EOF
 
 sshpass -p "$pass" sftp -oBatchMode=no $ssh_base_opts -P "$port" -b "$sftp_batch" "$user@$host"
 cmp "$local_file" "$sftp_back_file"
+
+for size in $transfer_sizes; do
+    echo "transfer stress ${size} bytes on $workdir"
+    stress_local=$(mktemp "${TMPDIR:-/tmp}/bebbossh-aros-stress.XXXXXX")
+    stress_back=$(mktemp "${TMPDIR:-/tmp}/bebbossh-aros-stress-back.XXXXXX")
+    stress_batch=$(mktemp "${TMPDIR:-/tmp}/bebbossh-aros-stress-batch.XXXXXX")
+    stress_remote="$workdir/bebbossh-aros-stress-${size}.bin"
+    dd if=/dev/urandom of="$stress_local" bs="$size" count=1 >/dev/null 2>&1
+    sshpass -p "$pass" scp $ssh_base_opts -P "$port" "$stress_local" "$user@$host:$stress_remote"
+    sshpass -p "$pass" scp $ssh_base_opts -P "$port" "$user@$host:$stress_remote" "$stress_back"
+    cmp "$stress_local" "$stress_back"
+    rm -f "$stress_back"
+    cat > "$stress_batch" <<EOF
+put $stress_local $stress_remote
+get $stress_remote $stress_back
+rm $stress_remote
+EOF
+    sshpass -p "$pass" sftp -oBatchMode=no $ssh_base_opts -P "$port" -b "$stress_batch" "$user@$host"
+    cmp "$stress_local" "$stress_back"
+    rm -f "$stress_local" "$stress_back" "$stress_batch"
+done
 
 echo "ok"

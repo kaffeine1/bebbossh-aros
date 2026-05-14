@@ -1271,8 +1271,14 @@ bool ShellChannel::startCommand(){
 		char *args = xbuffer + 3;
 		while (*args && *args <= ' ')
 			++args;
-		if (!*args)
+		if (!*args) {
 			strcpy(xbuffer, "list lformat %N");
+		} else if (!strstr(args, "lformat") && !strstr(args, "LFORMAT")) {
+			char dirArgs[CHUNKSIZE];
+			strncpy(dirArgs, args, sizeof(dirArgs) - 1);
+			dirArgs[sizeof(dirArgs) - 1] = 0;
+			snprintf(xbuffer, CHUNKSIZE, "list %s lformat %%N", dirArgs);
+		}
 	}
 
 	if (hasExec() && !hasPty() && isExplicitArosCommandPath(xbuffer, keywordLen) && !arosCommandExists(xbuffer, keywordLen)) {

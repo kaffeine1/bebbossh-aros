@@ -445,6 +445,33 @@ void checkFinished() {
 	}
 }
 
+static void cleanupSessions() {
+	if (clientsPtr) {
+		uint32_t sz = clientsPtr->getMax();
+		for (uint32_t i = 0; i < sz; ++i) {
+			SshSession *cs = clientsPtr->remove(i);
+			if (!cs)
+				continue;
+			if (listenersPtr)
+				listenersPtr->remove(cs->getSockFd());
+			cs->close();
+			delete cs;
+		}
+		delete clientsPtr;
+		clientsPtr = 0;
+	}
+
+	if (listenersPtr) {
+		uint32_t sz = listenersPtr->getMax();
+		for (uint32_t i = 0; i < sz; ++i) {
+			Listener *l = listenersPtr->remove(i);
+			delete l;
+		}
+		delete listenersPtr;
+		listenersPtr = 0;
+	}
+}
+
 void cleanup() {
 	// no more connections
 	if (acceptSock != -1) {
@@ -452,6 +479,7 @@ void cleanup() {
 		CloseSocket(acceptSock);
 		acceptSock = -1;
 	}
+	cleanupSessions();
 #if BEBBOSSH_AMIGA_API
 	if (SocketBase) {
 		logme(L_FINE, "closing %s", bsdName);

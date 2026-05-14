@@ -41,15 +41,20 @@ consistent with the upstream project.
 - Added read-only password-file support so test ISOs can authenticate without
   writing back hashed passwords.
 - Hardened the AROS `randfill()` fallback by mixing wall-clock time,
-  microseconds, DOS ticks, current task address, heap state, and stack address
-  into an internal 64-bit mixer instead of seeding `rand()` from `time(0)`.
+  microseconds, DOS ticks, current task address, heap state, stack address, and
+  x86 CPU cycle counter data where available into an internal 64-bit mixer
+  instead of seeding `rand()` from `time(0)`.
 - Added a minimal AROS remote `exec` backend using `SystemTags()` for
   non-interactive commands.
 - Adjusted SFTP path validation on AROS to use `GetDeviceProc()`, so assigns
   such as `T:` and `DH0:` resolve correctly.
+- Adjusted SFTP reads to honor explicit client offsets and fail partial writes
+  instead of silently acknowledging short writes.
 - Raised the default AROS command stack to 1 MiB for all AROS daemon builds.
   This is required for larger automation commands such as telegram-amiga inbox
   and client self-tests on hosted i386.
+- Tightened daemon/session cleanup so remaining sessions, listeners, and open
+  channel objects are released on shutdown or abnormal disconnect.
 
 ## Stable AROS i386 build
 
@@ -126,10 +131,10 @@ validated from an ISO transfer on AROS One x86_64 by copying to a persistent
 and verifying that both the private key and `.pub` file are written.
 
 The x86_64 random fallback is intentionally still marked experimental. The
-stable i386 path mixes wall-clock time, DOS ticks, task and memory state; the
-x86_64 minimal-runtime keygen currently avoids the OS entropy calls that crash
-on the test VM. Do not publish a stable x86_64 security release until the x86_64
-entropy source is upgraded and revalidated.
+minimal-runtime path avoids the OS entropy calls that crashed on the test VM and
+mixes stack/address jitter, an internal counter, and the x86 CPU cycle counter.
+Do not publish a stable x86_64 security release until this path is validated on
+the target VM and replaced or supplemented if an AROS CSPRNG becomes available.
 
 The first runtime validation goal for x86_64 is deliberately small:
 
@@ -360,7 +365,7 @@ AROS runtime notes:
 - Interactive shell stdin now drains command lines already received in the same
   SSH packet after an AROS command completes, which keeps piped sequences such
   as `dir`, `version`, `exit` moving through the minimal shell backend.
-- A bare `dir` in the interactive SSH shell is translated to `list lformat %N`
+- Interactive `dir` in the SSH shell is translated to `list ... lformat %N`
   so directory listings are readable one entry per line. Non-interactive
   `ssh ... dir` keeps the native AROS `dir` output.
 - AROS PTY exec uses synthetic DOS file handles allocated with
@@ -420,6 +425,7 @@ BEBBOSSH_AROS_USER=test
 BEBBOSSH_AROS_PASS=test
 BEBBOSSH_AROS_TELEGRAM_TEST=DH0:TGTEST/telegram-test
 BEBBOSSH_AROS_WORKDIR=DH0:TGTEST
+BEBBOSSH_AROS_TRANSFER_SIZES="1048576 5242880"
 ```
 
 It validates:
@@ -435,7 +441,7 @@ It validates:
 - a piped interactive shell sequence using `dir`, `cd`, `version`, and `exit`.
 - SCP upload/download byte comparison on `DH0:TGTEST`.
 - SFTP `mkdir`, upload, download, compare, remove, and `rmdir` on `DH0:TGTEST`.
-- overwrite truncation on `DH0:` by uploading a smaller file over a larger one.
+- SCP and SFTP transfer stress round-trips for the configured byte sizes.
 
 SFTP/SCP status:
 
@@ -444,6 +450,8 @@ SFTP/SCP status:
 - `sftp` upload, download, compare, and remove have been tested on `DH0:`.
 - `sftp` 1 MiB and 5 MiB upload/download round-trips on `DH0:` matched by
   SHA-256 and byte compare.
+- SFTP reads honor the offset requested by the client, which is required for
+  non-sequential OpenSSH read patterns.
 - `sftp` `mkdir`, upload inside the directory, `rm`, and `rmdir` have been
   tested on `DH0:`.
 - OpenSSH `scp` default mode, which uses SFTP, has been tested for upload and

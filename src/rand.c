@@ -60,6 +60,24 @@
 
 // #define FAKERAND 1
 
+#if defined(__AROS__)
+static uint64_t aros_rdtsc(void) {
+#if (defined(__i386__) || defined(__x86_64__)) && defined(__GNUC__)
+    uint32_t lo, hi;
+    __asm__ volatile("rdtsc" : "=a"(lo), "=d"(hi));
+    return ((uint64_t)hi << 32) | lo;
+#else
+    return 0;
+#endif
+}
+
+static uint64_t aros_mix64(uint64_t x) {
+    x = (x ^ (x >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
+    x = (x ^ (x >> 27)) * UINT64_C(0x94d049bb133111eb);
+    return x ^ (x >> 31);
+}
+#endif
+
 #ifndef FAKERAND
 void randfill(void * _to, unsigned len) {
 #ifdef __AMIGA__
@@ -82,9 +100,12 @@ void randfill(void * _to, unsigned len) {
 
 #if defined(__x86_64__)
     static uint64_t counter;
-    uint64_t entropy = (uint64_t)(uintptr_t)_to ^
+    uintptr_t frame = (uintptr_t)&frame;
+    uint64_t entropy = aros_rdtsc() ^
+            (uint64_t)(uintptr_t)_to ^
             ((uint64_t)len << 32) ^
             (uint64_t)(uintptr_t)&state ^
+            (uint64_t)frame ^
             (++counter * UINT64_C(0x9e3779b97f4a7c15));
 
     if (!seeded) {
@@ -96,16 +117,14 @@ void randfill(void * _to, unsigned len) {
 
     for (unsigned i = 0; i < len; ++i) {
         state += UINT64_C(0x9e3779b97f4a7c15);
-        uint64_t x = state;
-        x = (x ^ (x >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
-        x = (x ^ (x >> 27)) * UINT64_C(0x94d049bb133111eb);
-        x ^= x >> 31;
+        uint64_t x = aros_mix64(state ^ aros_rdtsc() ^ ((uint64_t)i << 17));
         to[i] = (unsigned char)(x >> ((i & 7) * 8));
     }
 #else
     struct timeval tv;
     struct DateStamp ds;
-    uint64_t entropy = (uint64_t)(uintptr_t)_to ^ ((uint64_t)len << 32);
+    uint64_t entropy = aros_rdtsc() ^
+            (uint64_t)(uintptr_t)_to ^ ((uint64_t)len << 32);
 
     if (gettimeofday(&tv, 0) == 0)
         entropy ^= ((uint64_t)tv.tv_sec << 32) ^ (uint64_t)tv.tv_usec;
@@ -137,10 +156,7 @@ void randfill(void * _to, unsigned len) {
         }
 
         state += UINT64_C(0x9e3779b97f4a7c15);
-        uint64_t x = state;
-        x = (x ^ (x >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
-        x = (x ^ (x >> 27)) * UINT64_C(0x94d049bb133111eb);
-        x ^= x >> 31;
+        uint64_t x = aros_mix64(state ^ aros_rdtsc() ^ ((uint64_t)i << 17));
         to[i] = (unsigned char)(x >> ((i & 7) * 8));
     }
 #endif
