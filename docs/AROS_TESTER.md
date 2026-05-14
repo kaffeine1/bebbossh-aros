@@ -82,8 +82,12 @@ plus 5 MiB transfer stress. Both runtimes also passed the telegram-amiga
 offline checks for JSON, getUpdates, inbox, sendMessage, client-state, and
 TLS-status.
 
-After backlog/accept-loop hardening, hosted x86_64 passed 5 zero-delay transfer
-stress iterations and hosted i386 passed 3 zero-delay transfer stress iterations
-with sizes `257 4096 65536 1048576` on `SYS:TGTEST`. Hosted runtime logs showed
-no trap after these runs. Keep paced stress enabled for routine validation, and
-run zero-delay stress only when specifically checking short-session robustness.
+After accept-loop hardening, hosted i386 passed 3 zero-delay transfer stress
+iterations with sizes `257 4096 65536 1048576` on `SYS:TGTEST`.
+
+Hosted x86_64 still has an open zero-delay churn issue: in the release gate it
+can fail after several rapid SCP/SFTP cycles with OpenSSH reporting
+`incorrect signature` during handshake. The daemon remains reachable afterward,
+and hosted logs show no trap, but this blocks a new public release. Keep paced
+stress enabled for routine validation, and run zero-delay stress only when
+specifically checking short-session robustness.

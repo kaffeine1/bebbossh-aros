@@ -8,7 +8,7 @@ kept target-specific.
 | --- | --- | --- | --- |
 | AROS i386 `alt-abiv0` | stable / validated | `Makefile.aros` | current published runtime kits |
 | AROS i386 hosted | automation validated | `Makefile.aros` | hosted AROS i386 passed the telegram-amiga offline suite |
-| AROS x86_64 hosted | offline automation validated | `Makefile.aros-x86_64` | hosted AROS x64 passed the telegram-amiga offline suite |
+| AROS x86_64 hosted | automation usable / release gate blocked | `Makefile.aros-x86_64` | hosted AROS x64 passed the telegram-amiga offline suite, but still fails longer zero-delay SSH churn with `incorrect signature` |
 
 This port is maintained as a derivative of Stefan "Bebbo" Franke's original
 BebboSSH source tree:
@@ -37,6 +37,8 @@ consistent with the upstream project.
   Linux PTY/PAM path Linux-only.
 - Added AROS-specific fallback random filling in `src/rand.c`.
 - Added AROS startup probes for isolating ABI/startup failures.
+- Added `AROS_ENTROPY_PROBE` for checking AROS timer, task, memory, stack, and
+  CPU-cycle entropy inputs without touching daemon startup.
 - Added `PROGDIR:` fallbacks for ISO-based AROS One testing.
 - Added read-only password-file support so test ISOs can authenticate without
   writing back hashed passwords.
@@ -211,10 +213,11 @@ clients, returns complete output and exit status 0 for `C:Version` and
 usable after that failure. It also passes the telegram-amiga offline automation
 suite used for JSON, getUpdates, inbox, sendMessage, client-state, and
 TLS-status checks. Hosted x86_64 now also passes SFTP/SCP upload/download,
-PTY exec, the minimal interactive shell sequence, 1 MiB plus 5 MiB transfer
-stress, and a bounded zero-delay SCP/SFTP stress run on `SYS:TGTEST`. Keep
-x86_64 marked experimental until the entropy path and non-hosted AROS One
-daemon validation are closed.
+PTY exec, the minimal interactive shell sequence, and long 1/5/10/25 MiB
+transfer stress on `SYS:TGTEST`. Longer zero-delay SCP/SFTP churn still has an
+open x86_64 failure where OpenSSH can report `incorrect signature` during
+handshake. Keep x86_64 marked experimental until that churn issue, the entropy
+path, and non-hosted AROS One daemon validation are closed.
 
 Current hosted i386 runtime status: hosted AROS i386 starts with AROSTCP/TAP
 networking and authenticates OpenSSH password clients. After the default AROS
@@ -484,14 +487,13 @@ BEBBOSSH_AROS_STRESS_SIZES="257 4096 65536 1048576"
 BEBBOSSH_AROS_STRESS_DELAY=1
 ```
 
-Earlier hosted validation found that `BEBBOSSH_AROS_STRESS_DELAY=0` could
-reproduce intermittent OpenSSH password/authentication failures during rapid
-SCP/SFTP connection storms. After increasing the AROS listen backlog and
-accepting several pending sockets per event-loop pass, hosted x86_64 passed
-5 zero-delay stress iterations and hosted i386 passed 3 zero-delay stress
-iterations with sizes `257 4096 65536 1048576` on `SYS:TGTEST`. Keep the
-default one-second pacing for downstream automation, and use zero-delay mode as
-an explicit regression stress test.
+Hosted validation found that `BEBBOSSH_AROS_STRESS_DELAY=0` can reproduce rapid
+SCP/SFTP connection-storm issues. After conservative accept-loop hardening,
+hosted i386 passes 3 zero-delay stress iterations with sizes
+`257 4096 65536 1048576` on `SYS:TGTEST`, but hosted x86_64 can still fail
+longer zero-delay churn with OpenSSH reporting `incorrect signature` during
+handshake. Keep the default one-second pacing for downstream automation, and
+use zero-delay mode as an explicit regression stress test.
 
 SFTP/SCP status:
 

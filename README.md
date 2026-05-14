@@ -31,7 +31,7 @@ assets per target.
 | --- | --- | --- | --- |
 | AROS i386 `alt-abiv0` | stable / validated | `Makefile.aros` | `bebbossh-aros-i386-*` |
 | AROS i386 hosted | automation validated, transfer stress validated | `Makefile.aros` | hosted test kits only |
-| AROS x86_64 hosted | automation validated, transfer stress validated | `Makefile.aros-x86_64` | `bebbossh-aros-x86_64-*` |
+| AROS x86_64 hosted | paced automation validated, zero-delay release gate blocked | `Makefile.aros-x86_64` | experimental `bebbossh-aros-x86_64-*` |
 | AROS x86_64 AROS One | keygen validated, daemon validation pending | `Makefile.aros-x86_64` | pre-release kits only |
 
 The AROS port currently includes:
@@ -199,11 +199,12 @@ BEBBOSSH_AROS_WORKDIR=SYS:TGTEST \
 ```
 
 The transfer stress script defaults to a one-second delay between cycles for
-downstream automation. After backlog/accept-loop hardening, hosted AROS x86_64
-passed 5 zero-delay stress iterations and hosted AROS i386 passed 3 zero-delay
-stress iterations with sizes `257 4096 65536 1048576` on `SYS:TGTEST`. Keep the
-paced default for routine CI-style automation; use `BEBBOSSH_AROS_STRESS_DELAY=0`
-only as an explicit regression stress test.
+downstream automation. Hosted AROS i386 currently passes the zero-delay stress
+gate with sizes `257 4096 65536 1048576` on `SYS:TGTEST`; hosted AROS x86_64
+still has an open longer zero-delay churn failure where OpenSSH can report
+`incorrect signature` during handshake. Keep the paced default for routine
+CI-style automation; use `BEBBOSSH_AROS_STRESS_DELAY=0` only as an explicit
+regression stress test.
 
 ### AROS autostart
 

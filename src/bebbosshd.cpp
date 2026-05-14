@@ -103,7 +103,7 @@ int serverPort = 22;
 int serverAddress = INADDR_ANY;
 #if BEBBOSSH_AROS
 int listenBacklog = 16;
-#define BEBBOSSH_ACCEPT_BURST 8
+#define BEBBOSSH_ACCEPT_BURST 1
 #else
 int listenBacklog = 8;
 #define BEBBOSSH_ACCEPT_BURST 1

@@ -72,9 +72,10 @@ grep "Kickstart" "$pty_out" >/dev/null
 
 echo "9/10 interactive shell sequence"
 shell_out=$(mktemp "${TMPDIR:-/tmp}/bebbossh-aros-shell.XXXXXX")
-(sleep 1; printf 'dir\ncd %s\nversion\ncd %s\nexit\n' "$workdir" "$shell_home") | \
+(sleep 1; printf 'pwd\nhelp\ndir\ncd %s\npwd\nversion\ncd %s\nexit\n' "$workdir" "$shell_home") | \
   sshpass -p "$pass" ssh -tt $ssh_base_opts -p "$port" "$user@$host" > "$shell_out" 2>&1
 grep "Kickstart" "$shell_out" >/dev/null
+grep "Minimal AROS SSH shell commands" "$shell_out" >/dev/null
 
 echo "10/10 scp and sftp round trips on $workdir"
 local_file=$(mktemp "${TMPDIR:-/tmp}/bebbossh-aros-scp.XXXXXX")
