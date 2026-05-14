@@ -109,8 +109,9 @@ AROS x86_64 is an experimental parallel target. The current x86_64 kit has
 been validated in hosted AROS x86_64 for short non-interactive OpenSSH
 commands: C:Version and C:Echo OK return complete output and exit status 0,
 an explicit missing command returns exit status 127, and the daemon remains
-usable afterwards. SFTP/SCP and interactive shell behavior on x86_64 still need
-the same depth of validation as the i386 kit.
+usable afterwards. Hosted x86_64 and hosted i386 both pass the smoke test for
+PTY exec of simple commands, the minimal interactive shell, SCP/SFTP, and 1 MiB
+and 5 MiB transfer round-trips.
 
 Known Limits
 ------------
@@ -122,18 +123,18 @@ Known Limits
 - In an interactive SSH shell, a bare dir command is normalized to one entry
   per line for readability. Non-interactive ssh ... dir keeps native AROS dir
   formatting.
-- PTY exec can run bounded console-style programs. The
-  telegram-test --telegram-client-console 1 1 workflow has been tested with
-  ssh -tt.
+- PTY exec can run simple bounded commands through the same stable AROS command
+  backend used by non-PTY exec.
 - Full PTY-style interactive program support is not complete on AROS yet.
+  Stdin-driven programs such as telegram-test --telegram-client-console are
+  rejected until a stable console/file-handle backend is implemented.
 - Remote exec is intended for short commands at this stage. On AROS it runs in
   a child task so the daemon main loop remains responsive, and command exit
   status is propagated to the SSH client.
 - Non-PTY exec has a soft 30-second timeout that sends a break to the command
   task and reports the timeout to the client.
-- Known interactive commands are rejected in non-PTY exec mode with exit status
-  2 and a message asking the caller to use ssh -tt, so they do not block the
-  daemon's synchronous exec path.
+- Known stdin-driven interactive commands are rejected with exit status 2, so
+  they do not block the daemon's synchronous exec path.
 - Shell redirection and pipes (`>`, `<`, `|`) are rejected on AROS until they
   are stable. Rejected redirection returns SSH exit status 2.
 - The AROS random fallback mixes multiple local runtime entropy sources because

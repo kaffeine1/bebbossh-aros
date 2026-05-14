@@ -1301,7 +1301,13 @@ bool ShellChannel::startCommand(){
 	}
 
 	if (hasExec() && !hasPty() && isArosInteractiveOnlyExec(xbuffer, keywordLen)) {
-		static const char msg[] = "bebbosshd/AROS: interactive command requires a PTY; use ssh -tt\r\n";
+		static const char msg[] = "bebbosshd/AROS: interactive command is not supported by the minimal AROS backend yet\r\n";
+		server->channelWrite(channel, msg, sizeof(msg) - 1);
+		return finishArosExecImmediate(2);
+	}
+
+	if (hasExec() && hasPty() && isArosInteractiveOnlyExec(xbuffer, keywordLen)) {
+		static const char msg[] = "bebbosshd/AROS: interactive command is not supported by the minimal AROS backend yet\r\n";
 		server->channelWrite(channel, msg, sizeof(msg) - 1);
 		return finishArosExecImmediate(2);
 	}
@@ -1310,7 +1316,7 @@ bool ShellChannel::startCommand(){
 		return startArosExecFile(true);
 
 	if (isArosInteractiveOnlyExec(xbuffer, keywordLen)) {
-		static const char msg[] = "bebbosshd/AROS: interactive command is not supported in the minimal shell yet\r\n";
+		static const char msg[] = "bebbosshd/AROS: interactive command is not supported by the minimal AROS backend yet\r\n";
 		server->channelWrite(channel, msg, sizeof(msg) - 1);
 		prompt();
 		return drainBufferedInput();

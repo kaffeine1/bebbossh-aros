@@ -375,6 +375,9 @@ AROS runtime notes:
 - Full PTY-style interactive program support is still incomplete on AROS.
   Stdin-driven console programs should remain guarded until a stable file-handle
   or console-device backend is implemented.
+- Known stdin-driven programs are rejected with exit status 2 even when the
+  client requested a PTY, so automation fails fast instead of hanging on a fake
+  interactive stdin path.
 
 Forwarded host ports:
 

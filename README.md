@@ -150,9 +150,10 @@ output and exit status 0, an explicit missing command returns exit status 127,
 and the daemon remains usable afterwards. With the current hosted test
 environment, x86_64 also passes the `telegram-amiga` offline automation suite
 used for `--help`, JSON, getUpdates, inbox, sendMessage, client-state, and
-TLS-status checks. SFTP/SCP and interactive shell coverage on x86_64 are still
-below the i386 release level, and the x86_64 entropy path remains experimental,
-so x86_64 builds are published as experimental/pre-release kits.
+TLS-status checks. SFTP/SCP, PTY exec for simple commands, and the minimal
+interactive shell pass the hosted smoke test on both x86_64 and i386. The x86_64
+entropy path remains experimental, so x86_64 builds are published as
+experimental/pre-release kits.
 
 ### AROS automation workflow
 
