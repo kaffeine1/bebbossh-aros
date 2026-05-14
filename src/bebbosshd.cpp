@@ -100,7 +100,7 @@ uint8_t hostSK[64];
 /* config stuff */
 int serverPort = 22;
 int serverAddress = INADDR_ANY;
-#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
+#if BEBBOSSH_AROS
 unsigned stackSize = 1048576;
 #else
 unsigned stackSize = 4096;
