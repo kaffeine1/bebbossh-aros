@@ -30,7 +30,8 @@ assets per target.
 | Target | Status | Build entry point | Release assets |
 | --- | --- | --- | --- |
 | AROS i386 `alt-abiv0` | stable / validated | `Makefile.aros` | `bebbossh-aros-i386-*` |
-| AROS x86_64 | experimental / non-PTY exec validated | `Makefile.aros-x86_64` | `bebbossh-aros-x86_64-*` |
+| AROS i386 hosted | automation validated | `Makefile.aros` | hosted test kits only |
+| AROS x86_64 hosted | offline automation validated | `Makefile.aros-x86_64` | `bebbossh-aros-x86_64-*` |
 
 The AROS port currently includes:
 
@@ -85,6 +86,17 @@ Runtime status on AROS One i386:
   separate daemon from that directory.
 - Full PTY-style interactive program support is still incomplete.
 
+Hosted AROS i386 automation status:
+
+- The hosted i386 daemon uses a 1 MiB default command stack on all AROS builds.
+  This avoids command-task crashes seen with larger `telegram-amiga` offline
+  self-tests.
+- The hosted i386 runtime has passed `telegram-test --help`,
+  `--telegram-json-self-test`, `--telegram-get-updates-self-test`,
+  `--telegram-inbox-self-test`, `--telegram-send-message-self-test`,
+  `--telegram-client-self-test`, `--telegram-tls-status`, and a follow-up
+  `C:Version` health check over OpenSSH.
+
 The stable AROS i386 runtime kit can be generated with:
 
 ```sh
@@ -134,10 +146,12 @@ from ISO transfer after copying to a persistent `AROS:` directory and applying
 `bebbosshd` x86_64 has been validated in hosted AROS x86_64 for short
 non-interactive OpenSSH commands: `C:Version` and `C:Echo OK` return complete
 output and exit status 0, an explicit missing command returns exit status 127,
-and the daemon remains usable afterwards. SFTP/SCP and interactive shell
-coverage on x86_64 are still below the i386 release level, and the x86_64
-entropy path remains experimental, so x86_64 builds are published as
-experimental/pre-release kits.
+and the daemon remains usable afterwards. With the current hosted test
+environment, x86_64 also passes the `telegram-amiga` offline automation suite
+used for `--help`, JSON, getUpdates, inbox, sendMessage, client-state, and
+TLS-status checks. SFTP/SCP and interactive shell coverage on x86_64 are still
+below the i386 release level, and the x86_64 entropy path remains experimental,
+so x86_64 builds are published as experimental/pre-release kits.
 
 ### AROS automation workflow
 

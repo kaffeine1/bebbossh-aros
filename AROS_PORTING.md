@@ -7,7 +7,8 @@ kept target-specific.
 | Target | Status | Build entry point | Notes |
 | --- | --- | --- | --- |
 | AROS i386 `alt-abiv0` | stable / validated | `Makefile.aros` | current published runtime kits |
-| AROS x86_64 | experimental / non-PTY exec validated | `Makefile.aros-x86_64` | hosted AROS x64 smoke passed for short exec commands |
+| AROS i386 hosted | automation validated | `Makefile.aros` | hosted AROS i386 passed the telegram-amiga offline suite |
+| AROS x86_64 hosted | offline automation validated | `Makefile.aros-x86_64` | hosted AROS x64 passed the telegram-amiga offline suite |
 
 This port is maintained as a derivative of Stefan "Bebbo" Franke's original
 BebboSSH source tree:
@@ -46,6 +47,9 @@ consistent with the upstream project.
   non-interactive commands.
 - Adjusted SFTP path validation on AROS to use `GetDeviceProc()`, so assigns
   such as `T:` and `DH0:` resolve correctly.
+- Raised the default AROS command stack to 1 MiB for all AROS daemon builds.
+  This is required for larger automation commands such as telegram-amiga inbox
+  and client self-tests on hosted i386.
 
 ## Stable AROS i386 build
 
@@ -137,6 +141,9 @@ The first runtime validation goal for x86_64 is deliberately small:
   such as `C:Version` and `C:Echo OK`. Done in hosted AROS x86_64.
 - Explicit missing commands return SSH exit status 127 and leave the daemon
   usable. Done in hosted AROS x86_64.
+- The telegram-amiga offline automation suite passes on hosted AROS x86_64:
+  `--help`, JSON, getUpdates, inbox, sendMessage, client-state, and TLS-status
+  checks all returned exit status 0.
 - SFTP/SCP upload and download work on a persistent volume such as `DH0:`.
 - PTY and interactive shell tests run after the non-PTY path is stable.
 
@@ -192,9 +199,18 @@ Ed25519 private/public key files on AROS One x86_64. In hosted AROS x86_64,
 `bebbosshd` starts with AROSTCP/TAP networking, authenticates OpenSSH password
 clients, returns complete output and exit status 0 for `C:Version` and
 `C:Echo OK`, returns exit status 127 for an explicit missing command, and stays
-usable after that failure. Keep x86_64 marked experimental until SFTP/SCP,
-interactive shell behavior, and the entropy path are validated to the same
-level as i386.
+usable after that failure. It also passes the telegram-amiga offline automation
+suite used for JSON, getUpdates, inbox, sendMessage, client-state, and
+TLS-status checks. Keep x86_64 marked experimental until SFTP/SCP, interactive
+shell behavior, and the entropy path are validated to the same level as i386.
+
+Current hosted i386 runtime status: hosted AROS i386 starts with AROSTCP/TAP
+networking and authenticates OpenSSH password clients. After the default AROS
+command stack was raised to 1 MiB, it passes the telegram-amiga offline
+automation suite used for `--help`, JSON, getUpdates, inbox, sendMessage,
+client-state, and TLS-status checks, followed by a successful `C:Version`
+health check. This hosted validation does not replace the separate AROS One
+`alt-abiv0` release validation path.
 
 ## Host cross-build for AROS One i386
 
