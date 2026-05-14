@@ -211,9 +211,10 @@ clients, returns complete output and exit status 0 for `C:Version` and
 usable after that failure. It also passes the telegram-amiga offline automation
 suite used for JSON, getUpdates, inbox, sendMessage, client-state, and
 TLS-status checks. Hosted x86_64 now also passes SFTP/SCP upload/download,
-PTY exec, the minimal interactive shell sequence, and 1 MiB plus 5 MiB transfer
-stress on `SYS:TGTEST`. Keep x86_64 marked experimental until the entropy path
-and non-hosted AROS One daemon validation are closed.
+PTY exec, the minimal interactive shell sequence, 1 MiB plus 5 MiB transfer
+stress, and a bounded zero-delay SCP/SFTP stress run on `SYS:TGTEST`. Keep
+x86_64 marked experimental until the entropy path and non-hosted AROS One
+daemon validation are closed.
 
 Current hosted i386 runtime status: hosted AROS i386 starts with AROSTCP/TAP
 networking and authenticates OpenSSH password clients. After the default AROS
@@ -221,12 +222,10 @@ command stack was raised to 1 MiB, it passes the telegram-amiga offline
 automation suite used for `--help`, JSON, getUpdates, inbox, sendMessage,
 client-state, and TLS-status checks. It also passes the hosted smoke test for
 redirection rejection, interactive-command rejection, PTY exec, minimal shell,
-SCP/SFTP, and 1 MiB plus 5 MiB transfer stress on `SYS:TGTEST`. One transient
-i386 OpenSSH/SFTP `incorrect signature` failure was observed during validation;
-the daemon stayed healthy, an isolated SCP retry succeeded, a full smoke rerun
-passed, and no hosted runtime trap was logged. Keep SFTP/SCP stress in the
-regression suite. This hosted validation does not replace the separate AROS One
-`alt-abiv0` release validation path.
+SCP/SFTP, 1 MiB plus 5 MiB transfer stress, and a bounded zero-delay SCP/SFTP
+stress run on `SYS:TGTEST`. Keep SFTP/SCP stress in the regression suite. This
+hosted validation does not replace the separate AROS One `alt-abiv0` release
+validation path.
 
 ## Host cross-build for AROS One i386
 
@@ -485,11 +484,14 @@ BEBBOSSH_AROS_STRESS_SIZES="257 4096 65536 1048576"
 BEBBOSSH_AROS_STRESS_DELAY=1
 ```
 
-Hosted validation found that `BEBBOSSH_AROS_STRESS_DELAY=0` can reproduce
-intermittent OpenSSH password/authentication failures during rapid SCP/SFTP
-connection storms on both i386 and x86_64. The daemon remains healthy
-afterwards and isolated retries pass. Keep the default one-second pacing for
-automation until the connection-storm behavior is fixed in the daemon.
+Earlier hosted validation found that `BEBBOSSH_AROS_STRESS_DELAY=0` could
+reproduce intermittent OpenSSH password/authentication failures during rapid
+SCP/SFTP connection storms. After increasing the AROS listen backlog and
+accepting several pending sockets per event-loop pass, hosted x86_64 passed
+5 zero-delay stress iterations and hosted i386 passed 3 zero-delay stress
+iterations with sizes `257 4096 65536 1048576` on `SYS:TGTEST`. Keep the
+default one-second pacing for downstream automation, and use zero-delay mode as
+an explicit regression stress test.
 
 SFTP/SCP status:
 

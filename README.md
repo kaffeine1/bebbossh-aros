@@ -30,8 +30,8 @@ assets per target.
 | Target | Status | Build entry point | Release assets |
 | --- | --- | --- | --- |
 | AROS i386 `alt-abiv0` | stable / validated | `Makefile.aros` | `bebbossh-aros-i386-*` |
-| AROS i386 hosted | automation validated, paced transfer stress validated | `Makefile.aros` | hosted test kits only |
-| AROS x86_64 hosted | automation validated, paced transfer stress validated | `Makefile.aros-x86_64` | `bebbossh-aros-x86_64-*` |
+| AROS i386 hosted | automation validated, transfer stress validated | `Makefile.aros` | hosted test kits only |
+| AROS x86_64 hosted | automation validated, transfer stress validated | `Makefile.aros-x86_64` | `bebbossh-aros-x86_64-*` |
 | AROS x86_64 AROS One | keygen validated, daemon validation pending | `Makefile.aros-x86_64` | pre-release kits only |
 
 The AROS port currently includes:
@@ -81,6 +81,9 @@ Runtime status on AROS One i386:
   file on `DH0:` has been verified to truncate correctly. AROS SFTP uploads
   also keep the AmigaDOS execute protection allowed, so uploaded binaries can
   be started without a manual `protect +e` step.
+- The AROS daemon uses a larger listen backlog and accepts several pending
+  sockets per event-loop pass. This improves rapid short-session workflows such
+  as repeated SCP/SFTP transfers.
 - SFTP `mkdir`/`rmdir` has been tested on `DH0:`.
 - A clean package install was tested by copying the runtime kit to a fresh
   `DH0:` directory, generating a host key with `bebbosshkeygen`, and starting a
@@ -195,10 +198,12 @@ BEBBOSSH_AROS_WORKDIR=SYS:TGTEST \
 ./scripts/aros-transfer-stress-test.sh
 ```
 
-The transfer stress script deliberately defaults to a one-second delay between
-cycles. Hosted AROS i386 and x86_64 both showed intermittent authentication
-failures under zero-delay SCP/SFTP connection storms, while paced transfer
-stress remained stable.
+The transfer stress script defaults to a one-second delay between cycles for
+downstream automation. After backlog/accept-loop hardening, hosted AROS x86_64
+passed 5 zero-delay stress iterations and hosted AROS i386 passed 3 zero-delay
+stress iterations with sizes `257 4096 65536 1048576` on `SYS:TGTEST`. Keep the
+paced default for routine CI-style automation; use `BEBBOSSH_AROS_STRESS_DELAY=0`
+only as an explicit regression stress test.
 
 ### AROS autostart
 

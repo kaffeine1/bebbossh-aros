@@ -67,9 +67,12 @@ BEBBOSSH_AROS_STRESS_SIZES="257 4096 65536 1048576"
 BEBBOSSH_AROS_STRESS_DELAY=1
 ```
 
-Keep the default delay for downstream automation. Zero-delay connection storms
-can trigger intermittent OpenSSH password/authentication failures on hosted
-AROS even though the daemon remains healthy and isolated retries pass.
+Keep the default delay for downstream automation. Zero-delay mode is available
+as an explicit regression stress test:
+
+```sh
+BEBBOSSH_AROS_STRESS_DELAY=0 ./scripts/aros-transfer-stress-test.sh
+```
 
 ## Current Validation
 
@@ -79,8 +82,8 @@ plus 5 MiB transfer stress. Both runtimes also passed the telegram-amiga
 offline checks for JSON, getUpdates, inbox, sendMessage, client-state, and
 TLS-status.
 
-During validation, zero-delay transfer stress produced intermittent OpenSSH
-failures (`incorrect signature` once on i386, and password/authentication
-failures on both i386 and x86_64). The daemon remained responsive, isolated SCP
-retries passed, paced stress passed, and hosted runtime logs showed no trap.
-Keep paced transfer stress enabled when validating future changes.
+After backlog/accept-loop hardening, hosted x86_64 passed 5 zero-delay transfer
+stress iterations and hosted i386 passed 3 zero-delay transfer stress iterations
+with sizes `257 4096 65536 1048576` on `SYS:TGTEST`. Hosted runtime logs showed
+no trap after these runs. Keep paced stress enabled for routine validation, and
+run zero-delay stress only when specifically checking short-session robustness.

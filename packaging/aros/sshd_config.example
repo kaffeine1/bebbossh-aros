@@ -5,6 +5,7 @@
 
 Port 22
 ListenAddress 0.0.0.0
+ListenBacklog 16
 DebugLevel 1
 SendNoop some
 
