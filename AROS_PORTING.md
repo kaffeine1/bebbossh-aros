@@ -149,8 +149,11 @@ The first runtime validation goal for x86_64 is deliberately small:
 - The telegram-amiga offline automation suite passes on hosted AROS x86_64:
   `--help`, JSON, getUpdates, inbox, sendMessage, client-state, and TLS-status
   checks all returned exit status 0.
-- SFTP/SCP upload and download work on a persistent volume such as `DH0:`.
-- PTY and interactive shell tests run after the non-PTY path is stable.
+- SFTP/SCP upload and download work on a persistent volume. Done in hosted AROS
+  x86_64 on `SYS:TGTEST`, including 1 MiB and 5 MiB transfer round-trips.
+- PTY exec for simple commands and the minimal interactive shell pass the
+  hosted smoke test. The shell sequence covers `dir`, `cd`, `version`, and
+  `exit`.
 
 The AROS-specific task launch code now uses real `struct TagItem` arrays with
 `IPTR` payloads, and synthetic DOS file handles store channel pointers through
@@ -173,7 +176,8 @@ bebbossh-aros-x86_64-<version>.tar.gz
 ```
 
 Only mark x86_64 releases stable after the same smoke-test class used for i386
-passes on an AROS x86_64 system.
+passes on an AROS x86_64 system and the remaining entropy/security-release
+questions are closed.
 
 ## QEMU environment
 
@@ -206,15 +210,22 @@ clients, returns complete output and exit status 0 for `C:Version` and
 `C:Echo OK`, returns exit status 127 for an explicit missing command, and stays
 usable after that failure. It also passes the telegram-amiga offline automation
 suite used for JSON, getUpdates, inbox, sendMessage, client-state, and
-TLS-status checks. Keep x86_64 marked experimental until SFTP/SCP, interactive
-shell behavior, and the entropy path are validated to the same level as i386.
+TLS-status checks. Hosted x86_64 now also passes SFTP/SCP upload/download,
+PTY exec, the minimal interactive shell sequence, and 1 MiB plus 5 MiB transfer
+stress on `SYS:TGTEST`. Keep x86_64 marked experimental until the entropy path
+and non-hosted AROS One daemon validation are closed.
 
 Current hosted i386 runtime status: hosted AROS i386 starts with AROSTCP/TAP
 networking and authenticates OpenSSH password clients. After the default AROS
 command stack was raised to 1 MiB, it passes the telegram-amiga offline
 automation suite used for `--help`, JSON, getUpdates, inbox, sendMessage,
-client-state, and TLS-status checks, followed by a successful `C:Version`
-health check. This hosted validation does not replace the separate AROS One
+client-state, and TLS-status checks. It also passes the hosted smoke test for
+redirection rejection, interactive-command rejection, PTY exec, minimal shell,
+SCP/SFTP, and 1 MiB plus 5 MiB transfer stress on `SYS:TGTEST`. One transient
+i386 OpenSSH/SFTP `incorrect signature` failure was observed during validation;
+the daemon stayed healthy, an isolated SCP retry succeeded, a full smoke rerun
+passed, and no hosted runtime trap was logged. Keep SFTP/SCP stress in the
+regression suite. This hosted validation does not replace the separate AROS One
 `alt-abiv0` release validation path.
 
 ## Host cross-build for AROS One i386
@@ -245,6 +256,13 @@ The current cross-build product is:
 aros-i386-abiv0-arosone/bebbosshd
 aros-i386-abiv0-arosone/bebbosshkeygen
 ```
+
+The local i386 `alt-abiv0` build requires a complete AROS One SDK/sysroot, not
+only headers and GCC runtime files. If linking fails with missing startup or
+static AROS libraries such as `startup.o`, `libamiga.a`, `libaros.a`, or
+`libdos.a`, the sysroot is incomplete and the result must not be published as a
+fresh AROS One i386 kit. Hosted-tested i386 binaries are tracked separately
+from AROS One `alt-abiv0` release validation.
 
 The VM CD image with only the current binary and crypto tests is generated or
 stored outside the repository. Use an installation-specific path:

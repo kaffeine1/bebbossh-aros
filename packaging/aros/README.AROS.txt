@@ -111,7 +111,9 @@ commands: C:Version and C:Echo OK return complete output and exit status 0,
 an explicit missing command returns exit status 127, and the daemon remains
 usable afterwards. Hosted x86_64 and hosted i386 both pass the smoke test for
 PTY exec of simple commands, the minimal interactive shell, SCP/SFTP, and 1 MiB
-and 5 MiB transfer round-trips.
+and 5 MiB transfer round-trips. Both hosted targets also pass the
+telegram-amiga offline checks for JSON, getUpdates, inbox, sendMessage,
+client-state, and TLS-status.
 
 Known Limits
 ------------

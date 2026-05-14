@@ -49,3 +49,15 @@ BEBBOSSH_AROS_TELEGRAM_TEST=SYS:TGTEST/telegram-test \
 
 Use `BEBBOSSH_AROS_PORT=10022` for hosted i386.
 
+## Current Validation
+
+The hosted x86_64 and i386 runtimes have passed this smoke test with
+`BEBBOSSH_AROS_WORKDIR=SYS:TGTEST`, including SCP/SFTP round-trips and 1 MiB
+plus 5 MiB transfer stress. Both runtimes also passed the telegram-amiga
+offline checks for JSON, getUpdates, inbox, sendMessage, client-state, and
+TLS-status.
+
+During one i386 validation run OpenSSH reported a transient SFTP/SCP
+`incorrect signature`. The daemon remained responsive, an isolated SCP retry
+passed, a full smoke rerun passed, and the hosted runtime log showed no trap.
+Keep transfer stress enabled when validating future i386 changes.

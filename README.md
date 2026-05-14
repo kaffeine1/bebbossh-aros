@@ -151,9 +151,10 @@ and the daemon remains usable afterwards. With the current hosted test
 environment, x86_64 also passes the `telegram-amiga` offline automation suite
 used for `--help`, JSON, getUpdates, inbox, sendMessage, client-state, and
 TLS-status checks. SFTP/SCP, PTY exec for simple commands, and the minimal
-interactive shell pass the hosted smoke test on both x86_64 and i386. The x86_64
-entropy path remains experimental, so x86_64 builds are published as
-experimental/pre-release kits.
+interactive shell pass the hosted smoke test on both x86_64 and i386, including
+1 MiB and 5 MiB transfer round-trips on `SYS:TGTEST` in hosted runs. The x86_64
+entropy path and non-hosted AROS One daemon validation remain experimental, so
+x86_64 builds are published as experimental/pre-release kits.
 
 ### AROS automation workflow
 
