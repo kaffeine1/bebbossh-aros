@@ -42,6 +42,12 @@ public:
     /// Construct SHA-512 digest
     SHA512();
 
+    /// Add data without virtual dispatch. Used by AROS x86_64 startup/runtime workarounds.
+    void updateDirect(const void* d, unsigned len);
+
+    /// Finalize without virtual dispatch. Used by AROS x86_64 startup/runtime workarounds.
+    void digestDirect(void* to);
+
     /// Return digest length in bytes (64)
     virtual unsigned len() const;
 

@@ -45,7 +45,7 @@
 #define MAXPACKET 32768
 
 #define D_S(type,name) char a_##name[sizeof(type)+3]; \
-  type *name = (type *)((ULONG)(a_##name+3) & ~3UL)
+  type *name = (type *)((uintptr_t)(a_##name+3) & ~(uintptr_t)3)
 
 #define SSH_MSG_DISCONNECT         1
 #define SSH_MSG_DEBUG              4

@@ -479,18 +479,18 @@ void AES::decrypt(void* output_, const void* input_) {
 	*output++ = t ^ *rk++;
 }
 
-#ifdef __AMIGA__
+#if defined(__AMIGA__) && !defined(__AROS__)
 #include <stabs.h>
 ADD2INIT(initMixTables, -21);
 #endif
 
 
 AES::AES(int dummy) : rounds(0), ckey(0), invckey(0) {
-#ifndef __AMIGA__
+#if !defined(__AMIGA__) || defined(__AROS__)
 	if (!Tinv1[0]) {
 		initMixTables();
 	}
-#endif	
+#endif
 }
 
 /**

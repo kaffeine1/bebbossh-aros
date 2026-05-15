@@ -3,7 +3,8 @@
 **Short:** BebboSSH - SSH2 suite (client/server, sftp) with modern ciphers
 **Author:** s.franke@bebbosoft.de
 **Uploader:** s.franke@bebbosoft.de
-**Architecture:** m68k-amigaos
+**Upstream architecture:** m68k-amigaos
+**AROS fork targets:** i386 `alt-abiv0` stable, x86_64 experimental
 **Type:** comm/net
 **Version:** 1.44
 **Required:** bsdsocket.library (e.g. AmiTCP)
@@ -11,32 +12,40 @@
 
 ---
 
-## AROS/i386 fork status
+## AROS fork status
 
 This repository is a derivative work / fork of the original BebboSSH project by
 Stefan "Bebbo" Franke.
 
 - Original upstream source: https://franke.ms/git/bebbo/bebbossh
-- AROS/i386 porting changes: Copyright (C) 2026 Michele Dipace
+- AROS porting changes: Copyright (C) 2026 Michele Dipace
   <michele.dipace@kaffeine.net>
-- License of the AROS/i386 modifications: GNU GPL v3 or later, consistent with
+- License of the AROS modifications: GNU GPL v3 or later, consistent with
   the upstream project license.
 
-The current porting target is AROS i386. x86_64 support is intentionally
-deferred until the i386 build and runtime behaviour are stable.
+This is a multi-target AROS porting repository. The same source tree is used
+for all AROS architectures, with separate makefile entry points and release
+assets per target.
 
-The AROS/i386 work currently includes:
+| Target | Status | Build entry point | Release assets |
+| --- | --- | --- | --- |
+| AROS i386 `alt-abiv0` | stable / validated | `Makefile.aros` | `bebbossh-aros-i386-*` |
+| AROS x86_64 | experimental / non-PTY exec validated | `Makefile.aros-x86_64` | `bebbossh-aros-x86_64-*` |
 
-- an AROS-specific cross-build makefile (`Makefile.aros`);
-- static AROS/i386 builds of `bebbosshd` and `bebbosshkeygen`;
-- compatibility headers for AROS/i386 builds;
+The AROS port currently includes:
+
+- a shared AROS build makefile (`Makefile.aros`) with target triplet overrides;
+- static AROS builds of `bebbosshd` and `bebbosshkeygen`;
+- compatibility headers for AROS builds;
 - startup/runtime fixes for AROS One `alt-abiv0`;
 - fallback loading of `PROGDIR:sshd_config` and
   `PROGDIR:ssh_host_ed25519_key` for ISO-based testing;
 - read-only password-file support for test media;
 - a minimal AROS remote `exec` backend for non-interactive commands;
 - SFTP/SCP path validation for AROS assigns such as `T:` and `DH0:`;
-- a reproducible AROS/i386 runtime package target;
+- reproducible AROS runtime package targets;
+- an experimental AROS x86_64 daemon/keygen path using minimal startup/runtime
+  code;
 - QEMU/AROS One test notes in `AROS_PORTING.md`.
 
 Runtime status on AROS One i386:
@@ -76,7 +85,7 @@ Runtime status on AROS One i386:
   separate daemon from that directory.
 - Full PTY-style interactive program support is still incomplete.
 
-The AROS/i386 runtime kit can be generated with:
+The stable AROS i386 runtime kit can be generated with:
 
 ```sh
 make -f Makefile.aros package-aros-runtime OUTDIR=aros-i386-abiv0-arosone
@@ -84,6 +93,51 @@ make -f Makefile.aros package-aros-runtime OUTDIR=aros-i386-abiv0-arosone
 
 Published builds are attached to GitHub Releases as `.zip` and `.tar.gz`
 runtime kits.
+
+The experimental AROS x86_64 build wrapper builds the validated keygen and the
+daemon used for hosted AROS smoke tests:
+
+```sh
+make -f Makefile.aros-x86_64 bebbosshkeygen bebbosshd
+```
+
+For host-side x86_64 crosstools, point `AROS_SDK_ROOT` at the matching AROS
+x86_64 SDK and override the tool commands:
+
+```sh
+make -f Makefile.aros-x86_64 bebbosshkeygen bebbosshd \
+  CC=<toolchain>/x86_64-aros-gcc \
+  CXX=<toolchain>/x86_64-aros-g++ \
+  AR=<toolchain>/x86_64-aros-ar \
+  STRIP=<toolchain>/x86_64-aros-strip \
+  OBJCOPY=<toolchain>/x86_64-aros-objcopy \
+  AROS_SDK_ROOT=<path-to-aros-x86_64-sdk>
+```
+
+`Makefile.aros-x86_64` marks generated ELF files with AROS ABI version 11,
+matching the current AROS One x86_64 runtime. Without this marker AROS One
+x86_64 rejects otherwise valid ELF64 AROS binaries as not executable.
+The wrapper also builds with x86_64-safe code model and unwind-table settings
+so the final AROS ELF64 binaries keep relocation records to `R_X86_64_64`.
+When using host-side crosstools, pass the matching `OBJCOPY` if it is not named
+`objcopy`.
+
+Do not use `Qemu Vfat` as proof that an x86_64 executable is valid. On the
+current AROS One x86_64 VM, even a native AROS command copied through the QEMU
+FAT shared disk can be rejected as not executable after copying to `DH0:`.
+Use a byte-preserving transfer path, such as an ISO image or a native AROS
+volume, before judging runtime validity.
+
+Current x86_64 status: `bebbosshkeygen` has been validated on AROS One x86_64
+from ISO transfer after copying to a persistent `AROS:` directory and applying
+`Protect <file> RWED`; it generates both private and public Ed25519 key files.
+`bebbosshd` x86_64 has been validated in hosted AROS x86_64 for short
+non-interactive OpenSSH commands: `C:Version` and `C:Echo OK` return complete
+output and exit status 0, an explicit missing command returns exit status 127,
+and the daemon remains usable afterwards. SFTP/SCP and interactive shell
+coverage on x86_64 are still below the i386 release level, and the x86_64
+entropy path remains experimental, so x86_64 builds are published as
+experimental/pre-release kits.
 
 ### AROS automation workflow
 
@@ -242,10 +296,9 @@ Some components are derived from **SUPERCOP** (Bernstein, Lange, Schwabe, et al.
 
 Combined use: The project as a whole is GPLv3+, but PD-marked files remain PD.
 
-The AROS/i386 porting changes in this repository are licensed under GPLv3 or
-later. Existing upstream copyright notices, license files, and public-domain
-notices must be preserved when redistributing this fork or binaries built from
-it.
+The AROS porting changes in this repository are licensed under GPLv3 or later.
+Existing upstream copyright notices, license files, and public-domain notices
+must be preserved when redistributing this fork or binaries built from it.
 
 ---
 

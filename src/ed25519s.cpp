@@ -23,11 +23,26 @@
 #include "sha512.h"
 #include "test.h"
 
+#if defined(__AROS__) && defined(__x86_64__) && defined(BEBBOSSH_TRACE_KEYGEN)
+#include <proto/dos.h>
+#define KGTRACE(s) Printf("%s\n", (s))
+#else
+#define KGTRACE(s) ((void)0)
+#endif
+
 /* create the secret key + randomizer from seed. */
 void secret_expand(uint8_t *az, uint8_t const *sk) {
+	KGTRACE("secret_expand: enter");
 	SHA512 sha;
+#if defined(__AROS__) && defined(__x86_64__)
+	sha.updateDirect(sk, 32);
+	KGTRACE("secret_expand: update");
+	sha.digestDirect(az);
+	KGTRACE("secret_expand: digest");
+#else
 	sha.update(sk, 32);
 	sha.digest(az);
+#endif
 	az[0] &= 248;
 	az[31] &= 127;
 	az[31] |= 64;
@@ -152,8 +167,12 @@ void ge_pubkey(unsigned char *pk, unsigned char const *az) {
 
 void ge_new_keypair_ed25519(unsigned char *pk, unsigned char *sk) {
 	uint8_t az[64];
+	KGTRACE("ge_new_keypair: before randfill");
 	randfill(sk, 32);
+	KGTRACE("ge_new_keypair: after randfill");
 	secret_expand(az, sk);
+	KGTRACE("ge_new_keypair: after secret_expand");
 	ge_pubkey(pk, az);
+	KGTRACE("ge_new_keypair: after ge_pubkey");
 	memcpy(sk + 32, pk, 32);
 }

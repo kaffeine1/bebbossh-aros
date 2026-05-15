@@ -51,6 +51,7 @@
 #define DPTR BPTR
 extern struct SignalSemaphore theLock;
 
+
 #else
 #include "amiemul.h"
 
@@ -203,6 +204,9 @@ bool mysend(int fd, void const *data, int len) {
 				continue;
 			}
 			logme(L_ERROR, "failed to send %ld bytes on socket %ld: sent %ld, errno=%ld", len, fd, sent, _errno);
+			return false;
+		}
+		if (sent == 0) {
 			return false;
 		}
 		len -= sent;

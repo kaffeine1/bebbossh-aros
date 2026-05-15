@@ -80,6 +80,8 @@ ShellChannel::ShellChannel(SshSession * server, uint32_t channel, ChannelType ty
 	*xend = 0;
 #if BEBBOSSH_AROS
 	arosExecOutName[0] = 0;
+	arosExecArgs[0] = 0;
+	arosExecCommandName[0] = 0;
 	arosExecStarted.tv_secs = 0;
 	arosExecStarted.tv_micro = 0;
 #endif
@@ -755,6 +757,17 @@ void ShellChannel::endProc() {
 //	printf("%ld\n", cli->cli_ReturnCode); // not used atm
 }
 
+#if BEBBOSSH_AROS
+void ShellChannel::endArosExecProc(IPTR rc, IPTR data) {
+	ShellChannel *sc = (ShellChannel *)data;
+	if (!sc)
+		return;
+	sc->arosExecRc = (LONG)rc;
+	sc->done = 1;
+	Signal(thisTask, SIGBREAKF_CTRL_F);
+}
+#endif
+
 __saveds
 void ShellChannel::startProc() {
 	struct Process * process = (struct Process *)FindTask(0);
@@ -769,7 +782,7 @@ void ShellChannel::startProc() {
 					SYS_Input, input ? input : Input(),
 					SYS_Output, output,
 					SYS_Error, output,
-					SYS_UserShell, (ULONG)TRUE,
+					SYS_UserShell, (IPTR)TRUE,
 					TAG_DONE);
 			CurrentDir(oldDir);
 			Close(output);
@@ -793,27 +806,27 @@ void ShellChannel::startProc() {
 		i->fh_Type = port;
 		i->fh_Pos = -1;
 		i->fh_End = -1;
-		i->fh_Arg1 = (LONG)sc;
+		i->fh_Arg1 = (SIPTR)sc;
 
 		o->fh_Flags = 1; // with buffer
 		o->fh_Port = 1; // interactive
 		o->fh_Type = port;
 		o->fh_Pos = -1;
 		o->fh_End = -1;
-		o->fh_Arg1 = (LONG)sc;
+		o->fh_Arg1 = (SIPTR)sc;
 
 		e->fh_Flags = 1; // with buffer
 		e->fh_Port = 1; // interactive
 		e->fh_Type = port;
 		e->fh_Pos = -1;
 		e->fh_End = -1;
-		e->fh_Arg1 = (LONG)sc;
+		e->fh_Arg1 = (SIPTR)sc;
 
 		SystemTags(sc->xbuffer,
 				SYS_Input, MKBADDR(i),
 				SYS_Output, MKBADDR(o),
 				SYS_Error, MKBADDR(e),
-				SYS_UserShell, (ULONG) TRUE,
+				SYS_UserShell, (IPTR)TRUE,
 				NP_StackSize, sc->stackSize,
 				TAG_DONE
 				);
@@ -834,7 +847,7 @@ void ShellChannel::startProc() {
 
 		memcpy(i, theInput, theInputSize);
 		i->fh_Type = port;
-		i->fh_Arg1 = (LONG)sc;
+		i->fh_Arg1 = (SIPTR)sc;
 
 		//memcpy(o, theOutput, theOutputSize);
 		o->fh_Flags = 1; // with buffer
@@ -851,14 +864,14 @@ void ShellChannel::startProc() {
 			o->fh_Func3 = theOutput->fh_Func3;
 		}
 
-		o->fh_Arg1 = (LONG)sc;
+		o->fh_Arg1 = (SIPTR)sc;
 
 		SystemTags(sc->xbuffer,
 				SYS_Input, MKBADDR(i),
 				SYS_Output, MKBADDR(o),
-				SYS_UserShell, (ULONG) TRUE,
+				SYS_UserShell, (IPTR)TRUE,
 				NP_StackSize, sc->stackSize,
-				NP_ExitCode, (ULONG) endProc,
+				NP_ExitCode, (IPTR)endProc,
 				TAG_DONE
 				);
 	}
@@ -878,13 +891,13 @@ void ShellChannel::startProc() {
 		i->fh_Port = 1; // interactive
 		i->fh_Type = port;
 		i->fh_Func1 = readFx;
-		i->fh_Arg1 = (LONG)sc;
+		i->fh_Arg1 = (SIPTR)sc;
 
 		o->fh_Flags = 1; // with buffer
 		o->fh_Type = port;
 		o->fh_Func2 = writeFx;
 		o->fh_Func3 = flushFx;
-		o->fh_Arg1 = (LONG)sc;
+		o->fh_Arg1 = (SIPTR)sc;
 
 		struct TagItem tags[6];
 		tags[0].ti_Tag = SYS_Input;
@@ -892,11 +905,11 @@ void ShellChannel::startProc() {
 		tags[1].ti_Tag = SYS_Output;
 		tags[1].ti_Data = MKBADDR(o);
 		tags[2].ti_Tag = SYS_UserShell;
-		tags[2].ti_Data = (ULONG)TRUE;
+		tags[2].ti_Data = (IPTR)TRUE;
 		tags[3].ti_Tag = NP_StackSize;
 		tags[3].ti_Data = sc->stackSize;
 		tags[4].ti_Tag = NP_ExitCode;
-		tags[4].ti_Data = (ULONG)endProc;
+		tags[4].ti_Data = (IPTR)endProc;
 		tags[5].ti_Tag = TAG_DONE;
 		SystemTagList(sc->xbuffer, tags);
 
@@ -966,7 +979,138 @@ static bool isArosInteractiveOnlyExec(const char *cmd, int keywordLen) {
 	return strstr(cmd, "--telegram-client-console") != 0;
 }
 
+
+static bool isExplicitArosCommandPath(const char *cmd, int keywordLen) {
+	for (int i = 0; i < keywordLen; ++i) {
+		if (cmd[i] == 58 || cmd[i] == 47)
+			return true;
+	}
+	return false;
+}
+
+static bool arosCommandExists(const char *cmd, int keywordLen) {
+	char path[512];
+	if (keywordLen <= 0)
+		return false;
+	if (keywordLen >= (int)sizeof(path))
+		return false;
+	memcpy(path, cmd, keywordLen);
+	path[keywordLen] = 0;
+	BPTR lock = Lock(path, ACCESS_READ);
+	if (!lock)
+		return false;
+	UnLock(lock);
+	return true;
+}
+
+bool ShellChannel::finishArosExecImmediate(uint32_t exitStatus) {
+	arosExecFileMode = true;
+	arosExecTimedOut = false;
+	arosExecRc = (LONG)exitStatus;
+	arosExecOutName[0] = 0;
+	running = true;
+	done = 1;
+	Signal(thisTask, SIGBREAKF_CTRL_F);
+	return true;
+}
+
+bool ShellChannel::startArosLoadedExecFile(bool closeAfterCommand) {
+	int keywordLen = 0;
+	char *argp;
+	int argLen = 0;
+
+	while (xbuffer[keywordLen] && xbuffer[keywordLen] > 32)
+		++keywordLen;
+	if (!isExplicitArosCommandPath(xbuffer, keywordLen))
+		return false;
+	if (keywordLen <= 0 || keywordLen >= (int)sizeof(arosExecCommandName))
+		return false;
+	memcpy(arosExecCommandName, xbuffer, keywordLen);
+	arosExecCommandName[keywordLen] = 0;
+
+	BPTR seg = LoadSeg(arosExecCommandName);
+	if (!seg) {
+		char msg[600];
+		int nameLen = keywordLen < (int)sizeof(msg) - 21 ? keywordLen : (int)sizeof(msg) - 21;
+		memcpy(msg, xbuffer, nameLen);
+		memcpy(msg + nameLen, ": object not found\r\n", 20);
+		server->channelWrite(channel, msg, nameLen + 20);
+		if (closeAfterCommand)
+			return finishArosExecImmediate(127);
+		prompt();
+		return false;
+	}
+
+	arosExecFileMode = true;
+	arosExecTimedOut = false;
+	arosExecRc = 255;
+	snprintf(arosExecOutName, sizeof(arosExecOutName), "T:bebbosshd-%lx-%lx.out", (ULONG)server->getSockFd(), (ULONG)channel);
+	DeleteFile(arosExecOutName);
+	GetSysTime(&arosExecStarted);
+
+	argp = xbuffer + keywordLen;
+	while (*argp && *argp <= 32)
+		++argp;
+	while (*argp && argLen < (int)sizeof(arosExecArgs) - 2)
+		arosExecArgs[argLen++] = *argp++;
+	arosExecArgs[argLen++] = 10;
+	arosExecArgs[argLen] = 0;
+
+	BPTR input = Open("NIL:", MODE_OLDFILE);
+	BPTR output = Open(arosExecOutName, MODE_NEWFILE);
+	if (!output) {
+		if (input)
+			Close(input);
+		UnLoadSeg(seg);
+		server->channelWrite(channel, "bebbosshd/AROS: cannot create command output file\r\n", 52);
+		if (closeAfterCommand)
+			server->closeChannel(this, 20);
+		else
+			prompt();
+		return false;
+	}
+
+	struct TagItem tags[] = {
+			{ NP_Seglist, (IPTR)seg },
+			{ NP_FreeSeglist, (IPTR)TRUE },
+			{ NP_Cli, (IPTR)TRUE },
+			{ NP_Arguments, (IPTR)arosExecArgs },
+			{ NP_Input, (IPTR)input },
+			{ NP_Output, (IPTR)output },
+			{ NP_Error, (IPTR)output },
+			{ NP_CloseInput, (IPTR)TRUE },
+			{ NP_CloseOutput, (IPTR)TRUE },
+			{ NP_CloseError, (IPTR)FALSE },
+			{ NP_StackSize, stackSize },
+			{ NP_Name, (IPTR)arosExecCommandName },
+			{ NP_CommandName, (IPTR)arosExecCommandName },
+			{ NP_CurrentDir, (IPTR)DupLock(dir) },
+			{ NP_ExitCode, (IPTR)ShellChannel::endArosExecProc },
+			{ NP_ExitData, (IPTR)this },
+			{ TAG_DONE, 0 }
+	};
+
+	running = true;
+	if (!CreateNewProcTagList(tags)) {
+		running = false;
+		Close(input);
+		Close(output);
+		UnLoadSeg(seg);
+		if (closeAfterCommand)
+			server->closeChannel(this, 20);
+		return false;
+	}
+	return true;
+}
+
 bool ShellChannel::startArosExecFile(bool closeAfterCommand) {
+#if defined(BEBBOSSH_AROS_MINCRT)
+	int keywordLen = 0;
+	while (xbuffer[keywordLen] && xbuffer[keywordLen] > 32)
+		++keywordLen;
+	if (isExplicitArosCommandPath(xbuffer, keywordLen))
+		return startArosLoadedExecFile(closeAfterCommand);
+#endif
 	arosExecFileMode = true;
 	(void)closeAfterCommand;
 	arosExecTimedOut = false;
@@ -978,14 +1122,16 @@ bool ShellChannel::startArosExecFile(bool closeAfterCommand) {
 
 	logme(L_DEBUG, "@%ld:%ld starting AROS exec task %s with cmd `%s`", server->getSockFd(), channel, server->name, xbuffer);
 	running = true;
-	ULONG tags[] = { NP_Entry, (ULONG )startProc,
-			NP_StackSize, stackSize,
-			NP_Cli, 1,
-			NP_Name, (ULONG )server->name,
-			NP_CurrentDir, (ULONG)DupLock(dir),
-			NP_ExitData, (ULONG)this,
-			TAG_END};
-	CreateNewProcTagList((struct TagItem *)tags);
+	struct TagItem tags[] = {
+			{ NP_Entry, (IPTR)startProc },
+			{ NP_StackSize, stackSize },
+			{ NP_Cli, 1 },
+			{ NP_Name, (IPTR)server->name },
+			{ NP_CurrentDir, (IPTR)DupLock(dir) },
+			{ NP_ExitData, (IPTR)this },
+			{ TAG_DONE, 0 }
+	};
+	CreateNewProcTagList(tags);
 	return true;
 }
 
@@ -1015,7 +1161,7 @@ bool ShellChannel::runArosExec(bool closeAfterCommand) {
 			SYS_Input, input ? input : Input(),
 			SYS_Output, output,
 			SYS_Error, output,
-			SYS_UserShell, (ULONG)TRUE,
+			SYS_UserShell, (IPTR)TRUE,
 			TAG_DONE);
 	CurrentDir(oldDir);
 
@@ -1129,12 +1275,20 @@ bool ShellChannel::startCommand(){
 			strcpy(xbuffer, "list lformat %N");
 	}
 
+	if (hasExec() && !hasPty() && isExplicitArosCommandPath(xbuffer, keywordLen) && !arosCommandExists(xbuffer, keywordLen)) {
+		char msg[600];
+		int nameLen = keywordLen < (int)sizeof(msg) - 21 ? keywordLen : (int)sizeof(msg) - 21;
+		memcpy(msg, xbuffer, nameLen);
+		memcpy(msg + nameLen, ": object not found\r\n", 20);
+		server->channelWrite(channel, msg, nameLen + 20);
+		return finishArosExecImmediate(127);
+	}
+
 	if (hasUnsupportedArosShellSyntax(xbuffer)) {
 		static const char msg[] = "bebbosshd/AROS: shell redirection and pipes are not supported yet\r\n";
 		server->channelWrite(channel, msg, sizeof(msg) - 1);
 		if (hasExec()) {
-			server->closeChannel(this, 2);
-			return false;
+			return finishArosExecImmediate(2);
 		}
 		prompt();
 		return drainBufferedInput();
@@ -1143,8 +1297,7 @@ bool ShellChannel::startCommand(){
 	if (hasExec() && !hasPty() && isArosInteractiveOnlyExec(xbuffer, keywordLen)) {
 		static const char msg[] = "bebbosshd/AROS: interactive command requires a PTY; use ssh -tt\r\n";
 		server->channelWrite(channel, msg, sizeof(msg) - 1);
-		server->closeChannel(this, 2);
-		return false;
+		return finishArosExecImmediate(2);
 	}
 
 	if (hasExec() && !hasPty())
@@ -1153,14 +1306,16 @@ bool ShellChannel::startCommand(){
 
 	logme(L_DEBUG, "@%ld:%ld starting task %s with cmd `%s`", server->getSockFd(), channel, server->name, xbuffer);
 	running = true;
-	ULONG tags[] = { NP_Entry, (ULONG )startProc,
-			NP_StackSize, stackSize,
-			NP_Cli, 1,
-			NP_Name, (ULONG )server->name,
-			NP_CurrentDir, (ULONG)DupLock(dir),
-			NP_ExitData, (ULONG)this,
-			TAG_END};
-	CreateNewProcTagList((struct TagItem *)tags);
+	struct TagItem tags[] = {
+			{ NP_Entry, (IPTR)startProc },
+			{ NP_StackSize, stackSize },
+			{ NP_Cli, 1 },
+			{ NP_Name, (IPTR)server->name },
+			{ NP_CurrentDir, (IPTR)DupLock(dir) },
+			{ NP_ExitData, (IPTR)this },
+			{ TAG_DONE, 0 }
+	};
+	CreateNewProcTagList(tags);
 	return true;
 }
 
@@ -1171,19 +1326,21 @@ bool ShellChannel::endCommand(){
 	done = exec;
 #if BEBBOSSH_AROS
 	if (arosExecFileMode) {
-		BPTR output = Open(arosExecOutName, MODE_OLDFILE);
-		if (output) {
-			char buf[2048];
-			for (;;) {
-				LONG got = Read(output, buf, sizeof(buf));
-				if (got <= 0)
-					break;
-				server->channelWrite(channel, buf, got);
+		if (arosExecOutName[0]) {
+			BPTR output = Open(arosExecOutName, MODE_OLDFILE);
+			if (output) {
+				char buf[2048];
+				for (;;) {
+					LONG got = Read(output, buf, sizeof(buf));
+					if (got <= 0)
+						break;
+					server->channelWrite(channel, buf, got);
+				}
+				Close(output);
 			}
-			Close(output);
+			DeleteFile(arosExecOutName);
+			arosExecOutName[0] = 0;
 		}
-		DeleteFile(arosExecOutName);
-		arosExecOutName[0] = 0;
 		if (arosExecTimedOut && arosExecRc == 0)
 			arosExecRc = 124;
 		uint32_t exitStatus = (arosExecRc < 0 || arosExecRc > 255) ? 255 : (uint32_t)arosExecRc;

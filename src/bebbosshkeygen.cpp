@@ -49,6 +49,11 @@
 #include <amistdio.h>
 #include <proto/dos.h>
 #include <proto/exec.h>
+#if BEBBOSSH_AROS
+#define puts(s) Printf("%s\n", (s))
+#define printf Printf
+#define fflush(s) ((void)0)
+#endif
 #else
 #include "amiemul.h"
 #endif
@@ -92,6 +97,7 @@ static void parseParams(unsigned argc, char **argv) {
 			case '?':
 				goto usage;
 			case 'f':
+			case 'F':
 				if (arg[2])
 					goto invalid;
 
@@ -99,6 +105,7 @@ static void parseParams(unsigned argc, char **argv) {
 					goto missing;
 				strcpy(outfilename, argv[++i]);
 				continue;
+			case 'c':
 			case 'C':
 			    if (arg[2])
 			        goto invalid;

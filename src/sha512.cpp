@@ -40,6 +40,52 @@ SHA512::SHA512() :
 	reset();
 }
 
+void SHA512::updateDirect(const void *_d, unsigned len) {
+	unsigned char *d = (unsigned char*) _d;
+	unsigned k = ((unsigned) count) & mask;
+	count += len;
+	if (k + len <= mask) {
+		memcpy(data + k, d, len);
+		return;
+	}
+	unsigned m1 = mask + 1;
+	unsigned n = m1 - k;
+	memcpy(data + k, d, n);
+	len -= n;
+	while (true) {
+		SHA384512::transform();
+		if (len <= mask)
+			break;
+		memcpy(data, d + n, m1);
+		len -= m1;
+		n += m1;
+	}
+	memcpy(data, d + n, len);
+}
+
+void SHA512::digestDirect(void *to_) {
+	unsigned char *to = (unsigned char*) to_;
+	long bitCount = count << 3;
+
+	unsigned i = ((unsigned) count) & mask;
+	data[i++] = (unsigned char) 0x80;
+	unsigned end = mask + 1 - ((mask + 1) >> 3);
+	if (i > end) {
+		for (unsigned k = i; k <= mask; ++k)
+			data[k] = 0;
+		SHA384512::transform();
+		i = 0;
+	}
+	for (; i < end; ++i)
+		data[i] = 0;
+
+	SHA384512::addBitCount(bitCount);
+	SHA384512::transform();
+
+	SHA512::__getDigest(to);
+	SHA512::reset();
+}
+
 /**
  * Initialize new context
  */

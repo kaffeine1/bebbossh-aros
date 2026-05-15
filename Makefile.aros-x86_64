@@ -1,0 +1,20 @@
+# Experimental AROS x86_64 build wrapper.
+# Prefer an x86_64-aros GCC whose sysroot is already configured, or run this
+# inside an AROS x86_64 development environment. Do not set AROS_SDK_ROOT for
+# generated x86_64 crosstools unless that SDK provides the legacy startup and
+# crt libraries expected by Makefile.aros.
+
+OUTDIR ?= aros-x86_64
+PACKAGE_DIR ?= dist/bebbossh-aros-x86_64
+AROS_TARGET_TRIPLET ?= x86_64-aros
+SDK_GCC_VERSION ?= 10.5.0
+STRIP_OUTPUTS ?= yes
+TARGET_CFLAGS ?= -mcmodel=large -fno-asynchronous-unwind-tables -fno-unwind-tables -fno-reorder-blocks-and-partition -DBEBBOSSH_AROS_MINCRT=1
+CXXFLAGS ?= -fno-exceptions -fno-rtti -fno-weak
+SSHD_SOURCES ?= bebbosshd.cpp sshsession.cpp forwardchannel.cpp sftpchannel.cpp shellchannel.cpp channel.cpp stack.cpp c++support.cpp home.cpp aros_startup_flags.c aros_mincrt.c
+KEYGEN_SOURCES ?= bebbosshkeygen.cpp c++support.cpp home.cpp aros_startup_flags.c aros_mincrt.c
+SDK_LIBS ?= -lautoinit -lamiga -laros -ldos -lexec -lutility -lgcc -lautoinit -lamiga
+POST_LINK = $(OBJCOPY) -R .got $@ && printf '\013' | dd of=$@ bs=1 seek=8 conv=notrunc 2>/dev/null
+.DEFAULT_GOAL := bebbosshkeygen
+
+include Makefile.aros
