@@ -103,10 +103,10 @@ int serverPort = 22;
 int serverAddress = INADDR_ANY;
 #if BEBBOSSH_AROS
 int listenBacklog = 16;
-#define BEBBOSSH_ACCEPT_BURST 1
+int listenAcceptBurst = 1;
 #else
 int listenBacklog = 8;
-#define BEBBOSSH_ACCEPT_BURST 1
+int listenAcceptBurst = 1;
 #endif
 #if BEBBOSSH_AROS
 unsigned stackSize = 1048576;
@@ -701,6 +701,13 @@ void readIni() {
 			if (listenBacklog > 64)
 				listenBacklog = 64;
 		} else
+		if (0 == stricmp("ListenAcceptBurst", s)) {
+			listenAcceptBurst = strtoul(p, 0, 10);
+			if (listenAcceptBurst < 1)
+				listenAcceptBurst = 1;
+			if (listenAcceptBurst > 16)
+				listenAcceptBurst = 16;
+		} else
 		if (0 == stricmp("ListenAddress", s)) {
 			int a, b, c, d = -1;
 			char * q;
@@ -759,6 +766,7 @@ static void printUsage() {
 	puts("    -v <n>        set verbosity, defaults to 0 = OFF");
 #if BEBBOSSH_AROS
 	puts("    -A <file>     use the given password file");
+	puts("    -B <n>        accept up to n pending connections per loop");
 	puts("    -H <dir>      use the given home directory");
 	puts("    -K <file>     use the given Ed25519 host key");
 #endif
@@ -804,6 +812,19 @@ static void parseParams(unsigned argc, char **argv) {
 				if (i + 1 == argc)
 					goto missing;
 				passwords = strdup(argv[++i]);
+				continue;
+			case 'B':
+				if (arg[2]) {
+					listenAcceptBurst = atoi(&arg[2]);
+				} else {
+					if (i + 1 == argc)
+						goto missing;
+					listenAcceptBurst = atoi(argv[++i]);
+				}
+				if (listenAcceptBurst < 1)
+					listenAcceptBurst = 1;
+				if (listenAcceptBurst > 16)
+					listenAcceptBurst = 16;
 				continue;
 			case 'H':
 				if (arg[2]) {
@@ -910,7 +931,8 @@ __stdargs int main(int argc, char *argv[]) {
 		server.sin_addr.s_addr = serverAddress;
 		server.sin_port = htons(serverPort);
 #if BEBBOSSH_AROS
-		logme(L_DEBUG, "bebbosshd/AROS: binding port %ld", (LONG)serverPort);
+		logme(L_DEBUG, "bebbosshd/AROS: binding port %ld backlog %ld accept burst %ld",
+				(LONG)serverPort, (LONG)listenBacklog, (LONG)listenAcceptBurst);
 #endif
 
 		//Bind
@@ -1100,7 +1122,7 @@ __stdargs int main(int argc, char *argv[]) {
 					}
 
 					++accepted;
-					if (accepted >= BEBBOSSH_ACCEPT_BURST)
+					if (accepted >= listenAcceptBurst)
 						break;
 				}
 				if (accepted)

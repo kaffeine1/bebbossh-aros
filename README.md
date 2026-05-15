@@ -81,9 +81,10 @@ Runtime status on AROS One i386:
   file on `DH0:` has been verified to truncate correctly. AROS SFTP uploads
   also keep the AmigaDOS execute protection allowed, so uploaded binaries can
   be started without a manual `protect +e` step.
-- The AROS daemon uses a larger listen backlog and accepts several pending
-  sockets per event-loop pass. This improves rapid short-session workflows such
-  as repeated SCP/SFTP transfers.
+- The AROS daemon uses a larger listen backlog, and its per-loop accept burst
+  can be configured with `ListenAcceptBurst` or the AROS `-B` option. The
+  hosted default stays conservative while short-session churn remains under
+  investigation.
 - SFTP `mkdir`/`rmdir` has been tested on `DH0:`.
 - A clean package install was tested by copying the runtime kit to a fresh
   `DH0:` directory, generating a host key with `bebbosshkeygen`, and starting a

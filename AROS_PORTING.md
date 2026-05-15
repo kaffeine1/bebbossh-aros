@@ -48,6 +48,9 @@ consistent with the upstream project.
   instead of seeding `rand()` from `time(0)`.
 - Added a minimal AROS remote `exec` backend using `SystemTags()` for
   non-interactive commands.
+- Added configurable AROS accept-loop burst handling through
+  `ListenAcceptBurst` and the `-B` daemon option, while keeping the hosted
+  default conservative during x86_64 churn investigation.
 - Adjusted SFTP path validation on AROS to use `GetDeviceProc()`, so assigns
   such as `T:` and `DH0:` resolve correctly.
 - Adjusted SFTP reads to honor explicit client offsets and fail partial writes
@@ -490,10 +493,12 @@ BEBBOSSH_AROS_STRESS_DELAY=1
 Hosted validation found that `BEBBOSSH_AROS_STRESS_DELAY=0` can reproduce rapid
 SCP/SFTP connection-storm issues. After conservative accept-loop hardening,
 hosted i386 passes 3 zero-delay stress iterations with sizes
-`257 4096 65536 1048576` on `SYS:TGTEST`, but hosted x86_64 can still fail
-longer zero-delay churn with OpenSSH reporting `incorrect signature` during
-handshake. Keep the default one-second pacing for downstream automation, and
-use zero-delay mode as an explicit regression stress test.
+`257 4096 65536 1048576` on `SYS:TGTEST`, but hosted x86_64 has shown an
+intermittent longer zero-delay churn failure with OpenSSH reporting
+`incorrect signature` during handshake. Keep the default one-second pacing for
+downstream automation, and use zero-delay mode as an explicit regression stress
+test. Use `ListenAcceptBurst` or `bebbosshd -B` for targeted accept-loop
+experiments rather than changing the default package behavior.
 
 SFTP/SCP status:
 

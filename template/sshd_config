@@ -6,6 +6,7 @@ DebugLevel Info
 #Port 22
 #ListenAddress 0.0.0.0
 #ListenBacklog 16
+#ListenAcceptBurst 1
 
 HostKey	ENVARC:ssh/ssh_host_ed25519_key
 
