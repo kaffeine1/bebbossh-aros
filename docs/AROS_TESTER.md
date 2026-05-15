@@ -158,8 +158,9 @@ gateway addresses.
 
 After accept-loop hardening, hosted i386 passed 3 zero-delay transfer stress
 iterations with sizes `257 4096 65536 1048576` on `SYS:TGTEST`. Hosted x86_64
-previously showed an intermittent zero-delay churn failure where OpenSSH could
-report `incorrect signature` during handshake, but that failure was not
-reproduced in the latest 10-iteration zero-delay run with the same sizes. Keep
-paced stress enabled for routine automation, and run zero-delay stress as an
-explicit short-session robustness regression.
+now passes the focused 5-iteration zero-delay transfer stress target with the
+same sizes after the server loop was changed to service accepted sockets and
+already-ready client sockets in the same iteration. The aggregate hosted gate
+still has an intermittent x86_64 password-auth failure during zero-delay churn
+after the smoke phase. Keep paced stress enabled for routine automation, and
+run zero-delay stress as an explicit short-session robustness regression.

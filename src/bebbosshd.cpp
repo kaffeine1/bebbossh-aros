@@ -1125,8 +1125,6 @@ __stdargs int main(int argc, char *argv[]) {
 					if (accepted >= listenAcceptBurst)
 						break;
 				}
-				if (accepted)
-					continue;
 			}
 
 #if BEBBOSSH_POSIX_SHELL

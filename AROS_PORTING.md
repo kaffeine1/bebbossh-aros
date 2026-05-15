@@ -495,12 +495,15 @@ BEBBOSSH_AROS_STRESS_DELAY=1
 Hosted validation found that `BEBBOSSH_AROS_STRESS_DELAY=0` can reproduce rapid
 SCP/SFTP connection-storm issues. After conservative accept-loop hardening,
 hosted i386 passes 3 zero-delay stress iterations with sizes
-`257 4096 65536 1048576` on `SYS:TGTEST`, but hosted x86_64 has shown an
-intermittent longer zero-delay churn failure with OpenSSH reporting
-`incorrect signature` during handshake. Keep the default one-second pacing for
-downstream automation, and use zero-delay mode as an explicit regression stress
-test. Use `ListenAcceptBurst` or `bebbosshd -B` for targeted accept-loop
-experiments rather than changing the default package behavior.
+`257 4096 65536 1048576` on `SYS:TGTEST`. Hosted x86_64 now passes a focused
+5-iteration zero-delay run with the same sizes after the server loop stopped
+skipping already-ready client sockets in iterations that also accepted a new
+connection. The aggregate hosted release gate still has an intermittent x86_64
+password-auth failure during zero-delay churn after the smoke phase. Keep the
+default one-second pacing for downstream automation, and use zero-delay mode as
+an explicit regression stress test. Use `ListenAcceptBurst` or `bebbosshd -B`
+for targeted accept-loop experiments rather than changing the default package
+behavior.
 
 Public-key authentication and forwarding status:
 

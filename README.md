@@ -31,7 +31,7 @@ assets per target.
 | --- | --- | --- | --- |
 | AROS i386 `alt-abiv0` | stable / validated | `Makefile.aros` | `bebbossh-aros-i386-*` |
 | AROS i386 hosted | automation, transfer stress, public-key auth, and forwarding validated | `Makefile.aros` | hosted test kits only |
-| AROS x86_64 hosted | automation, transfer stress, public-key auth, and forwarding validated | `Makefile.aros-x86_64` | experimental `bebbossh-aros-x86_64-*` |
+| AROS x86_64 hosted | automation, public-key auth, and forwarding validated; aggregate zero-delay churn still under investigation | `Makefile.aros-x86_64` | experimental `bebbossh-aros-x86_64-*` |
 | AROS x86_64 AROS One | keygen validated, daemon validation pending | `Makefile.aros-x86_64` | pre-release kits only |
 
 The AROS port currently includes:
@@ -159,7 +159,11 @@ used for `--help`, JSON, getUpdates, inbox, sendMessage, client-state, and
 TLS-status checks. SFTP/SCP, PTY exec for simple commands, the minimal
 interactive shell, public-key authentication, and `direct-tcpip` forwarding
 pass hosted tests on both x86_64 and i386, including 1 MiB and 5 MiB transfer
-round-trips on `SYS:TGTEST` in hosted runs. The x86_64
+round-trips on `SYS:TGTEST` in hosted runs. Hosted x86_64 now passes a focused
+5-iteration zero-delay transfer stress run after processing accepted sockets
+and already-ready client sockets in the same server loop, but the aggregate
+release gate still has an intermittent password-auth failure during x86_64
+zero-delay churn after the smoke phase. The x86_64
 entropy path and non-hosted AROS One daemon validation remain experimental, so
 x86_64 builds are published as experimental/pre-release kits.
 
@@ -203,12 +207,11 @@ BEBBOSSH_AROS_WORKDIR=SYS:TGTEST \
 
 The transfer stress script defaults to a one-second delay between cycles for
 downstream automation. Hosted AROS i386 passes the zero-delay stress gate with
-sizes `257 4096 65536 1048576` on `SYS:TGTEST`; hosted AROS x86_64 previously
-showed an intermittent longer zero-delay churn failure where OpenSSH could
-report `incorrect signature` during handshake, but that failure was not
-reproduced in the latest 10-iteration zero-delay run. Keep the paced default
-for routine CI-style automation; use `BEBBOSSH_AROS_STRESS_DELAY=0` only as an
-explicit regression stress test.
+sizes `257 4096 65536 1048576` on `SYS:TGTEST`; hosted AROS x86_64 passes the
+focused 5-iteration zero-delay stress target, but the aggregate release gate
+still has an intermittent password-auth failure during x86_64 zero-delay churn.
+Keep the paced default for routine CI-style automation; use
+`BEBBOSSH_AROS_STRESS_DELAY=0` only as an explicit regression stress test.
 
 For public-key authentication and local port forwarding regression tests, use:
 
