@@ -60,14 +60,13 @@ The expected first build products are:
 
 ## QEMU environment
 
-The local AROS One i386 VM is configured with a VNC display and a writable
-QEMU FAT shared disk. The shared host path is:
+The local AROS One i386 VM used for validation was configured with a VNC
+display and a writable QEMU FAT shared disk. The host path is installation
+specific; in the AROS desktop this is visible as `Qemu Vfat`.
 
 ```text
-/Volumes/EXT/Macchine Virtuali/AROSOne_x86/shared/bebbossh-aros
+<VM_SHARED_DIR>
 ```
-
-In the AROS desktop this is visible as `Qemu Vfat`.
 
 Do not run `make` directly inside `Qemu Vfat:`. The AROS toolchain can read
 makefiles from the QEMU FAT handler as if they contained NUL bytes. The VM has
@@ -76,10 +75,12 @@ operations in the guest until that is fixed.
 
 ## Host cross-build for AROS One i386
 
-AROS One i386 uses the `alt-abiv0` ABI. The current working cross-toolchain is:
+AROS One i386 uses the `alt-abiv0` ABI. Set these variables for your local
+toolchain and SDK paths:
 
-```text
-/Users/kaffeine/amiga-dev/toolchains/aros-i386-abiv0
+```sh
+export AROS_ABIV0_TOOLCHAIN=<path-to-aros-i386-alt-abiv0-toolchain>
+export AROS_SDK_ROOT=<path-to-aros-one-development-sdk>
 ```
 
 From the source directory:
@@ -87,11 +88,11 @@ From the source directory:
 ```sh
 make -f Makefile.aros bebbosshd bebbosshkeygen probes \
   OUTDIR=aros-i386-abiv0-arosone \
-  CC=/Users/kaffeine/amiga-dev/toolchains/aros-i386-abiv0/i386-aros-gcc \
-  CXX=/Users/kaffeine/amiga-dev/toolchains/aros-i386-abiv0/i386-aros-g++ \
-  AR=/Users/kaffeine/amiga-dev/toolchains/aros-i386-abiv0/i386-aros-ar \
-  STRIP=/Users/kaffeine/amiga-dev/toolchains/aros-i386-abiv0/i386-aros-strip \
-  AROS_SDK_ROOT="/Volumes/AROS One DVD/Development"
+  CC="$AROS_ABIV0_TOOLCHAIN/i386-aros-gcc" \
+  CXX="$AROS_ABIV0_TOOLCHAIN/i386-aros-g++" \
+  AR="$AROS_ABIV0_TOOLCHAIN/i386-aros-ar" \
+  STRIP="$AROS_ABIV0_TOOLCHAIN/i386-aros-strip" \
+  AROS_SDK_ROOT="$AROS_SDK_ROOT"
 ```
 
 The current cross-build product is:
@@ -101,10 +102,11 @@ aros-i386-abiv0-arosone/bebbosshd
 aros-i386-abiv0-arosone/bebbosshkeygen
 ```
 
-The VM CD image with only the current binary and crypto tests is:
+The VM CD image with only the current binary and crypto tests is generated or
+stored outside the repository. Use an installation-specific path:
 
 ```text
-/Volumes/EXT/Macchine Virtuali/AROSOne_x86/bebbossh-aros-i386-bin.iso
+<TEST_ISO_PATH>
 ```
 
 ## Runtime package
@@ -116,11 +118,11 @@ runtime kit with:
 make -f Makefile.aros package-aros-runtime \
   OUTDIR=aros-i386-abiv0-arosone \
   PACKAGE_DIR=dist/bebbossh-aros-i386-abiv0 \
-  CC=/Users/kaffeine/amiga-dev/toolchains/aros-i386-abiv0/i386-aros-gcc \
-  CXX=/Users/kaffeine/amiga-dev/toolchains/aros-i386-abiv0/i386-aros-g++ \
-  AR=/Users/kaffeine/amiga-dev/toolchains/aros-i386-abiv0/i386-aros-ar \
-  STRIP=/Users/kaffeine/amiga-dev/toolchains/aros-i386-abiv0/i386-aros-strip \
-  AROS_SDK_ROOT="/Volumes/AROS One DVD/Development"
+  CC="$AROS_ABIV0_TOOLCHAIN/i386-aros-gcc" \
+  CXX="$AROS_ABIV0_TOOLCHAIN/i386-aros-g++" \
+  AR="$AROS_ABIV0_TOOLCHAIN/i386-aros-ar" \
+  STRIP="$AROS_ABIV0_TOOLCHAIN/i386-aros-strip" \
+  AROS_SDK_ROOT="$AROS_SDK_ROOT"
 ```
 
 The package target creates:
@@ -146,6 +148,30 @@ Package validation on AROS One i386:
   `version` returned `Kickstart 51.51, Workbench 40.0`.
 - SFTP against the packaged daemon listed the package directory successfully.
 
+To start `bebbosshd` automatically after AROS boot, install the package in a
+persistent directory such as `DH0:BSSHPKG` and add this stanza to
+`S:User-Startup`:
+
+```text
+;BEGIN BebboSSHd AROS
+Stack 262144
+If EXISTS DH0:BSSHPKG/bebbosshd
+    Run DH0:BSSHPKG/bebbosshd
+EndIf
+;END BebboSSHd AROS
+```
+
+The current autostart recommendation intentionally avoids `Run >NIL:` while
+the AROS redirection path is being hardened. Startup status messages are logged
+at debug level, so the normal `DebugLevel 1` package configuration should not
+leave a daemon output window at boot. For diagnostics, temporarily use
+`DebugLevel debug` or launch `bebbosshd` with `-v5`.
+
+When replacing `DH0:BSSHPKG/bebbosshd` through SCP/SFTP, delete the existing
+file first, then upload the new binary and download it back for a byte compare.
+This avoids stale trailing bytes if an existing executable is overwritten
+without truncation.
+
 If launching from an AROS Shell, use a larger stack while testing:
 
 ```text
@@ -170,9 +196,33 @@ AROS runtime notes:
   launched successfully on AROS One i386 far enough to generate ED25519
   randomart.
 - Remote `exec` is implemented for simple non-interactive commands on AROS.
-  The current backend redirects command output to a temporary `T:` file and
-  sends it back over SSH after the command exits.
-- Interactive shell/PTY support is still incomplete on AROS.
+  The backend runs `SystemTags()` inside a child task, redirects command output
+  to a temporary `T:` file, and sends it back over SSH after the command exits.
+  The command return code is sent as the SSH `exit-status`.
+- Non-PTY exec has a soft 30-second timeout. The daemon remains responsive
+  while the child task runs; on timeout it writes a warning and sends a break to
+  the command task.
+- AROS remote exec rejects shell redirection and pipes (`>`, `<`, `|`) before
+  calling `SystemTags()`. A remote `>/NIL:` test degraded the daemon, so these
+  constructs are intentionally unsupported until a safer execution backend is
+  implemented.
+- Known interactive commands are rejected in non-PTY exec mode with exit status
+  2 and a message asking the caller to use `ssh -tt`. This prevents commands
+  such as `more ?` from blocking the daemon's synchronous non-PTY exec path.
+- Interactive SSH sessions use the same backend for simple commands and return
+  to the prompt after each command.
+- Interactive shell stdin now drains command lines already received in the same
+  SSH packet after an AROS command completes, which keeps piped sequences such
+  as `dir`, `version`, `exit` moving through the minimal shell backend.
+- A bare `dir` in the interactive SSH shell is translated to `list lformat %N`
+  so directory listings are readable one entry per line. Non-interactive
+  `ssh ... dir` keeps the native AROS `dir` output.
+- AROS PTY exec uses synthetic DOS file handles allocated with
+  `AllocDosObject()`, avoiding the old private `Input()` file-handle copy. A
+  bounded `telegram-test --telegram-client-console 1 1` run has been tested
+  through `ssh -tt`.
+- Full PTY-style interactive program support is still incomplete on AROS, but
+  bounded console-style programs can now receive stdin and produce output.
 
 Forwarded host ports:
 
@@ -188,7 +238,7 @@ identification, key exchange, and password authentication.
 Remote command execution now works for simple non-interactive commands:
 
 ```sh
-/opt/homebrew/bin/sshpass -p test ssh \
+sshpass -p test ssh \
   -o ConnectTimeout=5 \
   -o StrictHostKeyChecking=no \
   -o UserKnownHostsFile=/tmp/bebbossh_known_hosts \
@@ -203,9 +253,43 @@ This has returned:
 Kickstart 51.51, Workbench 40.0
 ```
 
-`dir` has also been tested successfully. The backend is intentionally minimal:
-it is synchronous, not an interactive shell, and should be used first for short
-development commands while SFTP/SCP and a fuller shell path are stabilized.
+`dir` has also been tested successfully. A `telegram-amiga` invalid-option test
+returned SSH exit status 1. Remote redirection such as `>/NIL:` is blocked with
+exit status 2. Non-PTY exec is intended for short automation commands and now
+runs outside the daemon's main loop. Interactive programs should be launched
+with `ssh -tt`.
+
+The repeatable host-side smoke test for the current AROS automation workflow is:
+
+```sh
+scripts/aros-ssh-smoke-test.sh
+```
+
+Defaults:
+
+```text
+BEBBOSSH_AROS_HOST=127.0.0.1
+BEBBOSSH_AROS_PORT=10022
+BEBBOSSH_AROS_USER=test
+BEBBOSSH_AROS_PASS=test
+BEBBOSSH_AROS_TELEGRAM_TEST=DH0:TGTEST/telegram-test
+BEBBOSSH_AROS_WORKDIR=DH0:TGTEST
+```
+
+It validates:
+
+- `version` over non-interactive SSH.
+- rejection of `version >/NIL:` with exit status 2.
+- daemon health after the rejected redirection.
+- rejection of known interactive commands in non-PTY exec mode.
+- daemon health after the non-PTY interactive-command guard.
+- `telegram-test --help` exit status 0.
+- `telegram-test --definitely-invalid-option` exit status 1.
+- `version` through PTY exec.
+- a piped interactive shell sequence using `dir`, `cd`, `version`, and `exit`.
+- SCP upload/download byte comparison on `DH0:TGTEST`.
+- SFTP `mkdir`, upload, download, compare, remove, and `rmdir` on `DH0:TGTEST`.
+- overwrite truncation on `DH0:` by uploading a smaller file over a larger one.
 
 SFTP/SCP status:
 
@@ -221,12 +305,26 @@ SFTP/SCP status:
 - OpenSSH `scp -r` has been tested with a temporary 336 KiB
   `telegram-amiga`-style source tree copied to `DH0:`, copied back, and
   verified with `diff -qr`.
+- OpenSSH `scp` overwrite of a smaller file over a larger file has been tested
+  on `DH0:` and verified by byte compare.
+- AROS SFTP upload permission mapping keeps AmigaDOS execute protection
+  allowed. This avoids byte-correct uploaded binaries failing at boot with
+  `File non eseguibile` after OpenSSH sends Unix-style `0644` permissions.
+
+Clean install status:
+
+- The generated runtime kit was copied to a fresh `DH0:` directory.
+- `sshd_config.example` and `passwd.example` were copied to runtime names.
+- `bebbosshkeygen -f <install-dir>/ssh_host_ed25519_key` generated a fresh host
+  key on AROS One i386.
+- `bebbosshd -p 2222` launched from that directory and answered `version`
+  through the QEMU host forward at `127.0.0.1:12222`.
 
 When using `sshpass` with `sftp -b`, pass `-oBatchMode=no`; OpenSSH otherwise
 forces batch mode authentication and will not send the password:
 
 ```sh
-/opt/homebrew/bin/sshpass -p test sftp \
+sshpass -p test sftp \
   -oBatchMode=no \
   -o ConnectTimeout=5 \
   -o StrictHostKeyChecking=no \

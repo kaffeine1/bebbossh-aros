@@ -127,7 +127,7 @@ struct SshSession : public Listener {
 	bool isAlive() const;
 	ShellChannel * findShellChannelByBreakPort(struct MsgPort * mp) const;
 	int channelWrite(uint32_t channel, void const * data, int len);
-	void closeChannel(Channel * channel);
+	void closeChannel(Channel * channel, uint32_t exitStatus = 0);
 
 	void createKexEcdhReply();
 

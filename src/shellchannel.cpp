@@ -70,11 +70,19 @@ ShellChannel::ShellChannel(SshSession * server, uint32_t channel, ChannelType ty
 		localEcho(false),
 		stackSize(::stackSize), dir(0),
 		breakPort1(0), breakPort2(0), pending(0), waiting(0),
+#if BEBBOSSH_AROS
+		arosExecFileMode(false), arosExecTimedOut(false), arosExecRc(255),
+#endif
 		xpos(line), xend(line),
 		inBufferLen(1024),
 		history(32)
 {
 	*xend = 0;
+#if BEBBOSSH_AROS
+	arosExecOutName[0] = 0;
+	arosExecStarted.tv_secs = 0;
+	arosExecStarted.tv_micro = 0;
+#endif
 	if (homeDir)
 		dir = Lock(homeDir, SHARED_LOCK);
 	if (!dir)
@@ -91,6 +99,10 @@ ShellChannel::ShellChannel(SshSession * server, uint32_t channel, ChannelType ty
 ShellChannel::~ShellChannel() {
 #if BEBBOSSH_AMIGA_API
 	free(inBuffer);
+#if BEBBOSSH_AROS
+	if (arosExecOutName[0])
+		DeleteFile(arosExecOutName);
+#endif
 	if (dir)
 		UnLock(dir);
 #endif
@@ -135,7 +147,7 @@ struct MsgPort * ShellChannel::setBreakPort(struct MsgPort * pnew, struct MsgPor
 
 int ShellChannel::read(char * to, int toReadIn) {
 	int avail = getAvail();
-	int toRead = (toRead > avail) ? avail : toReadIn;
+	int toRead = (toReadIn > avail) ? avail : toReadIn;
 
 	logme(L_DEBUG, "@%ld:%ld read want %ld, have %ld %02lx", server->getSockFd(), channel, toReadIn, avail, *line);
 
@@ -192,6 +204,18 @@ void ShellChannel::checkTimeout(struct timeval * tv) {
 		waiting = 0;
 		ReplyPkt(packet, DOSFALSE, 0);
 	}
+#if BEBBOSSH_AROS
+	if (arosExecFileMode && running && !arosExecTimedOut) {
+		LONG elapsed = tv->tv_secs - arosExecStarted.tv_secs;
+		if (elapsed >= 30) {
+			arosExecTimedOut = true;
+			logme(L_WARN, "@%ld:%ld AROS exec timeout for %s", server->getSockFd(), channel, xbuffer);
+			static const char msg[] = "bebbosshd/AROS: command timeout, sending break\r\n";
+			server->channelWrite(channel, msg, sizeof(msg) - 1);
+			sendBreak();
+		}
+	}
+#endif
 }
 
 void ShellChannel::sendBreak() {
@@ -735,7 +759,73 @@ __saveds
 void ShellChannel::startProc() {
 	struct Process * process = (struct Process *)FindTask(0);
 	ShellChannel * sc = (ShellChannel *)process->pr_ExitData;
-#if 1
+#if BEBBOSSH_AROS
+	if (sc->arosExecFileMode) {
+		BPTR input = Open("NIL:", MODE_OLDFILE);
+		BPTR output = Open(sc->arosExecOutName, MODE_NEWFILE);
+		if (output) {
+			BPTR oldDir = CurrentDir(sc->dir);
+			sc->arosExecRc = SystemTags(sc->xbuffer,
+					SYS_Input, input ? input : Input(),
+					SYS_Output, output,
+					SYS_Error, output,
+					SYS_UserShell, (ULONG)TRUE,
+					TAG_DONE);
+			CurrentDir(oldDir);
+			Close(output);
+		} else {
+			sc->arosExecRc = 20;
+		}
+		if (input)
+			Close(input);
+		sc->done = 1;
+		Signal(thisTask, SIGBREAKF_CTRL_F);
+		return;
+	}
+
+	struct FileHandle * i = (struct FileHandle *)AllocDosObject(DOS_FILEHANDLE, 0);
+	struct FileHandle * o = (struct FileHandle *)AllocDosObject(DOS_FILEHANDLE, 0);
+	struct FileHandle * e = (struct FileHandle *)AllocDosObject(DOS_FILEHANDLE, 0);
+
+	if (i && o && e) {
+		i->fh_Flags = 5; // no buffer
+		i->fh_Port = 1; // interactive
+		i->fh_Type = port;
+		i->fh_Pos = -1;
+		i->fh_End = -1;
+		i->fh_Arg1 = (LONG)sc;
+
+		o->fh_Flags = 1; // with buffer
+		o->fh_Port = 1; // interactive
+		o->fh_Type = port;
+		o->fh_Pos = -1;
+		o->fh_End = -1;
+		o->fh_Arg1 = (LONG)sc;
+
+		e->fh_Flags = 1; // with buffer
+		e->fh_Port = 1; // interactive
+		e->fh_Type = port;
+		e->fh_Pos = -1;
+		e->fh_End = -1;
+		e->fh_Arg1 = (LONG)sc;
+
+		SystemTags(sc->xbuffer,
+				SYS_Input, MKBADDR(i),
+				SYS_Output, MKBADDR(o),
+				SYS_Error, MKBADDR(e),
+				SYS_UserShell, (ULONG) TRUE,
+				NP_StackSize, sc->stackSize,
+				TAG_DONE
+				);
+	}
+
+	if (i)
+		FreeDosObject(DOS_FILEHANDLE, i);
+	if (o)
+		FreeDosObject(DOS_FILEHANDLE, o);
+	if (e)
+		FreeDosObject(DOS_FILEHANDLE, e);
+#elif 1
 	struct FileHandle * i = (struct FileHandle *)AllocVec(theInputSize, MEMF_PUBLIC | MEMF_CLEAR);
 //	struct FileHandle * o = (struct FileHandle *)AllocVec(theOutputSize, MEMF_PUBLIC | MEMF_CLEAR);
 	struct FileHandle * o = (struct FileHandle *)AllocDosObject(DOS_FILEHANDLE, 0);
@@ -830,10 +920,76 @@ bool ShellChannel::startCommand(char const * cmd){
 	return startCommand();
 }
 
+bool ShellChannel::drainBufferedInput() {
+	unsigned len = xpos - line;
+	if (!len)
+		return true;
+
+	xend = xpos = line;
+	if (len + 1 > inBufferLen) {
+		char *newBuffer = (char *)realloc(inBuffer, len + 1);
+		if (!newBuffer) {
+			logme(L_ERROR, "out of memory for %ld of data", len + 1);
+			server->closeChannel(this);
+			return false;
+		}
+		inBuffer = newBuffer;
+		inBufferLen = len + 1;
+	}
+	memcpy(inBuffer, line, len);
+	inBuffer[len] = 0;
+	return handleData(inBuffer, len) >= 0;
+}
+
+
 extern bool sanitize(char * path);
 
 #if BEBBOSSH_AROS
-bool ShellChannel::runArosExec() {
+static bool hasUnsupportedArosShellSyntax(const char *cmd) {
+	for (const char *p = cmd; *p; ++p) {
+		if (*p == '>' || *p == '<' || *p == '|')
+			return true;
+	}
+	return false;
+}
+
+static bool isArosInteractiveOnlyExec(const char *cmd, int keywordLen) {
+	if ((keywordLen == 4 && 0 == strnicmp(cmd, "more", 4)) ||
+			(keywordLen == 2 && 0 == strnicmp(cmd, "ed", 2)) ||
+			(keywordLen == 4 && 0 == strnicmp(cmd, "edit", 4)) ||
+			(keywordLen == 6 && 0 == strnicmp(cmd, "memacs", 6)) ||
+			(keywordLen == 3 && 0 == strnicmp(cmd, "ask", 3)) ||
+			(keywordLen == 5 && 0 == strnicmp(cmd, "shell", 5)) ||
+			(keywordLen == 7 && 0 == strnicmp(cmd, "newshell", 7)))
+		return true;
+
+	return strstr(cmd, "--telegram-client-console") != 0;
+}
+
+bool ShellChannel::startArosExecFile(bool closeAfterCommand) {
+	arosExecFileMode = true;
+	(void)closeAfterCommand;
+	arosExecTimedOut = false;
+	arosExecRc = 255;
+	snprintf(arosExecOutName, sizeof(arosExecOutName), "T:bebbosshd-%lx-%lx.out",
+			(ULONG)server->getSockFd(), (ULONG)channel);
+	DeleteFile(arosExecOutName);
+	GetSysTime(&arosExecStarted);
+
+	logme(L_DEBUG, "@%ld:%ld starting AROS exec task %s with cmd `%s`", server->getSockFd(), channel, server->name, xbuffer);
+	running = true;
+	ULONG tags[] = { NP_Entry, (ULONG )startProc,
+			NP_StackSize, stackSize,
+			NP_Cli, 1,
+			NP_Name, (ULONG )server->name,
+			NP_CurrentDir, (ULONG)DupLock(dir),
+			NP_ExitData, (ULONG)this,
+			TAG_END};
+	CreateNewProcTagList((struct TagItem *)tags);
+	return true;
+}
+
+bool ShellChannel::runArosExec(bool closeAfterCommand) {
 	char outName[96];
 	snprintf(outName, sizeof(outName), "T:bebbosshd-%lx-%lx.out",
 			(ULONG)server->getSockFd(), (ULONG)channel);
@@ -845,8 +1001,13 @@ bool ShellChannel::runArosExec() {
 		server->channelWrite(channel, msg, sizeof(msg) - 1);
 		if (input)
 			Close(input);
-		server->closeChannel(this);
-		return false;
+		if (closeAfterCommand) {
+			server->closeChannel(this, 20);
+			return false;
+		}
+
+		prompt();
+		return true;
 	}
 
 	BPTR oldDir = CurrentDir(dir);
@@ -875,14 +1036,20 @@ bool ShellChannel::runArosExec() {
 	}
 	DeleteFile(outName);
 
-	if (rc) {
+	if (rc && !closeAfterCommand) {
 		char msg[80];
 		int len = snprintf(msg, sizeof(msg), "bebbosshd/AROS: command returned %ld\r\n", rc);
 		server->channelWrite(channel, msg, len);
 	}
 
-	server->closeChannel(this);
-	return false;
+	if (closeAfterCommand) {
+		uint32_t exitStatus = (rc < 0 || rc > 255) ? 255 : (uint32_t)rc;
+		server->closeChannel(this, exitStatus);
+		return false;
+	}
+
+	prompt();
+	return drainBufferedInput();
 }
 #endif
 
@@ -893,7 +1060,7 @@ bool ShellChannel::startCommand(){
 	int keywordLen = c - xbuffer;
 	if (0 == keywordLen) {
 		prompt();
-		return true;
+		return drainBufferedInput();
 	}
 
 	char tc = *c;
@@ -902,8 +1069,12 @@ bool ShellChannel::startCommand(){
 		char * t = xbuffer + strlen(xbuffer) + 1;
 		int len = snprintf(t, 512, "%s: invalid command\r\n", xbuffer);
 		server->channelWrite(channel, t, len);
+		if (hasExec()) {
+			server->closeChannel(this, 127);
+			return false;
+		}
 		prompt();
-		return true;
+		return drainBufferedInput();
 	}
 
 	// insert spaces into sanitized command
@@ -933,7 +1104,7 @@ bool ShellChannel::startCommand(){
 		*p = 0;
 		cmdCD(q);
 		prompt();
-		return true;
+		return drainBufferedInput();
 	}
 
 	// handle stack with at least one param
@@ -943,22 +1114,41 @@ bool ShellChannel::startCommand(){
 		if (stackSize < 4096)
 			stackSize = 4096;
 		prompt();
-		return true;
+		return drainBufferedInput();
 	}
 
 	localEcho = xbuffer[strlen(xbuffer) - 1] == '?';
 
 
 #if BEBBOSSH_AROS
-	if (hasExec())
-		return runArosExec();
+	if (!hasExec() && keywordLen == 3 && 0 == strnicmp(xbuffer, "dir", 3)) {
+		char *args = xbuffer + 3;
+		while (*args && *args <= ' ')
+			++args;
+		if (!*args)
+			strcpy(xbuffer, "list lformat %N");
+	}
 
-	if (!writeFx) {
-		static const char msg[] = "AROS shell backend not available yet\r\n";
+	if (hasUnsupportedArosShellSyntax(xbuffer)) {
+		static const char msg[] = "bebbosshd/AROS: shell redirection and pipes are not supported yet\r\n";
 		server->channelWrite(channel, msg, sizeof(msg) - 1);
-		server->closeChannel(this);
+		if (hasExec()) {
+			server->closeChannel(this, 2);
+			return false;
+		}
+		prompt();
+		return drainBufferedInput();
+	}
+
+	if (hasExec() && !hasPty() && isArosInteractiveOnlyExec(xbuffer, keywordLen)) {
+		static const char msg[] = "bebbosshd/AROS: interactive command requires a PTY; use ssh -tt\r\n";
+		server->channelWrite(channel, msg, sizeof(msg) - 1);
+		server->closeChannel(this, 2);
 		return false;
 	}
+
+	if (hasExec() && !hasPty())
+		return startArosExecFile(true);
 #endif
 
 	logme(L_DEBUG, "@%ld:%ld starting task %s with cmd `%s`", server->getSockFd(), channel, server->name, xbuffer);
@@ -979,6 +1169,28 @@ bool ShellChannel::endCommand(){
 	running = 0;
 	breakPort1 = breakPort2 = 0;
 	done = exec;
+#if BEBBOSSH_AROS
+	if (arosExecFileMode) {
+		BPTR output = Open(arosExecOutName, MODE_OLDFILE);
+		if (output) {
+			char buf[2048];
+			for (;;) {
+				LONG got = Read(output, buf, sizeof(buf));
+				if (got <= 0)
+					break;
+				server->channelWrite(channel, buf, got);
+			}
+			Close(output);
+		}
+		DeleteFile(arosExecOutName);
+		arosExecOutName[0] = 0;
+		if (arosExecTimedOut && arosExecRc == 0)
+			arosExecRc = 124;
+		uint32_t exitStatus = (arosExecRc < 0 || arosExecRc > 255) ? 255 : (uint32_t)arosExecRc;
+		server->closeChannel(this, exitStatus);
+		return false;
+	}
+#endif
 	if (done) {
 		server->closeChannel(this);
 		return false;
@@ -990,15 +1202,17 @@ bool ShellChannel::endCommand(){
 	unsigned len = xpos - line;
 	xend = xpos = line;
 
-	if (len > inBufferLen) {
-		inBuffer = (char *)realloc(inBuffer, len);
+	if (len + 1 > inBufferLen) {
+		inBuffer = (char *)realloc(inBuffer, len + 1);
 		if (!inBuffer) {
-			logme(L_ERROR, "out of memory for %ld of data", len);
+			logme(L_ERROR, "out of memory for %ld of data", len + 1);
 			server->closeChannel(this);
 			return false;
 		}
+		inBufferLen = len + 1;
 	}
 	memcpy(inBuffer, line, len);
+	inBuffer[len] = 0;
 
 	return handleData(inBuffer, len);
 }

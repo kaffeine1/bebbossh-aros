@@ -742,7 +742,7 @@ static void parseParams(unsigned argc, char **argv) {
 
 __stdargs int main(int argc, char *argv[]) {
 #if BEBBOSSH_AROS
-	Printf("bebbosshd/AROS: start\n");
+	logme(L_DEBUG, "bebbosshd/AROS: start");
 #endif
 	listenersPtr = new Stack<Listener>();
 	clientsPtr = new Stack<SshSession>();
@@ -752,17 +752,17 @@ __stdargs int main(int argc, char *argv[]) {
 
 	readIni();
 #if BEBBOSSH_AROS
-	Printf("bebbosshd/AROS: config read\n");
+	logme(L_DEBUG, "bebbosshd/AROS: config read");
 #endif
 
 	parseParams(argc, argv);
 #if BEBBOSSH_AROS
-	Printf("bebbosshd/AROS: params parsed, port %ld\n", (LONG)serverPort);
+	logme(L_DEBUG, "bebbosshd/AROS: params parsed, port %ld", (LONG)serverPort);
 #endif
 
 	if (!loadEd25519Key(hostPK, hostSK, hostKeyName)) {
 #if BEBBOSSH_AROS
-		Printf("bebbosshd/AROS: trying PROGDIR host key\n");
+		logme(L_DEBUG, "bebbosshd/AROS: trying PROGDIR host key");
 		if (!loadEd25519Key(hostPK, hostSK, arosFallbackHostKeyName))
 			return error = ERR_KEYFILE;
 #else
@@ -770,14 +770,14 @@ __stdargs int main(int argc, char *argv[]) {
 #endif
 	}
 #if BEBBOSSH_AROS
-	Printf("bebbosshd/AROS: host key loaded\n");
+	logme(L_DEBUG, "bebbosshd/AROS: host key loaded");
 #endif
 
 	do { // while (0);
 		if (!init())
 			break;
 #if BEBBOSSH_AROS
-		Printf("bebbosshd/AROS: init ok\n");
+		logme(L_DEBUG, "bebbosshd/AROS: init ok");
 #endif
 
 #if BEBBOSSH_AMIGA_API
@@ -796,7 +796,7 @@ __stdargs int main(int argc, char *argv[]) {
 		server.sin_addr.s_addr = serverAddress;
 		server.sin_port = htons(serverPort);
 #if BEBBOSSH_AROS
-		Printf("bebbosshd/AROS: binding port %ld\n", (LONG)serverPort);
+		logme(L_DEBUG, "bebbosshd/AROS: binding port %ld", (LONG)serverPort);
 #endif
 
 		//Bind
@@ -813,7 +813,7 @@ __stdargs int main(int argc, char *argv[]) {
 		//Listen
 		listen(acceptSock, 3);
 #if BEBBOSSH_AROS
-		Printf("bebbosshd/AROS: listening\n");
+		logme(L_DEBUG, "bebbosshd/AROS: listening");
 #endif
 
 		//Accept and incoming connection

@@ -22,6 +22,8 @@ cp "$outdir/bebbosshkeygen" "$pkgdir/bebbosshkeygen"
 cp packaging/aros/sshd_config.example "$pkgdir/sshd_config.example"
 cp packaging/aros/passwd.example "$pkgdir/passwd.example"
 cp packaging/aros/README.AROS.txt "$pkgdir/README.AROS.txt"
+mkdir -p "$pkgdir/scripts"
+cp scripts/aros-ssh-smoke-test.sh "$pkgdir/scripts/aros-ssh-smoke-test.sh"
 cp README.md "$pkgdir/README.md"
 cp AROS_PORTING.md "$pkgdir/AROS_PORTING.md"
 cp COPYING "$pkgdir/COPYING"
@@ -35,6 +37,7 @@ cp LICENSE "$pkgdir/LICENSE"
         sshd_config.example \
         passwd.example \
         README.AROS.txt \
+        scripts/aros-ssh-smoke-test.sh \
         README.md \
         AROS_PORTING.md \
         COPYING \

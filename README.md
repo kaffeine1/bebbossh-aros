@@ -45,19 +45,97 @@ Runtime status on AROS One i386:
 - `bebbosshkeygen` starts on AROS One i386 and reaches ED25519 key generation.
 - OpenSSH from the host completes protocol identification, key exchange, and
   password authentication through QEMU port forwarding.
-- Remote `exec` works for simple non-interactive commands through the current
-  AROS `SystemTags()` backend. `version` and `dir` have been tested.
+- Remote `exec` works for simple non-interactive commands through an AROS task
+  wrapper around `SystemTags()`. `version` and `dir` have been tested, command
+  output is returned after completion, and the command exit status is
+  propagated to the SSH client.
+- Long non-interactive commands no longer block the daemon's main loop. A soft
+  timeout sends a break after 30 seconds.
+- AROS remote exec intentionally rejects shell redirection and pipes (`>`, `<`,
+  `|`) until they are stable. A rejected redirection returns SSH exit status 2
+  and leaves the daemon usable.
+- Interactive SSH sessions can run simple AROS commands and return to the
+  prompt. Simple piped multi-command input such as `dir`, `cd`, `version`,
+  and `exit` has been tested. A bare interactive `dir` is normalized to one
+  name per line for readability.
+- PTY exec works for bounded interactive programs. The
+  `telegram-test --telegram-client-console 1 1` workflow has been tested over
+  `ssh -tt`.
+- Known interactive commands are rejected in non-PTY exec mode with exit status
+  2 and a message asking the caller to use `ssh -tt`, so they do not block the
+  daemon's main loop.
 - SFTP and OpenSSH `scp` transfers work on `T:` and `DH0:`; 1 MiB and 5 MiB
   file round-trips and a small `telegram-amiga`-style directory tree have been
-  tested.
+  tested. Overwriting a larger file with a smaller file on `DH0:` has been
+  verified to truncate correctly. AROS SFTP uploads also keep the AmigaDOS
+  execute protection allowed, so uploaded binaries can be started without a
+  manual `protect +e` step.
 - SFTP `mkdir`/`rmdir` has been tested on `DH0:`.
-- Interactive shell/PTY support is still incomplete.
+- A clean package install was tested by copying the runtime kit to a fresh
+  `DH0:` directory, generating a host key with `bebbosshkeygen`, and starting a
+  separate daemon from that directory.
+- Full PTY-style interactive program support is still incomplete.
 
 The AROS/i386 runtime kit can be generated with:
 
 ```sh
 make -f Makefile.aros package-aros-runtime OUTDIR=aros-i386-abiv0-arosone
 ```
+
+Published builds are attached to GitHub Releases as `.zip` and `.tar.gz`
+runtime kits.
+
+### AROS automation workflow
+
+For current AROS One i386 automation, prefer non-interactive SSH commands and
+SFTP/SCP transfers on persistent volumes such as `DH0:`:
+
+```sh
+sshpass -p test ssh \
+  -o StrictHostKeyChecking=no \
+  -o UserKnownHostsFile=/tmp/bebbossh_aros_known_hosts \
+  -p 10022 test@127.0.0.1 \
+  'DH0:TGTEST/telegram-test --help'
+```
+
+Avoid `RAM:` in the current VM setup and do not use remote shell redirection or
+pipes (`>`, `<`, `|`) yet.
+
+The host-side smoke test used for the AROS automation workflow is:
+
+```sh
+scripts/aros-ssh-smoke-test.sh
+```
+
+It validates `version`, redirection rejection, non-PTY interactive-command
+rejection, daemon health after both guards, `telegram-amiga` command exit
+status propagation, PTY exec, an interactive shell sequence, and SCP/SFTP round
+trips on `DH0:TGTEST`.
+
+### AROS autostart
+
+After copying the runtime kit to a persistent directory such as
+`DH0:BSSHPKG`, add this to `S:User-Startup`:
+
+```text
+;BEGIN BebboSSHd AROS
+Stack 262144
+If EXISTS DH0:BSSHPKG/bebbosshd
+    Run DH0:BSSHPKG/bebbosshd
+EndIf
+;END BebboSSHd AROS
+```
+
+This intentionally avoids `>NIL:` while the AROS redirection path is being
+hardened. The default build keeps startup status messages at debug level, so a
+normal autostart should not leave a daemon output window. For diagnostics, use
+`DebugLevel debug` or launch with `-v5`.
+
+When replacing an existing `bebbosshd` on AROS over SCP/SFTP, delete the old
+file first and then upload the new one. This avoids stale trailing bytes on
+filesystems or transfer paths that do not truncate an overwritten executable
+reliably. Current AROS SFTP uploads set AmigaDOS file protection so uploaded
+executables remain runnable.
 
 ## Overview
 
