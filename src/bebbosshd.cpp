@@ -37,6 +37,7 @@
 #include <time.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
+#include <sys/errno.h>
 #include <arpa/inet.h> //inet_addr
 #include <unistd.h>    //write
 #include "platform.h"
@@ -100,7 +101,18 @@ uint8_t hostSK[64];
 /* config stuff */
 int serverPort = 22;
 int serverAddress = INADDR_ANY;
+#if BEBBOSSH_AROS
+int listenBacklog = 16;
+#define BEBBOSSH_ACCEPT_BURST 1
+#else
+int listenBacklog = 8;
+#define BEBBOSSH_ACCEPT_BURST 1
+#endif
+#if BEBBOSSH_AROS
+unsigned stackSize = 1048576;
+#else
 unsigned stackSize = 4096;
+#endif
 char const * homeDir = "RAM:";
 BPTR curDir, orgDir;
 
@@ -441,6 +453,33 @@ void checkFinished() {
 	}
 }
 
+static void cleanupSessions() {
+	if (clientsPtr) {
+		uint32_t sz = clientsPtr->getMax();
+		for (uint32_t i = 0; i < sz; ++i) {
+			SshSession *cs = clientsPtr->remove(i);
+			if (!cs)
+				continue;
+			if (listenersPtr)
+				listenersPtr->remove(cs->getSockFd());
+			cs->close();
+			delete cs;
+		}
+		delete clientsPtr;
+		clientsPtr = 0;
+	}
+
+	if (listenersPtr) {
+		uint32_t sz = listenersPtr->getMax();
+		for (uint32_t i = 0; i < sz; ++i) {
+			Listener *l = listenersPtr->remove(i);
+			delete l;
+		}
+		delete listenersPtr;
+		listenersPtr = 0;
+	}
+}
+
 void cleanup() {
 	// no more connections
 	if (acceptSock != -1) {
@@ -448,6 +487,7 @@ void cleanup() {
 		CloseSocket(acceptSock);
 		acceptSock = -1;
 	}
+	cleanupSessions();
 #if BEBBOSSH_AMIGA_API
 	if (SocketBase) {
 		logme(L_FINE, "closing %s", bsdName);
@@ -654,6 +694,13 @@ void readIni() {
 		if (0 == stricmp("Port", s)) {
 			serverPort = strtoul(p, 0, 10);
 		} else
+		if (0 == stricmp("ListenBacklog", s)) {
+			listenBacklog = strtoul(p, 0, 10);
+			if (listenBacklog < 1)
+				listenBacklog = 1;
+			if (listenBacklog > 64)
+				listenBacklog = 64;
+		} else
 		if (0 == stricmp("ListenAddress", s)) {
 			int a, b, c, d = -1;
 			char * q;
@@ -857,7 +904,6 @@ __stdargs int main(int argc, char *argv[]) {
 #endif
 
 		struct sockaddr_in server;
-		int c = sizeof(server);
 
 		//Prepare the sockaddr_in structure
 		server.sin_family = AF_INET;
@@ -879,8 +925,12 @@ __stdargs int main(int argc, char *argv[]) {
 		}
 
 		//Listen
-		listen(acceptSock, 3);
-#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
+		if (listen(acceptSock, listenBacklog) < 0) {
+			logme(L_ERROR, "can't listen on socket %ld backlog %ld", acceptSock, listenBacklog);
+			error = ERR_LISTEN_SOCKET;
+			break;
+		}
+#if BEBBOSSH_AROS
 		{
 			long flags = 1;
 			IoctlSocket(acceptSock, FIONBIO, (char *)&flags);
@@ -1008,36 +1058,53 @@ __stdargs int main(int argc, char *argv[]) {
 
 			// handle new connections
 			if (FD_ISSET(acceptSock, &readfds)) {
-				struct sockaddr_in server;
-				int clientFds = accept(acceptSock, (struct sockaddr* )&server, (socklen_t* )&c);
-				if (clientFds < 0) {
-					logme(L_DEBUG, "Socket shutdown for %ld", acceptSock);
-					stopped = 1;
-					continue;
-				}
-
-				logme(L_INFO, "new connection from %ld.%ld.%ld.%ld:%ld on socket %ld",
-						(0xff & (server.sin_addr.s_addr >> 24)),
-						(0xff & (server.sin_addr.s_addr >> 16)),
-						(0xff & (server.sin_addr.s_addr >> 8)),
-						(0xff & server.sin_addr.s_addr), server.sin_port, clientFds);
-				SshSession *cs = new SshSession(clientFds);
-				if (!cs) {
-					CloseSocket(clientFds);
-				} else {
-
-					if (clients[clientFds] || listeners[clientFds]) {
-						auto c1 = listeners.remove(clientFds);
-						auto c2 = clients.remove(clientFds);
-						logme(L_INFO, "removing client connection for old socket %ld", clientFds);
-						delete (c1 ? c1 : c2);
+				int accepted = 0;
+				for (;;) {
+					struct sockaddr_in peer;
+					socklen_t peerLen = sizeof(peer);
+					int clientFds = accept(acceptSock, (struct sockaddr* )&peer, &peerLen);
+					if (clientFds < 0) {
+						int err = Errno();
+						if (accepted
+#ifdef EWOULDBLOCK
+							|| err == EWOULDBLOCK
+#endif
+							|| err == EAGAIN) {
+							break;
+						}
+						logme(L_DEBUG, "Socket shutdown for %ld errno=%ld", acceptSock, err);
+						stopped = 1;
+						break;
 					}
 
-					clients.add(clientFds, cs);
-					listeners.add(clientFds, cs);
-					cs->start();
-					continue;
+					logme(L_INFO, "new connection from %ld.%ld.%ld.%ld:%ld on socket %ld",
+							(0xff & (peer.sin_addr.s_addr >> 24)),
+							(0xff & (peer.sin_addr.s_addr >> 16)),
+							(0xff & (peer.sin_addr.s_addr >> 8)),
+							(0xff & peer.sin_addr.s_addr), peer.sin_port, clientFds);
+					SshSession *cs = new SshSession(clientFds);
+					if (!cs) {
+						CloseSocket(clientFds);
+					} else {
+
+						if (clients[clientFds] || listeners[clientFds]) {
+							auto c1 = listeners.remove(clientFds);
+							auto c2 = clients.remove(clientFds);
+							logme(L_INFO, "removing client connection for old socket %ld", clientFds);
+							delete (c1 ? c1 : c2);
+						}
+
+						clients.add(clientFds, cs);
+						listeners.add(clientFds, cs);
+						cs->start();
+					}
+
+					++accepted;
+					if (accepted >= BEBBOSSH_ACCEPT_BURST)
+						break;
 				}
+				if (accepted)
+					continue;
 			}
 
 #if BEBBOSSH_POSIX_SHELL

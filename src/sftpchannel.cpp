@@ -811,13 +811,21 @@ printf("locked dir %s = %08lx\n", path, dir);
 			putInt32AndInc(q, requestId);
 
 			// test for EOF
-			uint32_t oldPos = Seek(handle->file, 0, OFFSET_END);
-			uint32_t end = Seek(handle->file, oldPos, OFFSET_BEGINNING);
-			// correct the length if not enough data is there
-			int delta = end - oldPos;
-			if (delta < len) {
-				len = delta;
+			Seek(handle->file, 0, OFFSET_END);
+			long end = Seek(handle->file, offset, OFFSET_BEGINNING);
+			if (end < 0) {
+				result = SSH_FX_FAILURE;
+				goto Status;
 			}
+			// correct the length if not enough data is there
+			if (offset >= (uint32_t)end) {
+				q -= 5;
+				result = SSH_FX_EOF;
+				goto Status;
+			}
+			uint32_t delta = (uint32_t)end - offset;
+			if (delta < len)
+				len = delta;
 
 			uint32_t read = Read(handle->file, q + 4, len);
 			// handle EOF
@@ -827,8 +835,8 @@ printf("locked dir %s = %08lx\n", path, dir);
 				goto Status;
 			}
 
-			logme(L_FINE, "@%ld:%ld sftp SSH_FXP_READ len=%ld", server->getSockFd(), channel, len);
-			putInt32AndInc(q, len); // full length, rest is sent in next packet
+			logme(L_FINE, "@%ld:%ld sftp SSH_FXP_READ len=%ld", server->getSockFd(), channel, read);
+			putInt32AndInc(q, read);
 
 			q += read;
 			break;
@@ -849,7 +857,10 @@ printf("locked dir %s = %08lx\n", path, dir);
 			else
 				Seek(handle->file, offset, OFFSET_BEGINNING);
 
-			Write(handle->file, p, len);
+			if (Write(handle->file, p, len) != (long)len) {
+				result = SSH_FX_FAILURE;
+				goto Status;
+			}
 
 			result = SSH_FX_OK;
 			goto Status;

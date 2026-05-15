@@ -310,6 +310,10 @@ SshSession::SshSession(int _sock) :
 
 SshSession::~SshSession() {
 	logme(L_INFO, "@%ld stopping handler %s", sockFd, name);
+	for (int i = 0; i < channels.getMax(); ++i) {
+		Channel *c = channels.remove(i);
+		delete c;
+	}
 	if (readAead) delete readAead;
 	if (writeAead) delete writeAead;
 	if (readBc) delete readBc;

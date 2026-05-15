@@ -5,6 +5,7 @@ DebugLevel Info
 
 #Port 22
 #ListenAddress 0.0.0.0
+#ListenBacklog 16
 
 HostKey	ENVARC:ssh/ssh_host_ed25519_key
 
@@ -23,4 +24,3 @@ HomeDir RAM:
 
 # limit count of connections + forward channels
 # MaxListeners 64
-

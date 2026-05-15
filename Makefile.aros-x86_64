@@ -13,6 +13,7 @@ TARGET_CFLAGS ?= -mcmodel=large -fno-asynchronous-unwind-tables -fno-unwind-tabl
 CXXFLAGS ?= -fno-exceptions -fno-rtti -fno-weak
 SSHD_SOURCES ?= bebbosshd.cpp sshsession.cpp forwardchannel.cpp sftpchannel.cpp shellchannel.cpp channel.cpp stack.cpp c++support.cpp home.cpp aros_startup_flags.c aros_mincrt.c
 KEYGEN_SOURCES ?= bebbosshkeygen.cpp c++support.cpp home.cpp aros_startup_flags.c aros_mincrt.c
+PROBE_EXTRA_OBJECTS ?= $(OUTDIR)/aros_mincrt.o
 SDK_LIBS ?= -lautoinit -lamiga -laros -ldos -lexec -lutility -lgcc -lautoinit -lamiga
 POST_LINK = $(OBJCOPY) -R .got $@ && printf '\013' | dd of=$@ bs=1 seek=8 conv=notrunc 2>/dev/null
 .DEFAULT_GOAL := bebbosshkeygen

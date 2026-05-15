@@ -8,6 +8,8 @@ pass=${BEBBOSSH_AROS_PASS:-test}
 known_hosts=${BEBBOSSH_AROS_KNOWN_HOSTS:-/tmp/bebbossh_aros_known_hosts}
 telegram_test=${BEBBOSSH_AROS_TELEGRAM_TEST:-DH0:TGTEST/telegram-test}
 workdir=${BEBBOSSH_AROS_WORKDIR:-DH0:TGTEST}
+shell_home=${BEBBOSSH_AROS_SHELL_HOME:-DH0:}
+transfer_sizes=${BEBBOSSH_AROS_TRANSFER_SIZES:-"1048576 5242880"}
 
 ssh_base_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=$known_hosts -o ConnectTimeout=8 -o PreferredAuthentications=password -o PubkeyAuthentication=no"
 
@@ -70,9 +72,10 @@ grep "Kickstart" "$pty_out" >/dev/null
 
 echo "9/10 interactive shell sequence"
 shell_out=$(mktemp "${TMPDIR:-/tmp}/bebbossh-aros-shell.XXXXXX")
-(sleep 1; printf 'dir\ncd %s\nversion\ncd DH0:\nexit\n' "$workdir") | \
+(sleep 1; printf 'pwd\nhelp\ndir\ncd %s\npwd\nversion\ncd %s\nexit\n' "$workdir" "$shell_home") | \
   sshpass -p "$pass" ssh -tt $ssh_base_opts -p "$port" "$user@$host" > "$shell_out" 2>&1
 grep "Kickstart" "$shell_out" >/dev/null
+grep "Minimal AROS SSH shell commands" "$shell_out" >/dev/null
 
 echo "10/10 scp and sftp round trips on $workdir"
 local_file=$(mktemp "${TMPDIR:-/tmp}/bebbossh-aros-scp.XXXXXX")
@@ -102,5 +105,26 @@ EOF
 
 sshpass -p "$pass" sftp -oBatchMode=no $ssh_base_opts -P "$port" -b "$sftp_batch" "$user@$host"
 cmp "$local_file" "$sftp_back_file"
+
+for size in $transfer_sizes; do
+    echo "transfer stress ${size} bytes on $workdir"
+    stress_local=$(mktemp "${TMPDIR:-/tmp}/bebbossh-aros-stress.XXXXXX")
+    stress_back=$(mktemp "${TMPDIR:-/tmp}/bebbossh-aros-stress-back.XXXXXX")
+    stress_batch=$(mktemp "${TMPDIR:-/tmp}/bebbossh-aros-stress-batch.XXXXXX")
+    stress_remote="$workdir/bebbossh-aros-stress-${size}.bin"
+    dd if=/dev/urandom of="$stress_local" bs="$size" count=1 >/dev/null 2>&1
+    sshpass -p "$pass" scp $ssh_base_opts -P "$port" "$stress_local" "$user@$host:$stress_remote"
+    sshpass -p "$pass" scp $ssh_base_opts -P "$port" "$user@$host:$stress_remote" "$stress_back"
+    cmp "$stress_local" "$stress_back"
+    rm -f "$stress_back"
+    cat > "$stress_batch" <<EOF
+put $stress_local $stress_remote
+get $stress_remote $stress_back
+rm $stress_remote
+EOF
+    sshpass -p "$pass" sftp -oBatchMode=no $ssh_base_opts -P "$port" -b "$stress_batch" "$user@$host"
+    cmp "$stress_local" "$stress_back"
+    rm -f "$stress_local" "$stress_back" "$stress_batch"
+done
 
 echo "ok"

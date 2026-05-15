@@ -64,7 +64,8 @@ LIB_OBJECTS = $(patsubst %.cpp,$(OUTDIR)/%.o,$(patsubst %.c,$(OUTDIR)/%.o,$(LIB_
 SSHD_OBJECTS = $(patsubst %.cpp,$(OUTDIR)/%.o,$(patsubst %.c,$(OUTDIR)/%.o,$(SSHD_SOURCES)))
 KEYGEN_OBJECTS = $(patsubst %.cpp,$(OUTDIR)/%.o,$(patsubst %.c,$(OUTDIR)/%.o,$(KEYGEN_SOURCES)))
 TESTS = $(patsubst %.cpp,$(OUTDIR)/%,$(TEST_SOURCES))
-PROBES = $(OUTDIR)/AROSPROBE $(OUTDIR)/AROSPROBE_RET
+PROBES = $(OUTDIR)/AROSPROBE $(OUTDIR)/AROSPROBE_RET $(OUTDIR)/AROS_ENTROPY_PROBE
+PROBE_EXTRA_OBJECTS ?=
 HEADERS = $(wildcard include/*.h)
 
 .PHONY: all bebbosshd bebbosshkeygen tests probes package-aros-runtime run-tests clean
@@ -110,14 +111,21 @@ ifneq ($(strip $(STRIP_OUTPUTS)),)
 endif
 	$(POST_LINK)
 
-$(OUTDIR)/AROSPROBE: $(OUTDIR)/aros_probe.o $(OUTDIR)/aros_startup_flags.o
+$(OUTDIR)/AROSPROBE: $(OUTDIR)/aros_probe.o $(OUTDIR)/aros_startup_flags.o $(PROBE_EXTRA_OBJECTS)
 	$(CC) $(LDFLAGS) $(STARTUP) $^ $(SDK_LIBS) -o $@
 ifneq ($(strip $(STRIP_OUTPUTS)),)
 	$(STRIP) $(STRIPFLAGS) $@
 endif
 	$(POST_LINK)
 
-$(OUTDIR)/AROSPROBE_RET: $(OUTDIR)/aros_probe_ret.o $(OUTDIR)/aros_startup_flags.o
+$(OUTDIR)/AROSPROBE_RET: $(OUTDIR)/aros_probe_ret.o $(OUTDIR)/aros_startup_flags.o $(PROBE_EXTRA_OBJECTS)
+	$(CC) $(LDFLAGS) $(STARTUP) $^ $(SDK_LIBS) -o $@
+ifneq ($(strip $(STRIP_OUTPUTS)),)
+	$(STRIP) $(STRIPFLAGS) $@
+endif
+	$(POST_LINK)
+
+$(OUTDIR)/AROS_ENTROPY_PROBE: $(OUTDIR)/aros_entropy_probe.o $(OUTDIR)/aros_startup_flags.o $(PROBE_EXTRA_OBJECTS)
 	$(CC) $(LDFLAGS) $(STARTUP) $^ $(SDK_LIBS) -o $@
 ifneq ($(strip $(STRIP_OUTPUTS)),)
 	$(STRIP) $(STRIPFLAGS) $@

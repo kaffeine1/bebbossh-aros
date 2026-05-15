@@ -30,7 +30,9 @@ assets per target.
 | Target | Status | Build entry point | Release assets |
 | --- | --- | --- | --- |
 | AROS i386 `alt-abiv0` | stable / validated | `Makefile.aros` | `bebbossh-aros-i386-*` |
-| AROS x86_64 | experimental / non-PTY exec validated | `Makefile.aros-x86_64` | `bebbossh-aros-x86_64-*` |
+| AROS i386 hosted | automation validated, transfer stress validated | `Makefile.aros` | hosted test kits only |
+| AROS x86_64 hosted | paced automation validated, zero-delay release gate blocked | `Makefile.aros-x86_64` | experimental `bebbossh-aros-x86_64-*` |
+| AROS x86_64 AROS One | keygen validated, daemon validation pending | `Makefile.aros-x86_64` | pre-release kits only |
 
 The AROS port currently includes:
 
@@ -65,25 +67,40 @@ Runtime status on AROS One i386:
   and leaves the daemon usable.
 - Interactive SSH sessions can run simple AROS commands and return to the
   prompt. Simple piped multi-command input such as `dir`, `cd`, `version`,
-  and `exit` has been tested. A bare interactive `dir` is normalized to one
-  name per line for readability.
-- PTY exec works for bounded interactive programs. The
-  `telegram-test --telegram-client-console 1 1` workflow has been tested over
-  `ssh -tt`.
+  and `exit` has been tested. Interactive `dir`, including `dir <path>`, is
+  normalized to one name per line for readability.
+- PTY exec for simple commands is routed through the same stable AROS command
+  backend as non-PTY exec. Full stdin-driven PTY programs remain incomplete.
 - Known interactive commands are rejected in non-PTY exec mode with exit status
   2 and a message asking the caller to use `ssh -tt`, so they do not block the
   daemon's main loop.
 - SFTP and OpenSSH `scp` transfers work on `T:` and `DH0:`; 1 MiB and 5 MiB
   file round-trips and a small `telegram-amiga`-style directory tree have been
-  tested. Overwriting a larger file with a smaller file on `DH0:` has been
-  verified to truncate correctly. AROS SFTP uploads also keep the AmigaDOS
-  execute protection allowed, so uploaded binaries can be started without a
-  manual `protect +e` step.
+  tested. The SFTP server now honors explicit client read offsets instead of
+  relying on sequential file position. Overwriting a larger file with a smaller
+  file on `DH0:` has been verified to truncate correctly. AROS SFTP uploads
+  also keep the AmigaDOS execute protection allowed, so uploaded binaries can
+  be started without a manual `protect +e` step.
+- The AROS daemon uses a larger listen backlog and accepts several pending
+  sockets per event-loop pass. This improves rapid short-session workflows such
+  as repeated SCP/SFTP transfers.
 - SFTP `mkdir`/`rmdir` has been tested on `DH0:`.
 - A clean package install was tested by copying the runtime kit to a fresh
   `DH0:` directory, generating a host key with `bebbosshkeygen`, and starting a
   separate daemon from that directory.
-- Full PTY-style interactive program support is still incomplete.
+- Full PTY-style interactive program support is still incomplete; use the
+  minimal shell for short commands and non-PTY exec for automation.
+
+Hosted AROS i386 automation status:
+
+- The hosted i386 daemon uses a 1 MiB default command stack on all AROS builds.
+  This avoids command-task crashes seen with larger `telegram-amiga` offline
+  self-tests.
+- The hosted i386 runtime has passed `telegram-test --help`,
+  `--telegram-json-self-test`, `--telegram-get-updates-self-test`,
+  `--telegram-inbox-self-test`, `--telegram-send-message-self-test`,
+  `--telegram-client-self-test`, `--telegram-tls-status`, and a follow-up
+  `C:Version` health check over OpenSSH.
 
 The stable AROS i386 runtime kit can be generated with:
 
@@ -134,10 +151,14 @@ from ISO transfer after copying to a persistent `AROS:` directory and applying
 `bebbosshd` x86_64 has been validated in hosted AROS x86_64 for short
 non-interactive OpenSSH commands: `C:Version` and `C:Echo OK` return complete
 output and exit status 0, an explicit missing command returns exit status 127,
-and the daemon remains usable afterwards. SFTP/SCP and interactive shell
-coverage on x86_64 are still below the i386 release level, and the x86_64
-entropy path remains experimental, so x86_64 builds are published as
-experimental/pre-release kits.
+and the daemon remains usable afterwards. With the current hosted test
+environment, x86_64 also passes the `telegram-amiga` offline automation suite
+used for `--help`, JSON, getUpdates, inbox, sendMessage, client-state, and
+TLS-status checks. SFTP/SCP, PTY exec for simple commands, and the minimal
+interactive shell pass the hosted smoke test on both x86_64 and i386, including
+1 MiB and 5 MiB transfer round-trips on `SYS:TGTEST` in hosted runs. The x86_64
+entropy path and non-hosted AROS One daemon validation remain experimental, so
+x86_64 builds are published as experimental/pre-release kits.
 
 ### AROS automation workflow
 
@@ -164,7 +185,26 @@ scripts/aros-ssh-smoke-test.sh
 It validates `version`, redirection rejection, non-PTY interactive-command
 rejection, daemon health after both guards, `telegram-amiga` command exit
 status propagation, PTY exec, an interactive shell sequence, and SCP/SFTP round
-trips on `DH0:TGTEST`.
+trips on `DH0:TGTEST`. By default it also performs 1 MiB and 5 MiB transfer
+stress round-trips; override this with `BEBBOSSH_AROS_TRANSFER_SIZES`. Hosted
+AROS tests can set `BEBBOSSH_AROS_WORKDIR=SYS:TGTEST` and
+`BEBBOSSH_AROS_SHELL_HOME=SYS:`.
+
+For repeated transfer stress, use:
+
+```sh
+BEBBOSSH_AROS_PORT=10022 \
+BEBBOSSH_AROS_WORKDIR=SYS:TGTEST \
+./scripts/aros-transfer-stress-test.sh
+```
+
+The transfer stress script defaults to a one-second delay between cycles for
+downstream automation. Hosted AROS i386 currently passes the zero-delay stress
+gate with sizes `257 4096 65536 1048576` on `SYS:TGTEST`; hosted AROS x86_64
+still has an open longer zero-delay churn failure where OpenSSH can report
+`incorrect signature` during handshake. Keep the paced default for routine
+CI-style automation; use `BEBBOSSH_AROS_STRESS_DELAY=0` only as an explicit
+regression stress test.
 
 ### AROS autostart
 

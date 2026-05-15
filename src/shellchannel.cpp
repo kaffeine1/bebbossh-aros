@@ -1253,6 +1253,35 @@ bool ShellChannel::startCommand(){
 		return drainBufferedInput();
 	}
 
+#if BEBBOSSH_AROS
+	if (!hasExec() && keywordLen == 3 && 0 == strnicmp(xbuffer, "pwd", 3)) {
+		char name[512];
+		if (NameFromLock(dir, name, sizeof(name))) {
+			int len = strlen(name);
+			server->channelWrite(channel, name, len);
+			server->channelWrite(channel, "\r\n", 2);
+		} else {
+			server->channelWrite(channel, "object not found\r\n", 18);
+		}
+		prompt();
+		return drainBufferedInput();
+	}
+
+	if (!hasExec() && keywordLen == 4 && 0 == strnicmp(xbuffer, "help", 4)) {
+		static const char msg[] =
+				"Minimal AROS SSH shell commands:\r\n"
+				"  dir [path]\r\n"
+				"  cd <path>\r\n"
+				"  pwd\r\n"
+				"  version\r\n"
+				"  stack <bytes>\r\n"
+				"  exit\r\n";
+		server->channelWrite(channel, msg, sizeof(msg) - 1);
+		prompt();
+		return drainBufferedInput();
+	}
+#endif
+
 	// handle stack with at least one param
 	if (keywordLen == 5 && 0 == strnicmp(xbuffer, "stack", 5) && p > q) {
 		*p = 0;
@@ -1271,8 +1300,14 @@ bool ShellChannel::startCommand(){
 		char *args = xbuffer + 3;
 		while (*args && *args <= ' ')
 			++args;
-		if (!*args)
+		if (!*args) {
 			strcpy(xbuffer, "list lformat %N");
+		} else if (!strstr(args, "lformat") && !strstr(args, "LFORMAT")) {
+			char dirArgs[CHUNKSIZE];
+			strncpy(dirArgs, args, sizeof(dirArgs) - 1);
+			dirArgs[sizeof(dirArgs) - 1] = 0;
+			snprintf(xbuffer, CHUNKSIZE, "list %s lformat %%N", dirArgs);
+		}
 	}
 
 	if (hasExec() && !hasPty() && isExplicitArosCommandPath(xbuffer, keywordLen) && !arosCommandExists(xbuffer, keywordLen)) {
@@ -1295,13 +1330,28 @@ bool ShellChannel::startCommand(){
 	}
 
 	if (hasExec() && !hasPty() && isArosInteractiveOnlyExec(xbuffer, keywordLen)) {
-		static const char msg[] = "bebbosshd/AROS: interactive command requires a PTY; use ssh -tt\r\n";
+		static const char msg[] = "bebbosshd/AROS: interactive command is not supported by the minimal AROS backend yet\r\n";
 		server->channelWrite(channel, msg, sizeof(msg) - 1);
 		return finishArosExecImmediate(2);
 	}
 
-	if (hasExec() && !hasPty())
+	if (hasExec() && hasPty() && isArosInteractiveOnlyExec(xbuffer, keywordLen)) {
+		static const char msg[] = "bebbosshd/AROS: interactive command is not supported by the minimal AROS backend yet\r\n";
+		server->channelWrite(channel, msg, sizeof(msg) - 1);
+		return finishArosExecImmediate(2);
+	}
+
+	if (hasExec())
 		return startArosExecFile(true);
+
+	if (isArosInteractiveOnlyExec(xbuffer, keywordLen)) {
+		static const char msg[] = "bebbosshd/AROS: interactive command is not supported by the minimal AROS backend yet\r\n";
+		server->channelWrite(channel, msg, sizeof(msg) - 1);
+		prompt();
+		return drainBufferedInput();
+	}
+
+	return runArosExec(false);
 #endif
 
 	logme(L_DEBUG, "@%ld:%ld starting task %s with cmd `%s`", server->getSockFd(), channel, server->name, xbuffer);
