@@ -39,7 +39,6 @@
 #include <amistdio.h>
 #else
 #include <stdio.h>
-#include <malloc.h>
 #endif
 
 // Provide global symbols for operator new/delete variants

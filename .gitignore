@@ -11,3 +11,4 @@ dist/
 *.bak
 /.clang-format
 /linux/
+/aros-i386*/

@@ -31,7 +31,7 @@
  *  - Contributions must preserve author attribution and GPL licensing
  * ----------------------------------------------------------------------
  */
-#ifdef __AMIGA__
+#if defined(__AMIGA__) || defined(__AROS__)
 #include <proto/dos.h>
 #include <amistdio.h>
 #else
@@ -55,15 +55,27 @@ void logme(enum DebugLevel lvl, char const *fmt, ...) {
 	if (lvl <= *DEBUG_LEVEL) {
 		va_list args;
 		va_start(args, fmt);
-#ifdef __AMIGA__
+		time_t ti = 0;
+		int ms = 0;
+#if defined(__AROS__)
+		struct DateStamp ds;
+		DateStamp(&ds);
+		ms = (ds.ds_Tick % TICKS_PER_SECOND) * 20;
+		fprintf(stderr, "[aros:%ld.%02ld.%03d] [%s] ", ds.ds_Days, ds.ds_Minute, ms, LEVELNAMES[lvl]);
+		vfprintf(stderr, fmt, args);
+		fputs("\r\n", stderr);
+		va_end(args);
+		fflush(stderr);
+		return;
+#elif defined(__AMIGA__)
 		static volatile struct Custom * c = (struct Custom *)0xdff000;
 		static int lastms;
 		static int lastvp;
 		static time_t lastti;
 		struct DateStamp ds;
 		DateStamp(&ds); /* Get timestamp */
-		time_t ti = ((ds.ds_Days + 2922) * 1440 + ds.ds_Minute /* + timezone*/) * 60 + ds.ds_Tick / TICKS_PER_SECOND;
-		int ms = (ds.ds_Tick % TICKS_PER_SECOND) * 20;
+		ti = ((ds.ds_Days + 2922) * 1440 + ds.ds_Minute /* + timezone*/) * 60 + ds.ds_Tick / TICKS_PER_SECOND;
+		ms = (ds.ds_Tick % TICKS_PER_SECOND) * 20;
 		int vp = (c->vhposr >> 8);
 		if (ti == lastti && ms == lastms) {
 			if (vp < lastvp)
@@ -81,8 +93,8 @@ void logme(enum DebugLevel lvl, char const *fmt, ...) {
 	    struct timeval tv;
 	    gettimeofday(&tv, NULL);
 
-	    time_t ti = tv.tv_sec;                 // proper wall-clock seconds
-	    int ms = tv.tv_usec / 1000;            // milliseconds (0...999)
+	    ti = tv.tv_sec;                 // proper wall-clock seconds
+	    ms = tv.tv_usec / 1000;         // milliseconds (0...999)
 #endif
 		struct tm const  * t = gmtime(&ti);
 		fprintf(stderr, "[%04ld.%02ld.%02ld-%02ld:%02ld:%02ld.%03ld] [%s] ", t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec, ms, LEVELNAMES[lvl]);

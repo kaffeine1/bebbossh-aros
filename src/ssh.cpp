@@ -51,7 +51,7 @@ char const * const CHACHA20 = "chacha20-poly1305@openssh.com";
 #include <time.h>
 #include <netinet/in.h>
 
-char* concat(const char *s0, ...) {
+extern "C" char* concat(const char *s0, ...) {
     if (!s0) return 0;
     size_t sz = 1 + strlen(s0);
     va_list args;

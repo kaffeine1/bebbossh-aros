@@ -39,8 +39,8 @@
 #include <amistdio.h>
 #else
 #include <stdio.h>
-#include <endian.h>
 #endif
+#include "compat_endian.h"
 
 #undef DEBUG
 #ifdef DEBUG

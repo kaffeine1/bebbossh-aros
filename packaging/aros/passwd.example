@@ -1,0 +1,9 @@
+# Plaintext bootstrap password file for local testing.
+#
+# Format:
+#   username password
+#
+# Change this before using the server on any network. On writable media,
+# BebboSSH may rewrite plaintext passwords to its hashed form after login.
+
+test test

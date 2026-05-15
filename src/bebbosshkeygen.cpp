@@ -39,12 +39,13 @@
 
 #include <ed25519.h>
 #include <mime.h>
+#include <platform.h>
 #include <rand.h>
 #include <test.h>
 #include <ssh.h>
 #include "revision.h"
 
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
 #include <amistdio.h>
 #include <proto/dos.h>
 #include <proto/exec.h>
@@ -57,6 +58,20 @@ static char const *filename;
 static char outfilename[256];
 
 static char comment[256] = "Amiga";
+
+static char *readLine(char *buf, int len) {
+#if BEBBOSSH_AMIGA_API
+	char *s = FGets(Input(), buf, len);
+#else
+	char *s = fgets(buf, len, stdin);
+#endif
+	if (!s)
+		return s;
+	char *p = strpbrk(buf, "\r\n");
+	if (p)
+		*p = 0;
+	return s;
+}
 
 static void printUsage() {
     puts(__VERSION__);
@@ -123,7 +138,7 @@ __stdargs int main(int argc, char **argv) {
 
 	parseParams(argc, argv);
 
-#ifdef __AMIGA__
+#if defined(__AMIGA__) && !BEBBOSSH_AROS
 	// remove the program arguments from stdin
 	FGetC(stdin);
 	fflush(stdin);
@@ -134,7 +149,7 @@ __stdargs int main(int argc, char **argv) {
 	if (0 == strcmp(outfilename, filename)) {
 		printf("Enter file in which to save the key (%s): ", outfilename);
 		fflush(stdout);
-		amigets(buf, 255);
+		readLine(buf, 255);
 		if (*buf > 32) {
 			char *p = buf;
 			for (; *p > ' '; ++p)
@@ -150,7 +165,7 @@ __stdargs int main(int argc, char **argv) {
 		printf("%s already exists.\nOverwrite (y/n)? ", outfilename);
 		static char buf2[4];
 		fflush(stdout);
-		amigets(buf2, 3);
+		readLine(buf2, 3);
 		if (*buf2 != 'y' && *buf2 != 'Y')
 			return 0;
 	}

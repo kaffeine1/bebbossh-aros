@@ -72,7 +72,7 @@ LIB_SOURCES = bc.cpp aes.cpp chacha20.cpp poly1305.cpp chacha20poly1305ssh.cpp \
 			dump.c gcm.cpp log.c md.cpp sha256.cpp sha512.cpp sha384512.cpp \
 			ssh.cpp loaded25519key.cpp splitline.cpp fastmath.cpp vector.cpp \
 			mimedecode.c mimeencode.c rand.c equals.cpp unhexlify.c \
-			x25519.c ed25519.c ed25519s.c ed25519v.c c++support-lib.cpp home.cpp\
+			x25519.cpp ed25519.cpp ed25519s.cpp ed25519v.cpp c++support-lib.cpp home.cpp\
 			$(EXTRA_LIB_SOURCES)
 LIB_OBJECTS = $(patsubst %.asm,$(OUTDIR)/%.o, $(patsubst %.cpp,$(OUTDIR)/%.o, $(patsubst %.c,$(OUTDIR)/%.o,$(LIB_SOURCES))))
 

@@ -39,6 +39,9 @@
 #ifndef SHELLCHANNEL_H_
 #define SHELLCHANNEL_H_
 
+#include <stdlib.h>
+
+#include "platform.h"
 #include "channel.h"
 
 /**
@@ -106,7 +109,7 @@ class ShellChannel : public Channel {
 
 	unsigned rows, cols;
 
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
 	bool localEcho;
 
 	unsigned stackSize;
@@ -159,7 +162,7 @@ public:
 	}
 	void prompt();
 
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
 	bool isPending() const { return pending != 0;}
 	void setPending(struct Message * m) { pending = m;}
 	bool isWaiting() const { return waiting != 0;}
@@ -171,6 +174,9 @@ public:
 	char * redrawRestOfLine(char *);
 	char * cursorLeft(char * out, int slen);
 	char * cursorRight(char * out, int slen);
+#if BEBBOSSH_AROS
+	bool runArosExec();
+#endif
 
 	struct MsgPort * setBreakPort(struct MsgPort * p1, struct MsgPort * p2);
 	bool hasBreakPort(struct MsgPort * p) const { return breakPort1 == p || breakPort2 == p; }
@@ -190,7 +196,7 @@ public:
 #endif
 };
 
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
 static inline struct DosPacket * getDosPacket (struct Message * m){
 	return (struct DosPacket*) m->mn_Node.ln_Name;
 }

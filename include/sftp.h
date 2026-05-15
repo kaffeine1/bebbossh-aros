@@ -136,6 +136,10 @@
 #define SSH2_FXF_TRUNC			0x00000010
 #define SSH2_FXF_EXCL			0x00000020
 
+#ifndef __amigaos__
+typedef unsigned long ulong;
+#endif
+
 // rwxd 3-0
 static
 inline int a2sshmode(ulong m) {

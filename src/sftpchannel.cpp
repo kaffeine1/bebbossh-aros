@@ -35,12 +35,23 @@
 #include <sys/socket.h>
 #include <arpa/inet.h> //inet_addr
 #include <time.h>
+#include <stdlib.h>
+#include "platform.h"
 
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
 #include <amistdio.h>
 #include <dos/dos.h>
 #include <proto/dos.h>
 #include <proto/exec.h>
+
+#if BEBBOSSH_AROS
+#ifndef FIBF_HOLD
+#define FIBF_HOLD 0
+#endif
+#define BEBBOSSH_TIMEZONE 0
+#else
+#define BEBBOSSH_TIMEZONE _timezone
+#endif
 
 typedef BPTR DPTR;
 #define IS_FILE(fib) ((fib).fib_DirEntryType <= 0)
@@ -88,7 +99,7 @@ static inline long delta_ms(const struct DateStamp &now,
 
 #define NAMEWIDTH 24
 
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
 static inline int flags2mode(int flags) {
 	if (flags & SSH2_FXF_CREAT)
 		return MODE_NEWFILE;
@@ -241,7 +252,15 @@ bool sanitize(char * path) {
 	}
 
 	if (colon && colon > path) {
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
+#if BEBBOSSH_AROS
+		struct DevProc *dp = GetDeviceProc((CONST_STRPTR)path, NULL);
+		if (dp) {
+			FreeDeviceProc(dp);
+			return true;
+		}
+		return false;
+#else
 		struct DosList * dl = AttemptLockDosList(LDF_ALL | LDF_READ);
 		if (!dl)
 			return false;
@@ -257,6 +276,7 @@ bool sanitize(char * path) {
 		UnLockDosList(LDF_ALL | LDF_READ);
 		*colon = x;
 		if (!dl)
+#endif
 #endif
 			return false;
 	}
@@ -319,15 +339,19 @@ void putFib(uint8_t * & q, struct FileInfoBlock * fib) {
 	putInt32AndInc(q, mode);
 
 	struct timeval nowtime;
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
 	struct DateStamp *stamp = &fib->fib_Date;
 	long s = stamp->ds_Tick/ TICKS_PER_SECOND;
-	nowtime.tv_sec = (stamp->ds_Days * 24 * 60 + stamp->ds_Minute) * 60 + _timezone + s + 252460800;
+	nowtime.tv_sec = (stamp->ds_Days * 24 * 60 + stamp->ds_Minute) * 60 + BEBBOSSH_TIMEZONE + s + 252460800;
 	nowtime.tv_usec = stamp->ds_Tick * (1000000 / TICKS_PER_SECOND) - s * 1000000;
 #else
 	// fill timeval from stat
 	nowtime.tv_sec  = fib->st.st_mtime;                  // modification time in seconds
+#ifdef __APPLE__
+	nowtime.tv_usec = fib->st.st_mtimespec.tv_nsec / 1000;
+#else
 	nowtime.tv_usec = fib->st.st_mtim.tv_nsec / 1000;    // convert nanoseconds -> microseconds
+#endif
 #endif
 	// modtime
 	putInt32AndInc(q, nowtime.tv_usec);
@@ -366,11 +390,11 @@ void setAttrs(uint8_t * p, uint8_t * path) {
 		tv.tv_usec -= u * 1000000;
 		tv.tv_sec += u;
 
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
 		struct DateStamp date;
 
 		tv.tv_sec -= 252460800;        // amiga offset in seconds
-		tv.tv_sec -= _timezone;
+		tv.tv_sec -= BEBBOSSH_TIMEZONE;
 
 		date.ds_Days = tv.tv_sec / (24 * 60 * 60);
 		tv.tv_sec -= date.ds_Days * (24 * 60 * 60);
@@ -413,8 +437,8 @@ void SftpChannel::makeNameResponse(uint8_t * &q, char const * path, struct FileI
 
 	// long name
 	char * ln = (char *)q + 4;
-	l = strlen(fib->fib_FileName);
-	memcpy(ln, fib->fib_FileName, l);
+	l = strlen((const char *)fib->fib_FileName);
+	memcpy(ln, (const char *)fib->fib_FileName, l);
 	char * to = ln + l;
 	if (NAMEWIDTH - l > 0) {
 		memset(to, ' ', NAMEWIDTH - l);
@@ -432,7 +456,7 @@ void SftpChannel::makeNameResponse(uint8_t * &q, char const * path, struct FileI
 		to += snprintf(to, 16, "%10ld", fib->fib_Size);
 	}
 	*to ++= ' ';
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
     // Amiga protection bits
     *to++ = (fib->fib_Protection & FIBF_HOLD)    ? 'h' : '-';
     *to++ = (fib->fib_Protection & FIBF_SCRIPT)  ? 's' : '-';
@@ -456,7 +480,7 @@ void SftpChannel::makeNameResponse(uint8_t * &q, char const * path, struct FileI
 #endif
     *to ++= ' ';
 
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
     struct DateStamp *stamp = &fib->fib_Date;
     time_t nowtime = ((stamp->ds_Days + 2922) * 24 * 60 + stamp->ds_Minute) * 60
                    + stamp->ds_Tick / TICKS_PER_SECOND;
@@ -728,7 +752,7 @@ printf("locked dir %s = %08lx\n", path, dir);
 					break;
 				}
 				++count;
-				makeNameResponse(q, handle->fib.fib_FileName, &handle->fib);
+				makeNameResponse(q, (const char *)handle->fib.fib_FileName, &handle->fib);
 
 				if (q - out + 512 > limit)
 					break;
@@ -964,7 +988,7 @@ printf("locked dir %s = %08lx\n", path, dir);
 				goto Status;
 			}
 
-#ifdef __AMIGA__
+#if BEBBOSSH_AMIGA_API
 			struct DevProc * dp = GetDeviceProc((CONST_STRPTR)link, NULL);
 			while (dp) {
 				uint8_t * path = q + 256;

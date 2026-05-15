@@ -43,6 +43,7 @@
 #include <aes.h>
 #include <gcm.h>
 #include <chacha20poly1305.h>
+#include "platform.h"
 #include "sha256.h"
 #include "ssh.h"
 
@@ -149,7 +150,7 @@ struct SshSession : public Listener {
 
 	char const * getUser() const { return username; }
 
-#ifdef __linux__
+#if BEBBOSSH_POSIX_SHELL
 	int getHandle() const;
 	int readHandle();
 #endif
