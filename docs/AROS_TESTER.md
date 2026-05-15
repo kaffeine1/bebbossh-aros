@@ -25,6 +25,46 @@ Current hosted target ports:
 The hosted test work directory is `SYS:TGTEST`. Do not assume `DH0:` exists in
 hosted runs. Avoid `RAM:` for automated transfer tests.
 
+## Test Tiers
+
+Use hosted AROS for the fast development loop and QEMU AROS One VMs for release
+validation.
+
+- Hosted i386/x86_64: required for routine smoke, SCP/SFTP, and zero-delay
+  connection-churn regression tests.
+- QEMU AROS One i386: required before publishing an i386 runtime kit, because
+  it validates the release-style filesystem, startup path, and package layout.
+- QEMU AROS One x86_64: required before promoting x86_64 beyond experimental,
+  because hosted x86_64 does not prove the non-hosted AROS One daemon path.
+
+The release gate does not start QEMU VMs. Boot the VM, start or autostart
+`bebbosshd`, expose its guest SSH port through QEMU forwarding, then pass the
+forwarded port to `scripts/aros-release-gate.sh`.
+
+```sh
+BEBBOSSH_GATE_QEMU_I386_PORT=10022 \
+BEBBOSSH_GATE_QEMU_X64_PORT=20022 \
+./scripts/aros-release-gate.sh
+```
+
+If the QEMU VM uses different paths, override them explicitly:
+
+```sh
+BEBBOSSH_GATE_QEMU_I386_WORKDIR=DH0:TGTEST
+BEBBOSSH_GATE_QEMU_I386_SHELL_HOME=DH0:
+BEBBOSSH_GATE_QEMU_I386_TELEGRAM_TEST=DH0:TGTEST/telegram-test
+BEBBOSSH_GATE_QEMU_X64_WORKDIR=AROS:TGTEST
+BEBBOSSH_GATE_QEMU_X64_SHELL_HOME=AROS:
+BEBBOSSH_GATE_QEMU_X64_TELEGRAM_TEST=AROS:TGTEST/telegram-test
+```
+
+QEMU paced transfer stress is optional and disabled by default because it is
+slower than hosted stress:
+
+```sh
+BEBBOSSH_GATE_QEMU_STRESS=1 ./scripts/aros-release-gate.sh
+```
+
 ## Expected BebboSSHd Behavior
 
 - Non-interactive commands return complete output and preserve exit status.
@@ -83,11 +123,9 @@ offline checks for JSON, getUpdates, inbox, sendMessage, client-state, and
 TLS-status.
 
 After accept-loop hardening, hosted i386 passed 3 zero-delay transfer stress
-iterations with sizes `257 4096 65536 1048576` on `SYS:TGTEST`.
-
-Hosted x86_64 still has an open zero-delay churn issue: in the release gate it
-can fail after several rapid SCP/SFTP cycles with OpenSSH reporting
-`incorrect signature` during handshake. The daemon remains reachable afterward,
-and hosted logs show no trap, but this blocks a new public release. Keep paced
-stress enabled for routine validation, and run zero-delay stress only when
-specifically checking short-session robustness.
+iterations with sizes `257 4096 65536 1048576` on `SYS:TGTEST`. Hosted x86_64
+previously showed an intermittent zero-delay churn failure where OpenSSH could
+report `incorrect signature` during handshake, but that failure was not
+reproduced in the latest 10-iteration zero-delay run with the same sizes. Keep
+paced stress enabled for routine automation, and run zero-delay stress as an
+explicit short-session robustness regression.

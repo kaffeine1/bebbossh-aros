@@ -200,12 +200,13 @@ BEBBOSSH_AROS_WORKDIR=SYS:TGTEST \
 ```
 
 The transfer stress script defaults to a one-second delay between cycles for
-downstream automation. Hosted AROS i386 currently passes the zero-delay stress
-gate with sizes `257 4096 65536 1048576` on `SYS:TGTEST`; hosted AROS x86_64
-still has an open longer zero-delay churn failure where OpenSSH can report
-`incorrect signature` during handshake. Keep the paced default for routine
-CI-style automation; use `BEBBOSSH_AROS_STRESS_DELAY=0` only as an explicit
-regression stress test.
+downstream automation. Hosted AROS i386 passes the zero-delay stress gate with
+sizes `257 4096 65536 1048576` on `SYS:TGTEST`; hosted AROS x86_64 previously
+showed an intermittent longer zero-delay churn failure where OpenSSH could
+report `incorrect signature` during handshake, but that failure was not
+reproduced in the latest 10-iteration zero-delay run. Keep the paced default
+for routine CI-style automation; use `BEBBOSSH_AROS_STRESS_DELAY=0` only as an
+explicit regression stress test.
 
 ### AROS autostart
 

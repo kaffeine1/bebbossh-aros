@@ -130,19 +130,32 @@ if need sshpass; then
     run_step "hosted i386 smoke" smoke_target i386 "$i386_port" "$i386_workdir" "$i386_shell_home" "$i386_telegram" "$hosted_sizes"
     run_step "hosted x86_64 zero-delay stress" stress_target x86_64 "$x64_port" "$x64_workdir" "${BEBBOSSH_GATE_X64_STRESS_ITERATIONS:-5}" "$hosted_stress_sizes" 0
     run_step "hosted i386 zero-delay stress" stress_target i386 "$i386_port" "$i386_workdir" "${BEBBOSSH_GATE_I386_STRESS_ITERATIONS:-3}" "$hosted_stress_sizes" 0
+
+    qemu_sizes=${BEBBOSSH_GATE_QEMU_TRANSFER_SIZES:-1048576}
+    qemu_stress=${BEBBOSSH_GATE_QEMU_STRESS:-0}
+    qemu_stress_sizes=${BEBBOSSH_GATE_QEMU_STRESS_SIZES:-"257 4096 65536 1048576"}
+    qemu_i386_port=${BEBBOSSH_GATE_QEMU_I386_PORT:-${BEBBOSSH_GATE_AROS_ONE_I386_PORT:-}}
+    qemu_x64_port=${BEBBOSSH_GATE_QEMU_X64_PORT:-${BEBBOSSH_GATE_AROS_ONE_X64_PORT:-}}
+    qemu_i386_workdir=${BEBBOSSH_GATE_QEMU_I386_WORKDIR:-${BEBBOSSH_GATE_AROS_ONE_I386_WORKDIR:-DH0:TGTEST}}
+    qemu_x64_workdir=${BEBBOSSH_GATE_QEMU_X64_WORKDIR:-${BEBBOSSH_GATE_AROS_ONE_X64_WORKDIR:-AROS:TGTEST}}
+    qemu_i386_shell_home=${BEBBOSSH_GATE_QEMU_I386_SHELL_HOME:-${BEBBOSSH_GATE_AROS_ONE_I386_SHELL_HOME:-DH0:}}
+    qemu_x64_shell_home=${BEBBOSSH_GATE_QEMU_X64_SHELL_HOME:-${BEBBOSSH_GATE_AROS_ONE_X64_SHELL_HOME:-AROS:}}
+    qemu_i386_telegram=${BEBBOSSH_GATE_QEMU_I386_TELEGRAM_TEST:-${BEBBOSSH_GATE_AROS_ONE_I386_TELEGRAM_TEST:-DH0:TGTEST/telegram-test}}
+    qemu_x64_telegram=${BEBBOSSH_GATE_QEMU_X64_TELEGRAM_TEST:-${BEBBOSSH_GATE_AROS_ONE_X64_TELEGRAM_TEST:-AROS:TGTEST/telegram-test}}
+
+    run_step "QEMU AROS One i386 smoke" smoke_target qemu-aros-one-i386 \
+        "$qemu_i386_port" "$qemu_i386_workdir" "$qemu_i386_shell_home" "$qemu_i386_telegram" "$qemu_sizes"
+    run_step "QEMU AROS One x86_64 smoke" smoke_target qemu-aros-one-x86_64 \
+        "$qemu_x64_port" "$qemu_x64_workdir" "$qemu_x64_shell_home" "$qemu_x64_telegram" "$qemu_sizes"
+
+    if [ "$qemu_stress" = "1" ]; then
+        run_step "QEMU AROS One i386 paced stress" stress_target qemu-aros-one-i386 \
+            "$qemu_i386_port" "$qemu_i386_workdir" "${BEBBOSSH_GATE_QEMU_I386_STRESS_ITERATIONS:-3}" "$qemu_stress_sizes" 1
+        run_step "QEMU AROS One x86_64 paced stress" stress_target qemu-aros-one-x86_64 \
+            "$qemu_x64_port" "$qemu_x64_workdir" "${BEBBOSSH_GATE_QEMU_X64_STRESS_ITERATIONS:-3}" "$qemu_stress_sizes" 1
+    fi
 else
     skip "runtime SSH tests"
-fi
-
-if [ -z "${BEBBOSSH_GATE_AROS_ONE_X64_PORT:-}" ]; then
-    skip "AROS One x86_64 daemon validation: set BEBBOSSH_GATE_AROS_ONE_X64_PORT when the VM is reachable"
-else
-    run_step "AROS One x86_64 smoke" smoke_target aros-one-x86_64 \
-        "$BEBBOSSH_GATE_AROS_ONE_X64_PORT" \
-        "${BEBBOSSH_GATE_AROS_ONE_X64_WORKDIR:-AROS:BSSHOK}" \
-        "${BEBBOSSH_GATE_AROS_ONE_X64_SHELL_HOME:-AROS:}" \
-        "${BEBBOSSH_GATE_AROS_ONE_X64_TELEGRAM_TEST:-AROS:TGTEST/telegram-test}" \
-        "${BEBBOSSH_GATE_AROS_ONE_X64_TRANSFER_SIZES:-1048576}"
 fi
 
 exit "$status"

@@ -217,10 +217,12 @@ usable after that failure. It also passes the telegram-amiga offline automation
 suite used for JSON, getUpdates, inbox, sendMessage, client-state, and
 TLS-status checks. Hosted x86_64 now also passes SFTP/SCP upload/download,
 PTY exec, the minimal interactive shell sequence, and long 1/5/10/25 MiB
-transfer stress on `SYS:TGTEST`. Longer zero-delay SCP/SFTP churn still has an
-open x86_64 failure where OpenSSH can report `incorrect signature` during
-handshake. Keep x86_64 marked experimental until that churn issue, the entropy
-path, and non-hosted AROS One daemon validation are closed.
+transfer stress on `SYS:TGTEST`. Hosted x86_64 previously showed an
+intermittent longer zero-delay SCP/SFTP churn failure where OpenSSH could report
+`incorrect signature` during handshake, but that failure was not reproduced in
+the latest 10-iteration zero-delay run. Keep x86_64 marked experimental until
+the churn behavior has more soak coverage, the entropy path is reviewed, and
+non-hosted AROS One daemon validation is closed.
 
 Current hosted i386 runtime status: hosted AROS i386 starts with AROSTCP/TAP
 networking and authenticates OpenSSH password clients. After the default AROS
