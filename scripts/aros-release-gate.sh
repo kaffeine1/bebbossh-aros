@@ -102,6 +102,33 @@ stress_target() {
         ./scripts/aros-transfer-stress-test.sh
 }
 
+auth_forward_target() {
+    label=$1
+    port=$2
+    identity_file=$3
+    target_host=$4
+    target_port=$5
+    local_port=$6
+    payload=$7
+
+    if [ -z "$port" ]; then
+        skip "$label auth/forward: no port configured"
+        return 0
+    fi
+    if [ -z "$identity_file" ] && [ -z "$target_host" ] && [ -z "$target_port" ]; then
+        skip "$label auth/forward: set identity or forward target"
+        return 0
+    fi
+
+    BEBBOSSH_AROS_PORT="$port" \
+    BEBBOSSH_AROS_IDENTITY_FILE="$identity_file" \
+    BEBBOSSH_AROS_FORWARD_TARGET_HOST="$target_host" \
+    BEBBOSSH_AROS_FORWARD_TARGET_PORT="$target_port" \
+    BEBBOSSH_AROS_FORWARD_LOCAL_PORT="$local_port" \
+    BEBBOSSH_AROS_FORWARD_PAYLOAD="$payload" \
+        ./scripts/aros-auth-forward-test.sh
+}
+
 printf 'BebboSSH AROS release gate\n'
 
 need ssh || fail "missing ssh"
@@ -110,6 +137,7 @@ need sftp || fail "missing sftp"
 need sshpass || skip "sshpass missing: runtime SSH tests will be skipped unless installed"
 
 run_step "shell syntax: smoke script" run_cmd sh -n scripts/aros-ssh-smoke-test.sh
+run_step "shell syntax: auth/forward script" run_cmd sh -n scripts/aros-auth-forward-test.sh
 run_step "shell syntax: transfer stress script" run_cmd sh -n scripts/aros-transfer-stress-test.sh
 run_step "shell syntax: release gate script" run_cmd sh -n scripts/aros-release-gate.sh
 run_step "x86_64 build plus probes" build_x86_64
@@ -125,11 +153,21 @@ if need sshpass; then
     i386_shell_home=${BEBBOSSH_GATE_I386_SHELL_HOME:-SYS:}
     x64_telegram=${BEBBOSSH_GATE_X64_TELEGRAM_TEST:-SYS:TGTEST/telegram-test}
     i386_telegram=${BEBBOSSH_GATE_I386_TELEGRAM_TEST:-SYS:TGTEST/telegram-test}
+    x64_identity=${BEBBOSSH_GATE_X64_IDENTITY_FILE:-${BEBBOSSH_GATE_IDENTITY_FILE:-}}
+    i386_identity=${BEBBOSSH_GATE_I386_IDENTITY_FILE:-${BEBBOSSH_GATE_IDENTITY_FILE:-}}
 
     run_step "hosted x86_64 smoke" smoke_target x86_64 "$x64_port" "$x64_workdir" "$x64_shell_home" "$x64_telegram" "$hosted_sizes"
     run_step "hosted i386 smoke" smoke_target i386 "$i386_port" "$i386_workdir" "$i386_shell_home" "$i386_telegram" "$hosted_sizes"
     run_step "hosted x86_64 zero-delay stress" stress_target x86_64 "$x64_port" "$x64_workdir" "${BEBBOSSH_GATE_X64_STRESS_ITERATIONS:-5}" "$hosted_stress_sizes" 0
     run_step "hosted i386 zero-delay stress" stress_target i386 "$i386_port" "$i386_workdir" "${BEBBOSSH_GATE_I386_STRESS_ITERATIONS:-3}" "$hosted_stress_sizes" 0
+    run_step "hosted x86_64 public-key and forward" auth_forward_target x86_64 \
+        "$x64_port" "$x64_identity" "${BEBBOSSH_GATE_X64_FORWARD_TARGET_HOST:-}" \
+        "${BEBBOSSH_GATE_X64_FORWARD_TARGET_PORT:-}" "${BEBBOSSH_GATE_X64_FORWARD_LOCAL_PORT:-23922}" \
+        "${BEBBOSSH_GATE_X64_FORWARD_PAYLOAD:-}"
+    run_step "hosted i386 public-key and forward" auth_forward_target i386 \
+        "$i386_port" "$i386_identity" "${BEBBOSSH_GATE_I386_FORWARD_TARGET_HOST:-}" \
+        "${BEBBOSSH_GATE_I386_FORWARD_TARGET_PORT:-}" "${BEBBOSSH_GATE_I386_FORWARD_LOCAL_PORT:-23923}" \
+        "${BEBBOSSH_GATE_I386_FORWARD_PAYLOAD:-}"
 
     qemu_sizes=${BEBBOSSH_GATE_QEMU_TRANSFER_SIZES:-1048576}
     qemu_stress=${BEBBOSSH_GATE_QEMU_STRESS:-0}
@@ -142,11 +180,21 @@ if need sshpass; then
     qemu_x64_shell_home=${BEBBOSSH_GATE_QEMU_X64_SHELL_HOME:-${BEBBOSSH_GATE_AROS_ONE_X64_SHELL_HOME:-AROS:}}
     qemu_i386_telegram=${BEBBOSSH_GATE_QEMU_I386_TELEGRAM_TEST:-${BEBBOSSH_GATE_AROS_ONE_I386_TELEGRAM_TEST:-DH0:TGTEST/telegram-test}}
     qemu_x64_telegram=${BEBBOSSH_GATE_QEMU_X64_TELEGRAM_TEST:-${BEBBOSSH_GATE_AROS_ONE_X64_TELEGRAM_TEST:-AROS:TGTEST/telegram-test}}
+    qemu_i386_identity=${BEBBOSSH_GATE_QEMU_I386_IDENTITY_FILE:-${BEBBOSSH_GATE_AROS_ONE_I386_IDENTITY_FILE:-${BEBBOSSH_GATE_IDENTITY_FILE:-}}}
+    qemu_x64_identity=${BEBBOSSH_GATE_QEMU_X64_IDENTITY_FILE:-${BEBBOSSH_GATE_AROS_ONE_X64_IDENTITY_FILE:-${BEBBOSSH_GATE_IDENTITY_FILE:-}}}
 
     run_step "QEMU AROS One i386 smoke" smoke_target qemu-aros-one-i386 \
         "$qemu_i386_port" "$qemu_i386_workdir" "$qemu_i386_shell_home" "$qemu_i386_telegram" "$qemu_sizes"
     run_step "QEMU AROS One x86_64 smoke" smoke_target qemu-aros-one-x86_64 \
         "$qemu_x64_port" "$qemu_x64_workdir" "$qemu_x64_shell_home" "$qemu_x64_telegram" "$qemu_sizes"
+    run_step "QEMU AROS One i386 public-key and forward" auth_forward_target qemu-aros-one-i386 \
+        "$qemu_i386_port" "$qemu_i386_identity" "${BEBBOSSH_GATE_QEMU_I386_FORWARD_TARGET_HOST:-}" \
+        "${BEBBOSSH_GATE_QEMU_I386_FORWARD_TARGET_PORT:-}" "${BEBBOSSH_GATE_QEMU_I386_FORWARD_LOCAL_PORT:-24922}" \
+        "${BEBBOSSH_GATE_QEMU_I386_FORWARD_PAYLOAD:-}"
+    run_step "QEMU AROS One x86_64 public-key and forward" auth_forward_target qemu-aros-one-x86_64 \
+        "$qemu_x64_port" "$qemu_x64_identity" "${BEBBOSSH_GATE_QEMU_X64_FORWARD_TARGET_HOST:-}" \
+        "${BEBBOSSH_GATE_QEMU_X64_FORWARD_TARGET_PORT:-}" "${BEBBOSSH_GATE_QEMU_X64_FORWARD_LOCAL_PORT:-24923}" \
+        "${BEBBOSSH_GATE_QEMU_X64_FORWARD_PAYLOAD:-}"
 
     if [ "$qemu_stress" = "1" ]; then
         run_step "QEMU AROS One i386 paced stress" stress_target qemu-aros-one-i386 \

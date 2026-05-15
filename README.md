@@ -30,8 +30,8 @@ assets per target.
 | Target | Status | Build entry point | Release assets |
 | --- | --- | --- | --- |
 | AROS i386 `alt-abiv0` | stable / validated | `Makefile.aros` | `bebbossh-aros-i386-*` |
-| AROS i386 hosted | automation validated, transfer stress validated | `Makefile.aros` | hosted test kits only |
-| AROS x86_64 hosted | paced automation validated, zero-delay release gate blocked | `Makefile.aros-x86_64` | experimental `bebbossh-aros-x86_64-*` |
+| AROS i386 hosted | automation, transfer stress, public-key auth, and forwarding validated | `Makefile.aros` | hosted test kits only |
+| AROS x86_64 hosted | automation, transfer stress, public-key auth, and forwarding validated | `Makefile.aros-x86_64` | experimental `bebbossh-aros-x86_64-*` |
 | AROS x86_64 AROS One | keygen validated, daemon validation pending | `Makefile.aros-x86_64` | pre-release kits only |
 
 The AROS port currently includes:
@@ -48,6 +48,7 @@ The AROS port currently includes:
 - reproducible AROS runtime package targets;
 - an experimental AROS x86_64 daemon/keygen path using minimal startup/runtime
   code;
+- optional host-side public-key authentication and forwarding regression tests;
 - QEMU/AROS One test notes in `AROS_PORTING.md`.
 
 Runtime status on AROS One i386:
@@ -155,9 +156,10 @@ output and exit status 0, an explicit missing command returns exit status 127,
 and the daemon remains usable afterwards. With the current hosted test
 environment, x86_64 also passes the `telegram-amiga` offline automation suite
 used for `--help`, JSON, getUpdates, inbox, sendMessage, client-state, and
-TLS-status checks. SFTP/SCP, PTY exec for simple commands, and the minimal
-interactive shell pass the hosted smoke test on both x86_64 and i386, including
-1 MiB and 5 MiB transfer round-trips on `SYS:TGTEST` in hosted runs. The x86_64
+TLS-status checks. SFTP/SCP, PTY exec for simple commands, the minimal
+interactive shell, public-key authentication, and `direct-tcpip` forwarding
+pass hosted tests on both x86_64 and i386, including 1 MiB and 5 MiB transfer
+round-trips on `SYS:TGTEST` in hosted runs. The x86_64
 entropy path and non-hosted AROS One daemon validation remain experimental, so
 x86_64 builds are published as experimental/pre-release kits.
 
@@ -207,6 +209,21 @@ report `incorrect signature` during handshake, but that failure was not
 reproduced in the latest 10-iteration zero-delay run. Keep the paced default
 for routine CI-style automation; use `BEBBOSSH_AROS_STRESS_DELAY=0` only as an
 explicit regression stress test.
+
+For public-key authentication and local port forwarding regression tests, use:
+
+```sh
+BEBBOSSH_AROS_PORT=10022 \
+BEBBOSSH_AROS_IDENTITY_FILE=/path/to/id_ed25519 \
+BEBBOSSH_AROS_FORWARD_TARGET_HOST=10.255.223.1 \
+BEBBOSSH_AROS_FORWARD_TARGET_PORT=39123 \
+./scripts/aros-auth-forward-test.sh
+```
+
+The forwarding target must already be listening from the AROS guest's network
+view. To let the script generate a temporary Ed25519 key and install it as
+`ENVARC:.ssh/authorized_keys` in a disposable test runtime, set
+`BEBBOSSH_AROS_INSTALL_AUTHORIZED_KEYS=1`.
 
 ### AROS autostart
 

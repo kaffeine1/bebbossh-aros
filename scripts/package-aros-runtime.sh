@@ -26,6 +26,7 @@ cp packaging/aros/passwd.example "$pkgdir/passwd.example"
 cp packaging/aros/README.AROS.txt "$pkgdir/README.AROS.txt"
 mkdir -p "$pkgdir/scripts"
 cp scripts/aros-ssh-smoke-test.sh "$pkgdir/scripts/aros-ssh-smoke-test.sh"
+cp scripts/aros-auth-forward-test.sh "$pkgdir/scripts/aros-auth-forward-test.sh"
 cp scripts/aros-transfer-stress-test.sh "$pkgdir/scripts/aros-transfer-stress-test.sh"
 mkdir -p "$pkgdir/docs"
 cp docs/AROS_TESTER.md "$pkgdir/docs/AROS_TESTER.md"
@@ -44,6 +45,7 @@ cp LICENSE "$pkgdir/LICENSE"
         passwd.example \
         README.AROS.txt \
         scripts/aros-ssh-smoke-test.sh \
+        scripts/aros-auth-forward-test.sh \
         scripts/aros-transfer-stress-test.sh \
         docs/AROS_TESTER.md \
         docs/TELEGRAM_AMIGA_SSH.md \

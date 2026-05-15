@@ -59,21 +59,23 @@ bool ForwardChannel::init(uint8_t * src, uint32_t srcPort, uint8_t * to, uint32_
 			(0xff & (sinLocal.sin_addr.s_addr >> 8)),
 			(0xff & sinLocal.sin_addr.s_addr), sinLocal.sin_port);
 
-	if (bind(listener.getSockFd(), (struct sockaddr *)&sinLocal, sizeof(sinLocal)))
+	if (bind(listener.getSockFd(), (struct sockaddr *)&sinLocal, sizeof(sinLocal))) {
+		listener.__close();
 		return false;
+	}
 
 	sinRemote.sin_family = host->h_addrtype;
-	sinRemote.sin_port = toPort;
-	sinRemote.sin_addr.s_addr = getInt32(host->h_addr);
+	sinRemote.sin_port = htons((uint16_t)toPort);
+	memcpy(&sinRemote.sin_addr.s_addr, host->h_addr, sizeof(sinRemote.sin_addr.s_addr));
 
+	uint8_t *remoteAddr = (uint8_t *)&sinRemote.sin_addr.s_addr;
 	logme(L_INFO, "@%ld:%ld connecting %ld to %ld.%ld.%ld.%ld:%ld", server->getSockFd(), channel, listener.getSockFd(),
-			(0xff & (sinRemote.sin_addr.s_addr >> 24)),
-			(0xff & (sinRemote.sin_addr.s_addr >> 16)),
-			(0xff & (sinRemote.sin_addr.s_addr >> 8)),
-			(0xff & sinRemote.sin_addr.s_addr), sinRemote.sin_port);
+			(LONG)remoteAddr[0], (LONG)remoteAddr[1], (LONG)remoteAddr[2], (LONG)remoteAddr[3], (LONG)toPort);
 
-	if (0 != connect(listener.getSockFd(), (struct sockaddr* )&sinRemote, sizeof(sinRemote)))
+	if (0 != connect(listener.getSockFd(), (struct sockaddr* )&sinRemote, sizeof(sinRemote))) {
+		listener.__close();
 		return false;
+	}
 
 	return true;
 }

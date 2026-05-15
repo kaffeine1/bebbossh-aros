@@ -502,6 +502,18 @@ downstream automation, and use zero-delay mode as an explicit regression stress
 test. Use `ListenAcceptBurst` or `bebbosshd -B` for targeted accept-loop
 experiments rather than changing the default package behavior.
 
+Public-key authentication and forwarding status:
+
+- `ENVARC:.ssh/authorized_keys` works for OpenSSH Ed25519 public-key login on
+  hosted AROS i386 and x86_64.
+- `direct-tcpip` local forwarding has been validated from OpenSSH through both
+  hosted runtimes to a host-side TCP listener reachable from the AROS TAP
+  network.
+- `scripts/aros-auth-forward-test.sh` covers public-key login and optional
+  forwarding. Forwarding tests require the caller to provide a reachable target
+  listener with `BEBBOSSH_AROS_FORWARD_TARGET_HOST` and
+  `BEBBOSSH_AROS_FORWARD_TARGET_PORT`.
+
 SFTP/SCP status:
 
 - `sftp` `ls T:` works.

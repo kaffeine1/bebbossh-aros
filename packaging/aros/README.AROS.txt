@@ -173,6 +173,14 @@ AROS SFTP uploads keep AmigaDOS execute protection allowed, so uploaded
 binaries should remain runnable even when OpenSSH sends Unix-style 0644
 permissions.
 
+Public-key authentication reads ENVARC:.ssh/authorized_keys. Host-side
+automation can validate public-key login and local port forwarding with:
+
+  scripts/aros-auth-forward-test.sh
+
+For forwarding, provide a TCP target reachable from the AROS network with
+BEBBOSSH_AROS_FORWARD_TARGET_HOST and BEBBOSSH_AROS_FORWARD_TARGET_PORT.
+
 For batch SFTP with sshpass, force password authentication in batch mode:
 
   sshpass -p test sftp -oBatchMode=no -P 10022 test@127.0.0.1

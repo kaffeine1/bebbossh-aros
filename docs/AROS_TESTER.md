@@ -114,13 +114,47 @@ as an explicit regression stress test:
 BEBBOSSH_AROS_STRESS_DELAY=0 ./scripts/aros-transfer-stress-test.sh
 ```
 
+## Public-Key Auth And Forwarding
+
+`scripts/aros-auth-forward-test.sh` validates OpenSSH public-key login and,
+when a reachable target is supplied, `direct-tcpip` forwarding.
+
+```sh
+BEBBOSSH_AROS_PORT=10022 \
+BEBBOSSH_AROS_IDENTITY_FILE=/path/to/id_ed25519 \
+BEBBOSSH_AROS_FORWARD_TARGET_HOST=10.255.223.1 \
+BEBBOSSH_AROS_FORWARD_TARGET_PORT=39123 \
+BEBBOSSH_AROS_FORWARD_LOCAL_PORT=23923 \
+BEBBOSSH_AROS_FORWARD_PAYLOAD=bebbossh-forward-i386 \
+./scripts/aros-auth-forward-test.sh
+```
+
+The target service must already be listening from the guest's network view. In
+the hosted lab this is normally a host-side `nc -l` bound to the TAP gateway
+address. For disposable runtimes, the script can generate a temporary Ed25519
+key and install the public key to `ENVARC:.ssh/authorized_keys` when
+`BEBBOSSH_AROS_INSTALL_AUTHORIZED_KEYS=1` is set.
+
+The release gate can run the same checks when the identity and target are
+provided:
+
+```sh
+BEBBOSSH_GATE_IDENTITY_FILE=/path/to/id_ed25519 \
+BEBBOSSH_GATE_I386_FORWARD_TARGET_HOST=10.255.223.1 \
+BEBBOSSH_GATE_I386_FORWARD_TARGET_PORT=39123 \
+BEBBOSSH_GATE_I386_FORWARD_PAYLOAD=bebbossh-forward-i386 \
+./scripts/aros-release-gate.sh
+```
+
 ## Current Validation
 
 The hosted x86_64 and i386 runtimes have passed this smoke test with
 `BEBBOSSH_AROS_WORKDIR=SYS:TGTEST`, including SCP/SFTP round-trips and 1 MiB
 plus 5 MiB transfer stress. Both runtimes also passed the telegram-amiga
 offline checks for JSON, getUpdates, inbox, sendMessage, client-state, and
-TLS-status.
+TLS-status. Both hosted runtimes also passed public-key authentication and
+`direct-tcpip` forwarding to a host-side TCP listener through their TAP
+gateway addresses.
 
 After accept-loop hardening, hosted i386 passed 3 zero-delay transfer stress
 iterations with sizes `257 4096 65536 1048576` on `SYS:TGTEST`. Hosted x86_64
