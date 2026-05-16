@@ -1,5 +1,6 @@
 /* bebbossh - Ed25519 test vectors
  * Copyright (C) 2024-2025  Stefan Franke <stefan@franke.ms>
+ * AROS porting changes Copyright (C) 2026 Michele Dipace <michele.dipace@kaffeine.net>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -101,6 +102,66 @@ bool testReduction() {
 		r[i] = t[i];
 
 	return assertArrayEquals(x, r, 32);
+}
+
+bool testX25519_vectors() {
+	puts("testX25519");
+
+	uint8_t base[32] = {9};
+	uint8_t out[32];
+	uint8_t aliceSecret[32], alicePublic[32];
+	uint8_t bobSecret[32], bobPublic[32];
+	uint8_t shared[32];
+	uint8_t expectedOne[32], expectedThousand[32];
+
+	unhexlify(aliceSecret,
+			"77 07 6d 0a 73 18 a5 7d 3c 16 c1 72 51 b2 66 45"
+			"df 4c 2f 87 eb c0 99 2a b1 77 fb a5 1d b9 2c 2a");
+	unhexlify(alicePublic,
+			"85 20 f0 09 89 30 a7 54 74 8b 7d dc b4 3e f7 5a"
+			"0d bf 3a 0d 26 38 1a f4 eb a4 a9 8e aa 9b 4e 6a");
+	unhexlify(bobSecret,
+			"5d ab 08 7e 62 4a 8a 4b 79 e1 7f 8b 83 80 0e e6"
+			"6f 3b b1 29 26 18 b6 fd 1c 2f 8b 27 ff 88 e0 eb");
+	unhexlify(bobPublic,
+			"de 9e db 7d 7b 7d c1 b4 d3 5b 61 c2 ec e4 35 37"
+			"3f 83 43 c8 5b 78 67 4d ad fc 7e 14 6f 88 2b 4f");
+	unhexlify(shared,
+			"4a 5d 9d 5b a4 ce 2d e1 72 8e 3b f4 80 35 0f 25"
+			"e0 7e 21 c9 47 d1 9e 33 76 f0 9b 3c 1e 16 17 42");
+	unhexlify(expectedOne,
+			"42 2c 8e 7a 62 27 d7 bc a1 35 0b 3e 2b b7 27 9f"
+			"78 97 b8 7b b6 85 4b 78 3c 60 e8 03 11 ae 30 79");
+	unhexlify(expectedThousand,
+			"68 4c f5 9b a8 33 09 55 28 00 ef 56 6f 2f 4d 3c"
+			"1c 38 87 c4 93 60 e3 87 5f 2e b9 4d 99 53 2c 51");
+
+	fe_scalarmult_x25519(out, aliceSecret, base);
+	if (!assertArrayEquals(alicePublic, out, 32))
+		return false;
+	fe_scalarmult_x25519(out, bobSecret, base);
+	if (!assertArrayEquals(bobPublic, out, 32))
+		return false;
+	fe_scalarmult_x25519(out, aliceSecret, bobPublic);
+	if (!assertArrayEquals(shared, out, 32))
+		return false;
+	fe_scalarmult_x25519(out, bobSecret, alicePublic);
+	if (!assertArrayEquals(shared, out, 32))
+		return false;
+
+	uint8_t k[32] = {9};
+	uint8_t u[32] = {9};
+	uint8_t oldK[32];
+	for (int i = 0; i < 1000; ++i) {
+		memcpy(oldK, k, sizeof(k));
+		fe_scalarmult_x25519(out, k, u);
+		memcpy(u, oldK, sizeof(u));
+		memcpy(k, out, sizeof(k));
+		if (i == 0 && !assertArrayEquals(expectedOne, k, 32))
+			return false;
+	}
+
+	return assertArrayEquals(expectedThousand, k, 32);
 }
 
 int testEd25519_vectors(void) {
@@ -236,8 +297,9 @@ int testEd25519_vectors3(void) {
 
 int main() {
 	return
-//			testEd25519_vectors2() &&
-            testEd25519_vectors() &&
+			testX25519_vectors() &&
+	//			testEd25519_vectors2() &&
+	            testEd25519_vectors() &&
 //			testEd25519() &&
 			testEd25519_vectors3() &&
 //			testReduction() &&

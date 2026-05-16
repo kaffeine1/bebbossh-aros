@@ -2,6 +2,8 @@
  * crypto Ed25519 / X25519 arithmetic (SUPERCOP-derived)
  * Public Domain - originally from SUPERCOP / djb's ed25519 reference code
  * Adapted and maintained 2024-2025 by Stefan Franke <stefan@franke.ms>
+ * AROS porting changes 2026 by Michele Dipace <michele.dipace@kaffeine.net>,
+ * released under the same public-domain terms.
  *
  * This file is placed in the public domain. You may use, copy, modify,
  * and distribute it without restriction.
@@ -47,7 +49,7 @@ void edadd(ed_t *out , const ed_t *a, const ed_t *b) {
 #define K  "\tmove.l (%1)+,%0\n\tmove.l (%2)+,%4\n\taddx.l %4,%0\n\tmove.l %0,(%3)+\n"
 #define K1 "\tmove.l (%1),%0\n\tmove.l (%2),%4\n\taddx.l %4,%0\n\tmove.l %0,(%3)\n"
 	asm volatile(K0 K K K K K K K1 :
-    		"=d"(d0), "+a"(a), "+a"(b), "+a"(out), "=d"(d1), "=m"(*out): "m"(*a), "m"(*b));
+			"=d"(d0), "+a"(a), "+a"(b), "+a"(out), "=d"(d1), "=m"(*out): "m"(*a), "m"(*b));
 #undef K
 #undef K0
 #undef K1
@@ -64,7 +66,7 @@ void edsub(ed_t *out, const ed_t *a, const ed_t *b) {
 #define K  "\tmove.l (%1)+,%0\n\tmove.l (%2)+,%4\n\tsubx.l %4,%0\n\tmove.l %0,(%3)+\n"
 #define K1 "\tmove.l (%1),%0\n\tmove.l (%2),%4\n\tsubx.l %4,%0\n\tmove.l %0,(%3)\n"
 	asm volatile(K0 K K K K K K K1 :
-    		"=d"(d0), "+a"(a), "+a"(b), "+a"(out), "=d"(d1), "=m"(*out): "m"(*a), "m"(*b));
+			"=d"(d0), "+a"(a), "+a"(b), "+a"(out), "=d"(d1), "=m"(*out): "m"(*a), "m"(*b));
 #undef K
 #undef K0
 #undef K1
@@ -151,7 +153,7 @@ void edsquare(ed_t *out, const ed_t *a) {
 
 void unpack16(ed_t *r, const uint8_t *in) {
 #ifdef __mc68000__
-    // 8 × 32-bit limbs
+    // 8 x 32-bit limbs
     for (short i = 0; i < EDSIZE; i++) {
         uint32_t x = (uint32_t)in[0]
                    | ((uint32_t)in[1] << 8)
@@ -162,7 +164,7 @@ void unpack16(ed_t *r, const uint8_t *in) {
     }
     r[EDSIZE-1] &= 0x7fffffffU;
 #else
-    // 16 × 16-bit limbs
+    // 16 x 16-bit limbs
     for (short i = 0; i < EDSIZE; i++) {
         uint16_t x = (uint16_t)in[0]
                    | ((uint16_t)in[1] << 8);
@@ -175,7 +177,7 @@ void unpack16(ed_t *r, const uint8_t *in) {
 
 void pack16(uint8_t *r, const ed_t *in) {
 #ifdef __mc68000__
-    // 8 × 32-bit limbs
+    // 8 x 32-bit limbs
     for (short i = 0; i < EDSIZE; i++) {
         uint32_t x = in[i];
         r[0] = (uint8_t)(x);
@@ -185,7 +187,7 @@ void pack16(uint8_t *r, const ed_t *in) {
         r += 4;
     }
 #else
-    // 16 × 16-bit limbs
+    // 16 x 16-bit limbs
     for (short i = 0; i < EDSIZE; i++) {
         uint16_t x = in[i];
         r[0] = (uint8_t)(x);
@@ -298,103 +300,187 @@ void recip16(ed_t *out, const ed_t *z) {
 	/* 2^255 - 21 */edmul(out, t1, z11);
 }
 
-#ifdef __mc68000__
-typedef int32_t ptr_t;
-#else
-typedef long long ptr_t;
-#endif
+/*
+ * Portable X25519 field arithmetic for SSH key exchange.
+ *
+ * The Ed25519 field helpers above are also used by the signature code and by
+ * older Amiga fastmath paths. Keep them untouched here; the AROS hosted port
+ * needs an X25519 implementation whose carries/reduction are independent of
+ * that code path. The routines below are adapted from the public-domain
+ * TweetNaCl scalar multiplication core and use 16 little-endian 16-bit limbs
+ * with 64-bit temporaries.
+ */
+typedef long long x25519_i64;
+typedef x25519_i64 x25519_gf[16];
 
-static void mainloop(ed_t *xa, ed_t *xb, const uint8_t e[32]) {
-	ed_t xzm1[16 * 2];
-	ed_t xzm[16 * 2];
+static const x25519_gf x25519_121665 = {0xDB41, 1};
 
-	ed_t *xzmb;
-	ed_t *xzm1b;
+static void x25519_carry(x25519_gf o) {
+	int i;
+	x25519_i64 c;
 
-	ed_t a0[16 * 2];
-	ed_t a1[16 * 2];
-	ed_t b0[16 * 2];
-	ed_t c1[16 * 2];
-	ed_t j;
-	ed_t f;
-	int pos;
-
-	for (j = 0; j < 16; ++j)
-		xzm1[j] = xa[j];
-	xzm1[16] = 1;
-	for (j = 16 + 1; j < 16 * 2; ++j)
-		xzm1[j] = 0;
-
-	xzm[0] = 1;
-	for (j = 1; j < 16 * 2; ++j)
-		xzm[j] = 0;
-
-	for (pos = 254; pos >= 0; --pos) {
-		f = e[pos / 8] >> (pos & 7);
-		f &= 1;
-
-		ptr_t mask = (ptr_t)f - 1; // 0 if b is true,0xffffffff if b is false
-		ptr_t a = (ptr_t) xzm ^ ((ptr_t) xzm1 & mask); // a becomes xzm if mask is 0, a becomes xzm xor xzm1 if mask is 1
-		ptr_t b = (ptr_t) xzm1 ^ (a & mask); // b becomes xzm1 if mask is 0, b becomes xzm1 xor (xzm xor xzm1) = xzm if mask is 1
-		a = a ^ (b & mask); // a remains a if mask is 0, a becomes (a xor b) xor a = b if mask is 1
-		xzmb = (ed_t*) a; // assign the swapped value of a to xzmb
-		xzm1b = (ed_t*) b; // assign the swapped value of b to xzm1b
-
-		edadd(a0, xzmb, xzmb + 16);
-		edsub(a0 + 16, xzmb, xzmb + 16);
-		edadd(a1, xzm1b, xzm1b + 16);
-		edsub(a1 + 16, xzm1b, xzm1b + 16);
-		edsquare(b0, a0);
-		edsquare(b0 + 16, a0 + 16);
-		{
-			ed_t b1[16 * 2];
-			edmul(b1, a1, a0 + 16);
-			edmul(b1 + 16, a1 + 16, a0);
-			edadd(c1, b1, b1 + 16);
-			edsub(c1 + 16, b1, b1 + 16);
-		}
-		{
-#define r a0
-#define s a1
-			ed_t t[16];
-			ed_t u[16];
-			edsquare(r, c1 + 16);
-			edsub(s, b0, b0 + 16);
-			edmul121665(t, s);
-			edadd(u, t, b0);
-
-			edmul(xzmb, b0, b0 + 16);
-			edmul(xzmb + 16, s, u);
-			edsquare(xzm1b, c1);
-			edmul(xzm1b + 16, r, xa);
-		}
-	}
-
-	for (j = 0; j < 16; ++j) {
-		xa[j] = xzm[j];
-		xb[j] = xzm[j + 16];
+	for (i = 0; i < 16; ++i) {
+		o[i] += (1LL << 16);
+		c = o[i] >> 16;
+		o[(i + 1) * (i < 15)] += c - 1 + 37 * (c - 1) * (i == 15);
+		o[i] -= c << 16;
 	}
 }
 
+static void x25519_select(x25519_gf p, x25519_gf q, int b) {
+	int i;
+	x25519_i64 t;
+	x25519_i64 c = ~(x25519_i64)(b - 1);
+
+	for (i = 0; i < 16; ++i) {
+		t = c & (p[i] ^ q[i]);
+		p[i] ^= t;
+		q[i] ^= t;
+	}
+}
+
+static void x25519_pack(uint8_t *o, const x25519_gf n) {
+	int i, j, b;
+	x25519_gf m, t;
+
+	for (i = 0; i < 16; ++i)
+		t[i] = n[i];
+
+	x25519_carry(t);
+	x25519_carry(t);
+	x25519_carry(t);
+
+	for (j = 0; j < 2; ++j) {
+		m[0] = t[0] - 0xffed;
+		for (i = 1; i < 15; ++i) {
+			m[i] = t[i] - 0xffff - ((m[i - 1] >> 16) & 1);
+			m[i - 1] &= 0xffff;
+		}
+		m[15] = t[15] - 0x7fff - ((m[14] >> 16) & 1);
+		b = (m[15] >> 16) & 1;
+		m[14] &= 0xffff;
+		x25519_select(t, m, 1 - b);
+	}
+
+	for (i = 0; i < 16; ++i) {
+		o[2 * i] = (uint8_t)(t[i] & 0xff);
+		o[2 * i + 1] = (uint8_t)(t[i] >> 8);
+	}
+}
+
+static void x25519_unpack(x25519_gf o, const uint8_t *n) {
+	int i;
+
+	for (i = 0; i < 16; ++i)
+		o[i] = n[2 * i] + ((x25519_i64)n[2 * i + 1] << 8);
+
+	/* RFC 7748 requires X25519 receivers to mask the top bit of u. */
+	o[15] &= 0x7fff;
+}
+
+static void x25519_add(x25519_gf o, const x25519_gf a, const x25519_gf b) {
+	int i;
+
+	for (i = 0; i < 16; ++i)
+		o[i] = a[i] + b[i];
+}
+
+static void x25519_sub(x25519_gf o, const x25519_gf a, const x25519_gf b) {
+	int i;
+
+	for (i = 0; i < 16; ++i)
+		o[i] = a[i] - b[i];
+}
+
+static void x25519_mul(x25519_gf o, const x25519_gf a, const x25519_gf b) {
+	int i, j;
+	x25519_i64 t[31];
+
+	for (i = 0; i < 31; ++i)
+		t[i] = 0;
+	for (i = 0; i < 16; ++i)
+		for (j = 0; j < 16; ++j)
+			t[i + j] += a[i] * b[j];
+	for (i = 0; i < 15; ++i)
+		t[i] += 38 * t[i + 16];
+	for (i = 0; i < 16; ++i)
+		o[i] = t[i];
+
+	x25519_carry(o);
+	x25519_carry(o);
+}
+
+static void x25519_square(x25519_gf o, const x25519_gf a) {
+	x25519_mul(o, a, a);
+}
+
+static void x25519_invert(x25519_gf o, const x25519_gf i) {
+	x25519_gf c;
+	int a;
+
+	for (a = 0; a < 16; ++a)
+		c[a] = i[a];
+
+	for (a = 253; a >= 0; --a) {
+		x25519_square(c, c);
+		if (a != 2 && a != 4)
+			x25519_mul(c, c, i);
+	}
+
+	for (a = 0; a < 16; ++a)
+		o[a] = c[a];
+}
+
 void fe_scalarmult_x25519(uint8_t *to, const uint8_t *scalar, const uint8_t *base) {
-	ed_t a[16], b[16], c[16];
 	uint8_t e[32];
-	int16_t i;
+	x25519_gf x;
+	x25519_gf a, b, c, d, e0, f;
+	int i;
+	int r;
 
 	// copy to mask without updating the original
-	for (i = 31; i >= 0; --i)
+	for (i = 0; i < 32; ++i)
 		e[i] = scalar[i];
 	e[0] &= 248;
 	e[31] &= 127;
 	e[31] |= 64;
 
-	unpack16(a, base);
-	mainloop(a, b, e);
+	x25519_unpack(x, base);
+	for (i = 0; i < 16; ++i) {
+		b[i] = x[i];
+		d[i] = a[i] = c[i] = 0;
+	}
+	a[0] = d[0] = 1;
 
-	recip16(b, b);
+	for (i = 254; i >= 0; --i) {
+		r = (e[i >> 3] >> (i & 7)) & 1;
+		x25519_select(a, b, r);
+		x25519_select(c, d, r);
+		x25519_add(e0, a, c);
+		x25519_sub(a, a, c);
+		x25519_add(c, b, d);
+		x25519_sub(b, b, d);
+		x25519_square(d, e0);
+		x25519_square(f, a);
+		x25519_mul(a, c, a);
+		x25519_mul(c, b, e0);
+		x25519_add(e0, a, c);
+		x25519_sub(a, a, c);
+		x25519_square(b, a);
+		x25519_sub(c, d, f);
+		x25519_mul(a, c, x25519_121665);
+		x25519_add(a, a, d);
+		x25519_mul(c, c, a);
+		x25519_mul(a, d, f);
+		x25519_mul(d, b, x);
+		x25519_square(b, e0);
+		x25519_select(a, b, r);
+		x25519_select(c, d, r);
+	}
 
-	edmul(c, a, b);
-	pack16(to, c);
+	x25519_invert(c, c);
+	x25519_mul(a, a, c);
+	x25519_pack(to, a);
 }
 
 void fe_new_key_pair(uint8_t *pk, uint8_t *sk) {
