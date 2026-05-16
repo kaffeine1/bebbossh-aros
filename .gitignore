@@ -6,6 +6,7 @@ Debug/
 Release/
 dist/
 *.log
+docs/TELEGRAM_AMIGA_SSH.md
 /Profile/
 /versions/
 *.bak
