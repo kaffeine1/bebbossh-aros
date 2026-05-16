@@ -7,8 +7,8 @@ kept target-specific.
 | Target | Status | Build entry point | Notes |
 | --- | --- | --- | --- |
 | AROS i386 `alt-abiv0` | stable / validated | `Makefile.aros` | current published runtime kits |
-| AROS i386 hosted | automation validated | `Makefile.aros` | hosted AROS i386 passed the telegram-amiga offline suite |
-| AROS x86_64 hosted | automation usable / release gate blocked | `Makefile.aros-x86_64` | hosted AROS x64 passed the telegram-amiga offline suite, but still fails longer zero-delay SSH churn with `incorrect signature` |
+| AROS i386 hosted | automation and transfer stress validated | `Makefile.aros` | hosted AROS i386 passed the telegram-amiga offline suite and zero-delay SCP/SFTP stress |
+| AROS x86_64 hosted | automation and transfer stress validated | `Makefile.aros-x86_64` | hosted AROS x64 passed the telegram-amiga offline suite and zero-delay SCP/SFTP stress |
 
 This port is maintained as a derivative of Stefan "Bebbo" Franke's original
 BebboSSH source tree:
@@ -60,6 +60,10 @@ consistent with the upstream project.
   and client self-tests on hosted i386.
 - Tightened daemon/session cleanup so remaining sessions, listeners, and open
   channel objects are released on shutdown or abnormal disconnect.
+- Hardened SSH banner and KEX name-list parsing so binary KEX data that arrives
+  with the client banner cannot be interpreted with C string functions.
+- Fixed AROS verbose logging on slow-stack-format ABIs by converting varargs
+  through `GetDataStreamFromFormat()` before calling `VFPrintf()`.
 
 ## Stable AROS i386 build
 
@@ -216,13 +220,12 @@ clients, returns complete output and exit status 0 for `C:Version` and
 usable after that failure. It also passes the telegram-amiga offline automation
 suite used for JSON, getUpdates, inbox, sendMessage, client-state, and
 TLS-status checks. Hosted x86_64 now also passes SFTP/SCP upload/download,
-PTY exec, the minimal interactive shell sequence, and long 1/5/10/25 MiB
-transfer stress on `SYS:TGTEST`. Hosted x86_64 previously showed an
-intermittent longer zero-delay SCP/SFTP churn failure where OpenSSH could report
-`incorrect signature` during handshake, but that failure was not reproduced in
-the latest 10-iteration zero-delay run. Keep x86_64 marked experimental until
-the churn behavior has more soak coverage, the entropy path is reviewed, and
-non-hosted AROS One daemon validation is closed.
+PTY exec, the minimal interactive shell sequence, long 1/5/10/25 MiB transfer
+stress, an askpass-based zero-delay SCP/SFTP stress run with sizes
+`257 4096 65536 1048576`, 800 consecutive askpass-based `C:Version` exec
+connections, and 50 repeated `bebbosshkeygen` executions through OpenSSH exec
+from a clean runtime. Keep x86_64 marked experimental until the entropy path is
+reviewed and non-hosted AROS One daemon validation is closed.
 
 Current hosted i386 runtime status: hosted AROS i386 starts with AROSTCP/TAP
 networking and authenticates OpenSSH password clients. After the default AROS
@@ -230,10 +233,12 @@ command stack was raised to 1 MiB, it passes the telegram-amiga offline
 automation suite used for `--help`, JSON, getUpdates, inbox, sendMessage,
 client-state, and TLS-status checks. It also passes the hosted smoke test for
 redirection rejection, interactive-command rejection, PTY exec, minimal shell,
-SCP/SFTP, 1 MiB plus 5 MiB transfer stress, and a bounded zero-delay SCP/SFTP
-stress run on `SYS:TGTEST`. Keep SFTP/SCP stress in the regression suite. This
-hosted validation does not replace the separate AROS One `alt-abiv0` release
-validation path.
+SCP/SFTP, 1 MiB plus 5 MiB transfer stress, an askpass-based zero-delay SCP/SFTP
+stress run with sizes `257 4096 65536 1048576` on `SYS:TGTEST`, 800 consecutive
+askpass-based `C:Version` exec connections, and 50 repeated `bebbosshkeygen`
+executions through OpenSSH exec from a clean runtime. Keep SFTP/SCP stress in
+the regression suite. This hosted validation does not replace the separate AROS
+One `alt-abiv0` release validation path.
 
 ## Host cross-build for AROS One i386
 
@@ -490,20 +495,40 @@ Additional defaults:
 BEBBOSSH_AROS_STRESS_ITERATIONS=20
 BEBBOSSH_AROS_STRESS_SIZES="257 4096 65536 1048576"
 BEBBOSSH_AROS_STRESS_DELAY=1
+BEBBOSSH_AROS_AUTH_HELPER=sshpass
 ```
 
-Hosted validation found that `BEBBOSSH_AROS_STRESS_DELAY=0` can reproduce rapid
-SCP/SFTP connection-storm issues. After conservative accept-loop hardening,
-hosted i386 passes 3 zero-delay stress iterations with sizes
-`257 4096 65536 1048576` on `SYS:TGTEST`. Hosted x86_64 now passes a focused
-5-iteration zero-delay run with the same sizes after the server loop stopped
-skipping already-ready client sockets in iterations that also accepted a new
-connection. The aggregate hosted release gate still has an intermittent x86_64
-password-auth failure during zero-delay churn after the smoke phase. Keep the
-default one-second pacing for downstream automation, and use zero-delay mode as
-an explicit regression stress test. Use `ListenAcceptBurst` or `bebbosshd -B`
-for targeted accept-loop experiments rather than changing the default package
-behavior.
+Set `BEBBOSSH_AROS_AUTH_HELPER=askpass` for zero-delay churn runs where
+`sshpass` pseudo-terminal prompt handling can become the limiting factor.
+Repeated short exec validation is covered by:
+
+```sh
+BEBBOSSH_AROS_PORT=10022 \
+BEBBOSSH_AROS_EXEC_ITERATIONS=800 \
+scripts/aros-exec-loop-test.sh
+```
+
+The exec-loop test closes client stdin deliberately for short non-interactive
+command churn. Use `scripts/aros-ssh-smoke-test.sh` with
+`BEBBOSSH_AROS_AUTH_HELPER=askpass` for larger command output, PTY exec,
+interactive shell, SCP, and SFTP coverage.
+
+Hosted validation found that `BEBBOSSH_AROS_STRESS_DELAY=0` is a useful
+regression gate for rapid SCP/SFTP connection churn. The stress script's default
+known-hosts file is port-specific, avoiding host-key file sharing between the
+hosted i386 and x86_64 test ports. For long macOS OpenSSH password-auth churn,
+prefer `BEBBOSSH_AROS_AUTH_HELPER=askpass`; `sshpass` can intermittently fail
+to provide a pseudo-terminal prompt at zero delay and report a misleading auth
+failure while the daemon remains healthy. Hosted i386 and x86_64 both pass
+askpass-based zero-delay stress with sizes `257 4096 65536 1048576` on
+`SYS:TGTEST`, and both pass 800 consecutive askpass-based `C:Version` exec
+connections. Simultaneous zero-delay stress on both hosted targets remains a
+soak test rather than a release gate. Very long mixed zero-delay sequences that
+chain exec, transfer, and keygen gates without restarting the hosted runtime
+should also be treated as soak coverage. Keep the default one-second pacing for
+downstream automation, and use zero-delay mode as an explicit per-target
+regression stress test. Use `ListenAcceptBurst` or `bebbosshd -B` for targeted
+accept-loop experiments rather than changing the default package behavior.
 
 Public-key authentication and forwarding status:
 

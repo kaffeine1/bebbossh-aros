@@ -31,7 +31,7 @@ assets per target.
 | --- | --- | --- | --- |
 | AROS i386 `alt-abiv0` | stable / validated | `Makefile.aros` | `bebbossh-aros-i386-*` |
 | AROS i386 hosted | automation, transfer stress, public-key auth, and forwarding validated | `Makefile.aros` | hosted test kits only |
-| AROS x86_64 hosted | automation, public-key auth, and forwarding validated; aggregate zero-delay churn still under investigation | `Makefile.aros-x86_64` | experimental `bebbossh-aros-x86_64-*` |
+| AROS x86_64 hosted | automation, transfer stress, public-key auth, and forwarding validated | `Makefile.aros-x86_64` | experimental `bebbossh-aros-x86_64-*` |
 | AROS x86_64 AROS One | keygen validated, daemon validation pending | `Makefile.aros-x86_64` | pre-release kits only |
 
 The AROS port currently includes:
@@ -159,13 +159,15 @@ used for `--help`, JSON, getUpdates, inbox, sendMessage, client-state, and
 TLS-status checks. SFTP/SCP, PTY exec for simple commands, the minimal
 interactive shell, public-key authentication, and `direct-tcpip` forwarding
 pass hosted tests on both x86_64 and i386, including 1 MiB and 5 MiB transfer
-round-trips on `SYS:TGTEST` in hosted runs. Hosted x86_64 now passes a focused
-5-iteration zero-delay transfer stress run after processing accepted sockets
-and already-ready client sockets in the same server loop, but the aggregate
-release gate still has an intermittent password-auth failure during x86_64
-zero-delay churn after the smoke phase. The x86_64
-entropy path and non-hosted AROS One daemon validation remain experimental, so
-x86_64 builds are published as experimental/pre-release kits.
+round-trips on `SYS:TGTEST` in hosted runs. Hosted x86_64 now passes repeated
+zero-delay SCP/SFTP transfer stress with sizes `257 4096 65536 1048576`, and
+both hosted targets pass repeated `bebbosshkeygen` runs through OpenSSH exec.
+For long password-auth churn from macOS OpenSSH, use askpass mode in the test
+scripts; `sshpass` can intermittently fail to provide a TTY/prompt under
+zero-delay loops, which looks like an SSH auth failure even when the daemon
+remains healthy.
+The x86_64 entropy path and non-hosted AROS One daemon validation remain
+experimental, so x86_64 builds are published as experimental/pre-release kits.
 
 ### AROS automation workflow
 
@@ -195,7 +197,8 @@ status propagation, PTY exec, an interactive shell sequence, and SCP/SFTP round
 trips on `DH0:TGTEST`. By default it also performs 1 MiB and 5 MiB transfer
 stress round-trips; override this with `BEBBOSSH_AROS_TRANSFER_SIZES`. Hosted
 AROS tests can set `BEBBOSSH_AROS_WORKDIR=SYS:TGTEST` and
-`BEBBOSSH_AROS_SHELL_HOME=SYS:`.
+`BEBBOSSH_AROS_SHELL_HOME=SYS:`. Set `BEBBOSSH_AROS_AUTH_HELPER=askpass` for
+long hosted password-auth runs from macOS OpenSSH.
 
 For repeated transfer stress, use:
 
@@ -205,13 +208,41 @@ BEBBOSSH_AROS_WORKDIR=SYS:TGTEST \
 ./scripts/aros-transfer-stress-test.sh
 ```
 
+For zero-delay churn, prefer the askpass helper so the test does not depend on
+`sshpass` pseudo-terminal behavior:
+
+```sh
+BEBBOSSH_AROS_PORT=10022 \
+BEBBOSSH_AROS_WORKDIR=SYS:TGTEST \
+BEBBOSSH_AROS_AUTH_HELPER=askpass \
+BEBBOSSH_AROS_STRESS_DELAY=0 \
+./scripts/aros-transfer-stress-test.sh
+```
+
+For repeated short exec validation:
+
+```sh
+BEBBOSSH_AROS_PORT=10022 \
+BEBBOSSH_AROS_EXEC_ITERATIONS=800 \
+./scripts/aros-exec-loop-test.sh
+```
+
+The exec-loop test intentionally closes client stdin for short non-interactive
+exec churn. Use the smoke test for commands with larger output and PTY/shell
+coverage.
+
 The transfer stress script defaults to a one-second delay between cycles for
-downstream automation. Hosted AROS i386 passes the zero-delay stress gate with
-sizes `257 4096 65536 1048576` on `SYS:TGTEST`; hosted AROS x86_64 passes the
-focused 5-iteration zero-delay stress target, but the aggregate release gate
-still has an intermittent password-auth failure during x86_64 zero-delay churn.
-Keep the paced default for routine CI-style automation; use
-`BEBBOSSH_AROS_STRESS_DELAY=0` only as an explicit regression stress test.
+downstream automation. Its default known-hosts file is port-specific, avoiding
+host-key file sharing between the two hosted test ports. Hosted AROS i386 passes
+an isolated askpass-based 2-iteration zero-delay stress gate with sizes
+`257 4096 65536 1048576` on `SYS:TGTEST`; hosted AROS x86_64 passes the same
+askpass-based zero-delay run. Both hosted targets also pass 800 consecutive
+askpass-based `C:Version` exec connections. Keep the paced default for routine
+CI-style automation; use `BEBBOSSH_AROS_STRESS_DELAY=0` as an explicit
+per-target regression stress test. Simultaneous zero-delay stress on both
+hosted targets, and very long mixed zero-delay sequences that chain exec,
+transfer, and keygen gates without restarting the hosted runtime, remain soak
+tests rather than release gates.
 
 For public-key authentication and local port forwarding regression tests, use:
 

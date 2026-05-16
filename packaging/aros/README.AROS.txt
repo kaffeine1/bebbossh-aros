@@ -113,7 +113,10 @@ usable afterwards. Hosted x86_64 and hosted i386 both pass the smoke test for
 PTY exec of simple commands, the minimal interactive shell, SCP/SFTP, and 1 MiB
 and 5 MiB transfer round-trips. Both hosted targets also pass the
 telegram-amiga offline checks for JSON, getUpdates, inbox, sendMessage,
-client-state, and TLS-status.
+client-state, and TLS-status. Hosted i386 and hosted x86_64 also pass
+askpass-based zero-delay SCP/SFTP stress with sizes 257, 4096, 65536, and
+1048576 bytes, 800 consecutive askpass-based C:Version exec connections, and
+50 repeated bebbosshkeygen runs through OpenSSH exec from a clean runtime.
 
 Known Limits
 ------------
@@ -144,9 +147,16 @@ Known Limits
   CSPRNG if one becomes available. Minimal-runtime builds avoid fragile AROS OS
   entropy calls and mix CPU cycle counter jitter, addresses, buffer identity,
   length, and an internal counter instead.
-- Very rapid SCP/SFTP connection storms can produce intermittent OpenSSH
-  authentication failures in hosted AROS tests. Use the packaged transfer
-  stress script with its default one-second pacing for repeatable automation.
+- The packaged transfer stress script defaults to one-second pacing for
+  repeatable automation. Zero-delay mode is useful as an explicit per-target
+  hosted regression stress test. For long macOS OpenSSH password-auth churn,
+  prefer BEBBOSSH_AROS_AUTH_HELPER=askpass; sshpass can intermittently fail to
+  provide its pseudo-terminal prompt at zero delay. The exec-loop test closes
+  client stdin deliberately for short non-interactive command churn; use the
+  smoke test for larger output and PTY/shell coverage. Simultaneous zero-delay
+  stress on both hosted targets, and very long mixed zero-delay sequences that
+  chain exec, transfer, and keygen gates without restarting the hosted runtime,
+  remain soak tests rather than release gates.
 - The test password in passwd.example is not safe. Change it before use.
 - Do not distribute private host keys generated for local testing.
 
