@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
+# AROS runtime packaging changes Copyright (C) 2026 Michele Dipace <michele.dipace@kaffeine.net>
 set -eu
 
 # Defaults produce the current stable AROS i386 package. Pass explicit
@@ -30,7 +31,6 @@ cp scripts/aros-auth-forward-test.sh "$pkgdir/scripts/aros-auth-forward-test.sh"
 cp scripts/aros-transfer-stress-test.sh "$pkgdir/scripts/aros-transfer-stress-test.sh"
 mkdir -p "$pkgdir/docs"
 cp docs/AROS_TESTER.md "$pkgdir/docs/AROS_TESTER.md"
-cp docs/TELEGRAM_AMIGA_SSH.md "$pkgdir/docs/TELEGRAM_AMIGA_SSH.md"
 cp README.md "$pkgdir/README.md"
 cp AROS_PORTING.md "$pkgdir/AROS_PORTING.md"
 cp COPYING "$pkgdir/COPYING"
@@ -48,7 +48,6 @@ cp LICENSE "$pkgdir/LICENSE"
         scripts/aros-auth-forward-test.sh \
         scripts/aros-transfer-stress-test.sh \
         docs/AROS_TESTER.md \
-        docs/TELEGRAM_AMIGA_SSH.md \
         README.md \
         AROS_PORTING.md \
         COPYING \
