@@ -6,9 +6,9 @@ kept target-specific.
 
 | Target | Status | Build entry point | Notes |
 | --- | --- | --- | --- |
-| AROS i386 `alt-abiv0` | stable / validated | `Makefile.aros` | current published runtime kits |
-| AROS i386 hosted | automation and transfer stress validated | `Makefile.aros` | hosted AROS i386 passed the telegram-amiga offline suite and zero-delay SCP/SFTP stress |
-| AROS x86_64 hosted | automation and transfer stress validated | `Makefile.aros-x86_64` | hosted AROS x64 passed the telegram-amiga offline suite and zero-delay SCP/SFTP stress |
+| AROS i386 `alt-abiv0` for AROS One / VMware 32 bit | stable / validated | `Makefile.aros` | public runtime kit: `bebbossh-aros-i386-abiv0-*` |
+| AROS x86_64 for AROS One / VMware 64 bit | hosted validated, external VMware feedback OK | `Makefile.aros-x86_64` | public runtime kit: `bebbossh-aros-x86_64-*` |
+| Hosted AROS i386/x86_64 | automation and transfer stress validated | target-specific makefile | internal validation only; do not publish as `hosted` runtime kits |
 
 This port is maintained as a derivative of Stefan "Bebbo" Franke's original
 BebboSSH source tree:
@@ -171,18 +171,25 @@ implementation when compiling for x86_64.
 
 ## Release naming
 
-Use architecture-specific release tags and assets so users can identify the
-correct kit without reading the build log:
+Use architecture/ABI-specific release tags and assets so users can identify the
+correct kit without reading the build log. Do not publish public release assets
+with `hosted` in the name; hosted describes a validation environment, not a
+runtime target.
 
 ```text
-v0.2.1-aros-i386
-bebbossh-aros-i386-<version>.zip
-bebbossh-aros-i386-<version>.tar.gz
+v0.2.1-aros-i386-abiv0
+bebbossh-aros-i386-abiv0-<version>.zip
+bebbossh-aros-i386-abiv0-<version>.tar.gz
 
 v0.3.0-aros-x86_64
 bebbossh-aros-x86_64-<version>.zip
 bebbossh-aros-x86_64-<version>.tar.gz
 ```
+
+Use the i386 `abiv0` archive for 32-bit AROS One/VMware systems. Use the
+`x86_64` archive for 64-bit AROS systems. Keep any hosted-only binaries and
+packages as ignored local lab artifacts, especially for i386 where the hosted
+binary is not interchangeable with the AROS One/VMware `alt-abiv0` build.
 
 Only mark x86_64 releases stable after the same smoke-test class used for i386
 passes on an AROS x86_64 system and the remaining entropy/security-release

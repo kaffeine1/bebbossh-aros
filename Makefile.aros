@@ -12,7 +12,7 @@ STRIP_OUTPUTS ?= $(if $(strip $(AROS_SDK_ROOT)),yes,)
 POST_LINK ?= :
 TARGET_CFLAGS ?=
 OUTDIR ?= aros-i386
-PACKAGE_DIR ?= dist/bebbossh-aros-i386
+PACKAGE_DIR ?= dist/bebbossh-aros-i386-abiv0
 AROS_TARGET_TRIPLET ?= i386-aros
 srcdir := src
 

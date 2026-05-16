@@ -5,7 +5,7 @@ set -eu
 # Defaults produce the current stable AROS i386 package. Pass explicit
 # outdir/pkgdir values for other targets, for example AROS x86_64.
 outdir=${1:-aros-i386-abiv0-arosone}
-pkgdir=${2:-dist/bebbossh-aros-i386}
+pkgdir=${2:-dist/bebbossh-aros-i386-abiv0}
 
 if [ ! -x "$outdir/bebbosshd" ]; then
     echo "missing executable: $outdir/bebbosshd" >&2

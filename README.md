@@ -29,10 +29,16 @@ assets per target.
 
 | Target | Status | Build entry point | Release assets |
 | --- | --- | --- | --- |
-| AROS i386 `alt-abiv0` | stable / validated | `Makefile.aros` | `bebbossh-aros-i386-*` |
-| AROS i386 hosted | automation, transfer stress, public-key auth, and forwarding validated | `Makefile.aros` | hosted test kits only |
-| AROS x86_64 hosted | automation, transfer stress, public-key auth, and forwarding validated | `Makefile.aros-x86_64` | experimental `bebbossh-aros-x86_64-*` |
-| AROS x86_64 AROS One | keygen validated, daemon validation pending | `Makefile.aros-x86_64` | pre-release kits only |
+| AROS i386 `alt-abiv0` for AROS One / VMware 32 bit | stable / validated | `Makefile.aros` | `bebbossh-aros-i386-abiv0-*` |
+| AROS x86_64 for AROS One / VMware 64 bit | hosted validated, external VMware feedback OK | `Makefile.aros-x86_64` | `bebbossh-aros-x86_64-*` |
+| Hosted AROS i386/x86_64 | automation, transfer stress, public-key auth, and forwarding validated | target-specific makefile | internal validation only, no public `hosted` archive |
+
+Public runtime archives are named for the architecture/ABI, not for the test
+environment. Use `bebbossh-aros-i386-abiv0-*` on 32-bit AROS One/VMware i386
+systems and `bebbossh-aros-x86_64-*` on 64-bit AROS systems. Any archive or
+binary labelled `hosted` is a local lab artifact and must not be published as a
+general runtime kit; in particular, hosted i386 binaries are not a substitute
+for the AROS One/VMware `alt-abiv0` build.
 
 The AROS port currently includes:
 
@@ -107,11 +113,14 @@ Hosted AROS i386 automation status:
 The stable AROS i386 runtime kit can be generated with:
 
 ```sh
-make -f Makefile.aros package-aros-runtime OUTDIR=aros-i386-abiv0-arosone
+make -f Makefile.aros package-aros-runtime \
+  OUTDIR=aros-i386-abiv0-arosone \
+  PACKAGE_DIR=dist/bebbossh-aros-i386-abiv0
 ```
 
-Published builds are attached to GitHub Releases as `.zip` and `.tar.gz`
-runtime kits.
+Published 32-bit builds are attached to GitHub Releases as
+`bebbossh-aros-i386-abiv0-<version>.zip` and
+`bebbossh-aros-i386-abiv0-<version>.tar.gz` runtime kits.
 
 The experimental AROS x86_64 build wrapper builds the validated keygen and the
 daemon used for hosted AROS smoke tests:
@@ -119,6 +128,9 @@ daemon used for hosted AROS smoke tests:
 ```sh
 make -f Makefile.aros-x86_64 bebbosshkeygen bebbosshd
 ```
+
+Published 64-bit builds use `bebbossh-aros-x86_64-<version>.zip` and
+`bebbossh-aros-x86_64-<version>.tar.gz`.
 
 For host-side x86_64 crosstools, point `AROS_SDK_ROOT` at the matching AROS
 x86_64 SDK and override the tool commands:

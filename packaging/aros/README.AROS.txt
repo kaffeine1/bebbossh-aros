@@ -11,9 +11,14 @@ This kit contains BebboSSH server tools for AROS:
 - COPYING, LICENSE, README.md, AROS_PORTING.md
 
 The CPU architecture is determined by the release asset name and the binaries
-inside the kit. Published i386 kits use names such as bebbossh-aros-i386-*.
-Published x86_64 kits use names such as bebbossh-aros-x86_64-* and are
-validated separately.
+inside the kit:
+
+- bebbossh-aros-i386-abiv0-* is for 32-bit AROS One / VMware i386 systems.
+- bebbossh-aros-x86_64-* is for 64-bit AROS systems.
+
+Archives with "hosted" in their name are internal validation artifacts, not
+public runtime kits. Do not use a hosted i386 binary on AROS One / VMware i386;
+use the i386-abiv0 kit instead.
 
 Legal and Attribution
 ---------------------
@@ -32,9 +37,9 @@ matching Git tag in the public repository:
 
   https://github.com/kaffeine1/bebbossh-aros/releases
 
-For example, release v0.2.1-aros-i386 corresponds to:
+For example, release v0.2.1-aros-i386-abiv0 corresponds to:
 
-  https://github.com/kaffeine1/bebbossh-aros/tree/v0.2.1-aros-i386
+  https://github.com/kaffeine1/bebbossh-aros/tree/v0.2.1-aros-i386-abiv0
 
 The binaries in this kit are statically linked with libcryptossh.a. There is
 no separate libcryptossh.library requirement for the current AROS port.
