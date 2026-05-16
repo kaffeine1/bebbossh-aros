@@ -1,5 +1,6 @@
 /* bebbossh - ChaCha20 test vectors
  * Copyright (C) 2024-2025  Stefan Franke <stefan@franke.ms>
+ * AROS porting changes Copyright (C) 2026 Michele Dipace <michele.dipace@kaffeine.net>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -740,8 +741,34 @@ int testChaCha20Poly1305() {
 	return r;
 }
 
+bool testSharedSecretNormalization() {
+	puts("testSharedSecretNormalization");
+
+	SharedSecret ss;
+	memset(&ss, 0, sizeof(ss));
+	unhexlify(ss.data,
+			"00 2e 26 2d d4 aa 83 20 3d 11 f7 d2 b2 4e 87 2a"
+			"8b 3f a7 df 03 d2 21 ce 2f 54 a1 ba 8f 1e 91 2b");
+	normalizeSharedSecret(&ss);
+	bool r = ss.size == 31 && ss.data[0] == 0x2e;
+
+	memset(&ss, 0, sizeof(ss));
+	unhexlify(ss.data,
+			"80 2e 26 2d d4 aa 83 20 3d 11 f7 d2 b2 4e 87 2a"
+			"8b 3f a7 df 03 d2 21 ce 2f 54 a1 ba 8f 1e 91 2b");
+	normalizeSharedSecret(&ss);
+	r &= ss.size == 33 && ss.data[0] == 0 && ss.data[1] == 0x80;
+
+	memset(&ss, 0, sizeof(ss));
+	normalizeSharedSecret(&ss);
+	r &= ss.size == 0;
+
+	return r;
+}
+
 int main() {
 	return
+			testSharedSecretNormalization() &
 			testSSH2() &
 			testChaCha20() &
 			testPoly1305()

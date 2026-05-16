@@ -2,6 +2,7 @@
  * AmigaSSH - Core SSH protocol definitions
  *
  * Copyright (C) 2024-2025  Stefan Franke <stefan@franke.ms>
+ * AROS porting changes Copyright (C) 2026 Michele Dipace <michele.dipace@kaffeine.net>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -139,6 +140,8 @@ struct SharedSecret {
 	uint32_t size;
 	uint8_t data[33];
 };
+
+void normalizeSharedSecret(SharedSecret *sharedSecret);
 
 struct KeyMaterial {
 	uint8_t encIvWrite[12];

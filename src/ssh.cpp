@@ -1,6 +1,7 @@
 /*
  * bebbossh - key derivation and KEXINIT
  * Copyright (C) 2024-2025  Stefan Franke <stefan@franke.ms>
+ * AROS porting changes Copyright (C) 2026 Michele Dipace <michele.dipace@kaffeine.net>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -90,6 +91,30 @@ uint8_t * sshString(uint8_t * &p) {
 	uint8_t * r = p;
 	p += len;
 	return r;
+}
+
+void normalizeSharedSecret(SharedSecret *sharedSecret) {
+	uint8_t *data = sharedSecret->data;
+	unsigned offset = 0;
+
+	while (offset < 32 && data[offset] == 0)
+		++offset;
+
+	unsigned len = 32 - offset;
+	if (len == 0) {
+		sharedSecret->size = 0;
+		return;
+	}
+
+	if (data[offset] & 0x80) {
+		memmove(data + 1, data + offset, len);
+		data[0] = 0;
+		sharedSecret->size = len + 1;
+	} else {
+		if (offset)
+			memmove(data, data + offset, len);
+		sharedSecret->size = len;
+	}
 }
 
 static void mkKey(uint8_t * buffer, SHA256 &sha256, SharedSecret * sharedSecret, uint8_t * hash, uint8_t c) {

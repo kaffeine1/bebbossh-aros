@@ -1,5 +1,6 @@
 /* bebbossh - interactive SSH client core
  * Copyright (C) 2024-2025  Stefan Franke <stefan@franke.ms>
+ * AROS porting changes Copyright (C) 2026 Michele Dipace <michele.dipace@kaffeine.net>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -707,13 +708,7 @@ static bool handleKexEcdhReply(SHA256 &handshakeMD, unsigned long packetSize) {
 	fe_scalarmult_x25519(sharedSecret.data, csk, p);
 	logme(L_DEBUG, "calculating shared secret using X25519 STOP");
 	p += length;
-	if ((int8_t)sharedSecret.data[0] < 0) {
-		sharedSecret.size = 33;
-		memmove(&sharedSecret.data[1], &sharedSecret.data[0], 32);
-		sharedSecret.data[0] = 0;
-	} else {
-		sharedSecret.size = 32;
-	}
+	normalizeSharedSecret(&sharedSecret);
 
 #if (BYTE_ORDER == BIG_ENDIAN)
 	handshakeMD.update(&sharedSecret, sharedSecret.size + 4);

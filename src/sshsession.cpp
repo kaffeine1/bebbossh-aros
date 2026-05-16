@@ -1,5 +1,6 @@
 /* bebbossh - SSH session handler
  * Copyright (C) 2024-2025  Stefan Franke <stefan@franke.ms>
+ * AROS porting changes Copyright (C) 2026 Michele Dipace <michele.dipace@kaffeine.net>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1452,13 +1453,7 @@ void SshSession::createKexEcdhReply() {
 	HSU(serverPK_aka_F, 0, 32);
 
 	fe_scalarmult_x25519(sharedSecret_aka_K.data, serverSK, clientPK_aka_E);
-	if ((int8_t) sharedSecret_aka_K.data[0] < 0) {
-		sharedSecret_aka_K.size = 33;
-		memmove(&sharedSecret_aka_K.data[1], &sharedSecret_aka_K.data[0], 32);
-		sharedSecret_aka_K.data[0] = 0;
-	} else {
-		sharedSecret_aka_K.size = 32;
-	}
+	normalizeSharedSecret(&sharedSecret_aka_K);
 #ifdef __AMIGA__
 	handshakeMD.update(&sharedSecret_aka_K, sharedSecret_aka_K.size + 4);
 	HSU(&sharedSecret_aka_K, 0, sharedSecret_aka_K.size + 4);
