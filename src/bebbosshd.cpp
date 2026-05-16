@@ -132,7 +132,13 @@ char const * hostKeyName = "/etc/ssh/ssh_host_ed25519_key";
 #endif
 
 bool hasAes = true;
+#if BEBBOSSH_AROS && !defined(BEBBOSSH_AROS_MINCRT)
+// Hosted AROS validation currently uses AES-GCM by default; ChaCha can still
+// be enabled explicitly via sshd_config once that backend has more soak time.
+bool hasChacha = false;
+#else
 bool hasChacha = true;
+#endif
 extern char const * AES128;
 extern char const * CHACHA20;
 
@@ -1024,6 +1030,7 @@ __stdargs int main(int argc, char *argv[]) {
 			select(selectMax + 1, &readfds, NULL, NULL, &waitTimeout);
 			signales = 0;
 			checkFinished();
+			pruneDeadClients();
 #else
 			WaitSelect(selectMax + 1, &readfds, NULL, NULL, 0, &signales);
 #endif
@@ -1037,6 +1044,7 @@ __stdargs int main(int argc, char *argv[]) {
 
 			if (signales & SIGBREAKF_CTRL_F) {
 				checkFinished();
+				pruneDeadClients();
 			}
 
 			if (signales & timerMask) {
@@ -1078,8 +1086,20 @@ __stdargs int main(int argc, char *argv[]) {
 			select(sn + 1, &readfds, NULL, NULL, 0);
 #endif
 
-			// handle new connections
-			if (FD_ISSET(acceptSock, &readfds)) {
+			pruneDeadClients();
+
+			bool hasReadyClient = false;
+			sz = listeners.getMax();
+			for (uint32_t i = 0; i < sz; ++i) {
+				Listener *l = listeners[i];
+				if (l && l->isOpen() && FD_ISSET(l->getSockFd(), &readfds)) {
+					hasReadyClient = true;
+					break;
+				}
+			}
+
+			// handle new connections, but do not starve already-ready sessions
+			if (!hasReadyClient && FD_ISSET(acceptSock, &readfds)) {
 				int accepted = 0;
 				for (;;) {
 					struct sockaddr_in peer;
@@ -1159,6 +1179,8 @@ __stdargs int main(int argc, char *argv[]) {
 							somethingClosed = true;
 							break; //??
 						}
+						if (!l->isOpen())
+							somethingClosed = true;
 					} else {
 						l->close();
 						somethingClosed = true;

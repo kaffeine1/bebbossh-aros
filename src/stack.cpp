@@ -126,6 +126,9 @@ WithSocket::~WithSocket() {
 
 void WithSocket::__close() {
 	if (open) {
+#if BEBBOSSH_AMIGA_API
+		shutdown(sockFd, 2);
+#endif
 		logme(L_DEBUG, "CloseSocket(%ld)", sockFd);
 		CloseSocket(sockFd);
 		open = false;

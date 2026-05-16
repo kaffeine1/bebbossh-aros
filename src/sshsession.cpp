@@ -125,6 +125,53 @@ static char const *hello = "SSH-2.0-" _VNAME "\r\n";
 extern bool hasAes;
 extern bool hasChacha;
 
+#if BEBBOSSH_AMIGA_API
+static char *passwordCache;
+static bool passwordCacheLoaded;
+
+static bool loadPasswordCache() {
+	if (passwordCacheLoaded)
+		return passwordCache != 0;
+
+	passwordCacheLoaded = true;
+	BPTR pwd = Open(passwords, MODE_OLDFILE);
+	if (!pwd) {
+		logme(L_ERROR, "can't open `%s`", passwords);
+		return false;
+	}
+
+	char line[256];
+	size_t used = 0;
+	char *cache = (char *)malloc(1);
+	if (!cache) {
+		Close(pwd);
+		return false;
+	}
+	cache[0] = 0;
+
+	for (;;) {
+		char *s = FGets(pwd, line, sizeof(line));
+		if (!s)
+			break;
+		size_t len = strlen(line);
+		char *next = (char *)realloc(cache, used + len + 1);
+		if (!next) {
+			free(cache);
+			Close(pwd);
+			return false;
+		}
+		cache = next;
+		memcpy(cache + used, line, len);
+		used += len;
+		cache[used] = 0;
+	}
+	Close(pwd);
+
+	passwordCache = cache;
+	return true;
+}
+#endif
+
 /*
  * Timing-normalization envelope for the KEX reply.
  *
@@ -345,6 +392,10 @@ void SshSession::close() {
 	logme(L_FINE, "@%ld closing socket for %s", sockFd, name);
 	abort();
 	if (open) {
+#if BEBBOSSH_AMIGA_API
+		shutdown(sockFd, 2);
+		Delay(1);
+#endif
 		CloseSocket(sockFd);
 		open = false;
 	}
@@ -524,6 +575,46 @@ static uint8_t * hsdp = hsd;
 #define HSU(a,b,c)
 #endif
 
+static unsigned sshStringLen(uint8_t *s) {
+	return getInt32(s - 4);
+}
+
+static bool sshNameListContains(uint8_t *list, char const *name) {
+	unsigned len = sshStringLen(list);
+	unsigned nameLen = strlen(name);
+	uint8_t *p = list;
+	uint8_t *end = list + len;
+
+	while (p < end) {
+		uint8_t *q = p;
+		while (q < end && *q != ',')
+			++q;
+		if ((unsigned)(q - p) == nameLen && memcmp(p, name, nameLen) == 0)
+			return true;
+		p = q + (q < end);
+	}
+	return false;
+}
+
+static char const *selectEnabledCipher(uint8_t *clientList) {
+	unsigned len = sshStringLen(clientList);
+	uint8_t *p = clientList;
+	uint8_t *end = clientList + len;
+
+	while (p < end) {
+		uint8_t *q = p;
+		while (q < end && *q != ',')
+			++q;
+		unsigned tokLen = q - p;
+		if (hasAes && tokLen == strlen(AES128) && memcmp(p, AES128, tokLen) == 0)
+			return AES128;
+		if (hasChacha && tokLen == strlen(CHACHA20) && memcmp(p, CHACHA20, tokLen) == 0)
+			return CHACHA20;
+		p = q + (q < end);
+	}
+	return 0;
+}
+
 int SshSession::setupEncryption(char *indata) {
 	uint8_t * p = (uint8_t *)indata + 22; // start of encoding
 	uint8_t * sig = sshString(p);
@@ -534,18 +625,11 @@ int SshSession::setupEncryption(char *indata) {
 //	puts((char*)read);
 //	puts((char*)write);
 
-	char *aes = strstr((char*)read, AES128);
-	char *chacha = strstr((char*)read, CHACHA20);
+	char const *cipher = selectEnabledCipher(read);
+	if (!cipher || !sshNameListContains(write, cipher))
+		return 0;
 
-	if (aes && chacha) {
-		if (aes < chacha) {
-			chacha = 0;
-		} else {
-			aes = 0;
-		}
-	}
-
-	if (aes) {
+	if (cipher == AES128) {
 		logme(L_DEBUG, "using %s", AES128);
 		readBc = new AES();
 		if (readBc) {
@@ -561,7 +645,7 @@ int SshSession::setupEncryption(char *indata) {
 		}
 		keyMat.ivLen = 12;
 		keyMat.keyLen = 16;
-	} else if (chacha ){
+	} else if (cipher == CHACHA20) {
 		logme(L_DEBUG, "using %s", CHACHA20);
 		readAead = new ChaCha20Poly1305_SSH2();
 		writeAead = new ChaCha20Poly1305_SSH2();
@@ -586,21 +670,28 @@ int SshSession::consumeSocketData(char *indata, int len) {
 		return 0;
 
 	if (state == HELLO) {
-		// we need a CRLF
-		int clen = strlen(indata);
-		if (clen > len)
+		// The SSH banner is text, but the same recv can already contain the
+		// following binary KEX packet. Scan only the bytes we actually got.
+		char *lf = 0;
+		for (int i = 0; i < len; ++i) {
+			if (indata[i] == '\n') {
+				lf = indata + i;
+				break;
+			}
+		}
+		if (!lf)
 			return 0;
 
-		char *lf = indata + clen - 1;
-		if (*lf > 32)
-			return 0;
-		while (*lf <= 32 && lf > indata)
-			--lf;
-		++lf;
-		*lf = 0;
+		int consumed = lf - indata + 1;
+		char *end = lf;
+		while (end > indata && end[-1] <= 32)
+			--end;
+		char term = *end;
+		*end = 0;
 
 		if (strncmp(hello, indata, 8)) {
 			logme(L_INFO, "@%ld unsupported version %s", sockFd, indata);
+			*end = term;
 			return -1;
 		}
 
@@ -609,12 +700,13 @@ int SshSession::consumeSocketData(char *indata, int len) {
 		hsdp = hsd;
 #endif
 		// server hello
-		uint32_t len = lf - indata;
-		uint32_t len_be = htonl(len);
+		uint32_t helloLen = end - indata;
+		uint32_t len_be = htonl(helloLen);
 		handshakeMD.update(&len_be, 4);
 		HSU(&len_be, 0, 4);
-		handshakeMD.update(indata, len);
-		HSU(indata, 0, len);
+		handshakeMD.update(indata, helloLen);
+		HSU(indata, 0, helloLen);
+		*end = term;
 
 		// server hello
 		int slen = strlen(hello) - 2;
@@ -625,7 +717,7 @@ int SshSession::consumeSocketData(char *indata, int len) {
 		HSU(hello, 0, slen);
 
 		state = KEX_INIT;
-		return clen;
+		return consumed;
 	}
 
 	uint32_t packetSize;
@@ -663,49 +755,48 @@ int SshSession::consumeSocketData(char *indata, int len) {
 
 		uint8_t *p = (uint8_t*) indata + 22;
 		uint8_t *kex_algorithms = sshString(p);
-		if (!strstr((char*) kex_algorithms, "curve25519-sha256")) {
-			logme(L_INFO, "@%ld unsupported kex_algorithms: %s", sockFd, kex_algorithms);
+		if (!sshNameListContains(kex_algorithms, "curve25519-sha256")) {
+			logme(L_INFO, "@%ld unsupported kex_algorithms", sockFd);
 			return -1;
 		}
 
 		uint8_t *server_host_key_algorithms = sshString(p);
-		if (!strstr((char*) server_host_key_algorithms, "ssh-ed25519")) {
-			logme(L_INFO, "@%ld unsupported server_host_key_algorithms: %s", sockFd, server_host_key_algorithms);
+		if (!sshNameListContains(server_host_key_algorithms, "ssh-ed25519")) {
+			logme(L_INFO, "@%ld unsupported server_host_key_algorithms", sockFd);
 			return -1;
 		}
 
 		uint8_t *encryption_algorithm = sshString(p);
-		if (!strstr((char*) encryption_algorithm, AES128) &&
-				!strstr((char*) encryption_algorithm, CHACHA20)) {
-			logme(L_INFO, "@%ld unsupported encryption_algorithm: %s", sockFd, encryption_algorithm);
+		char const *cipher = selectEnabledCipher(encryption_algorithm);
+		if (!cipher) {
+			logme(L_INFO, "@%ld unsupported encryption_algorithm", sockFd);
 			return -1;
 		}
 		encryption_algorithm = sshString(p);
-		if (!strstr((char*) encryption_algorithm, AES128) &&
-				!strstr((char*) encryption_algorithm, CHACHA20)) {
-			logme(L_INFO, "@%ld unsupported encryption_algorithm: %s", sockFd, encryption_algorithm);
+		if (!sshNameListContains(encryption_algorithm, cipher)) {
+			logme(L_INFO, "@%ld unsupported encryption_algorithm", sockFd);
 			return -1;
 		}
 
 		uint8_t *mac_algorithm = sshString(p);
-		if (!strstr((char*) mac_algorithm, "hmac-sha2-256")) {
-			logme(L_INFO, "@%ld unsupported mac_algorithm: %s", sockFd, mac_algorithm);
+		if (!sshNameListContains(mac_algorithm, "hmac-sha2-256")) {
+			logme(L_INFO, "@%ld unsupported mac_algorithm", sockFd);
 			return -1;
 		}
 		mac_algorithm = sshString(p);
-		if (!strstr((char*) mac_algorithm, "hmac-sha2-256")) {
-			logme(L_INFO, "@%ld unsupported mac_algorithm: %s", sockFd, mac_algorithm);
+		if (!sshNameListContains(mac_algorithm, "hmac-sha2-256")) {
+			logme(L_INFO, "@%ld unsupported mac_algorithm", sockFd);
 			return -1;
 		}
 
 		uint8_t *compression_algorithm = sshString(p);
-		if (!strstr((char*) compression_algorithm, "none")) {
-			logme(L_INFO, "@%ld unsupported compression_algorithm: %s", sockFd, compression_algorithm);
+		if (!sshNameListContains(compression_algorithm, "none")) {
+			logme(L_INFO, "@%ld unsupported compression_algorithm", sockFd);
 			return -1;
 		}
 		compression_algorithm = sshString(p);
-		if (!strstr((char*) compression_algorithm, "none")) {
-			logme(L_INFO, "@%ld unsupported compression_algorithm: %s", sockFd, compression_algorithm);
+		if (!sshNameListContains(compression_algorithm, "none")) {
+			logme(L_INFO, "@%ld unsupported compression_algorithm", sockFd);
 			return -1;
 		}
 
@@ -851,24 +942,26 @@ int SshSession::consumeSocketData(char *indata, int len) {
 
 bool SshSession::login(uint8_t *user, uint8_t *pass) {
 #if BEBBOSSH_AMIGA_API
-	BPTR pwd = Open(passwords, MODE_READWRITE);
-	bool readOnly = false;
-	if (!pwd) {
-		pwd = Open(passwords, MODE_OLDFILE);
-		readOnly = true;
-		if (!pwd) {
-			logme(L_ERROR, "can't open `%s`", passwords);
-			return false;
-		}
-	}
+	if (!loadPasswordCache())
+		return false;
 
 	bool r = false;
-	for (;;) {
-		int writePos = Seek(pwd, 0, OFFSET_CURRENT);
-		char *s = FGets(pwd, outdata, 256);
-		if (!s)
-			break;
+	char *next = passwordCache;
+	while (*next) {
+		char *line = next;
+		while (*next && *next != '\r' && *next != '\n')
+			++next;
 
+		size_t len = next - line;
+		while (*next == '\r' || *next == '\n')
+			++next;
+		if (len >= 256)
+			continue;
+
+		memcpy(outdata, line, len);
+		outdata[len] = 0;
+
+		char *s = outdata;
 		char *p = splitLine(s);
 		if (!p)
 			continue;
@@ -878,59 +971,24 @@ bool SshSession::login(uint8_t *user, uint8_t *pass) {
 
 		logme(L_FINE, "@%ld user `%s` found", sockFd, user);
 		if (0 == strncmp(p, "{ssha256}", 9)) {
-			mimeDecode(outdata, p + 9, strlen(p + 9));
+			uint8_t decoded[64];
+			uint8_t digest[32];
+			if (mimeDecode(decoded, p + 9, strlen(p + 9)) != sizeof(decoded))
+				break;
 			SHA256 sha;
 			sha.update(pass, strlen((char*) pass));
-			sha.update(outdata + 32, 32);
-			sha.digest(outdata + 32);
-			r = 0 == memcmp(outdata, outdata + 32, 32);
+			sha.update(decoded + 32, 32);
+			sha.digest(digest);
+			r = 0 == memcmp(decoded, digest, 32);
 		} else {
 			// unencrypted password
 			logme(L_INFO, "@%ld user `%s` with unhashed password", sockFd, user);
-			if (0 == strcmp(p, (char*) pass)) {
+			if (0 == strcmp(p, (char*) pass))
 				r = true;
-				if (readOnly) {
-					logme(L_INFO, "@%ld password file is read-only, keeping unhashed password", sockFd);
-					break;
-				}
-
-				// update password file
-				randfill(outdata + 32, 32);
-				SHA256 sha;
-				sha.update(pass, strlen((char*) pass));
-				sha.update(outdata + 32, 32);
-				sha.digest(outdata);
-
-				char *x = outdata + 64;
-				strcpy(x, (char*) user);
-				strcat(x, " {ssha256}");
-				char *q = x + strlen(x);
-				mimeEncode(q, outdata, 64);
-				q += strlen(q) + 1;
-
-				// copy line by line
-				int readPos = Seek(pwd, 0, OFFSET_CURRENT);
-				for (;;) {
-					Seek(pwd, readPos, OFFSET_BEGINNING);
-					s = FGets(pwd, q, 256);
-					if (!s)
-						break;
-					if (!strstr(q, "\r\n"))
-						strcat(q, "\r\n");
-
-					readPos = Seek(pwd, 0, OFFSET_CURRENT);
-					Seek(pwd, writePos, OFFSET_BEGINNING);
-					FPuts(pwd, q);
-					writePos = Seek(pwd, 0, OFFSET_CURRENT);
-				}
-				Seek(pwd, writePos, OFFSET_BEGINNING);
-				FPuts(pwd, x);
-				logme(L_INFO, "@%ld user `%s` replaced password with hash", sockFd, user);
-			}
 		}
 		break;
 	}
-	Close(pwd);
+
 	if (r)
 		logme(L_INFO, "@%ld login success for user `%s`", sockFd, user);
 	else

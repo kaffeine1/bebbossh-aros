@@ -32,6 +32,7 @@
  * ----------------------------------------------------------------------
  */
 #if defined(__AROS__)
+#include <clib/alib_protos.h>
 #include <proto/dos.h>
 #elif defined(__AMIGA__)
 #include <proto/dos.h>
@@ -42,6 +43,7 @@
 #endif
 
 #include <stdarg.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -64,7 +66,31 @@ void logme(enum DebugLevel lvl, char const *fmt, ...) {
 		DateStamp(&ds);
 		ms = (ds.ds_Tick % TICKS_PER_SECOND) * 20;
 		Printf("[aros:%ld.%02ld.%03ld] [%s] ", ds.ds_Days, ds.ds_Minute, (LONG)ms, LEVELNAMES[lvl]);
+#ifdef AROS_SLOWSTACKFORMAT
+		RAWARG data = 0;
+		ULONG datasize = 0;
+		ULONG indexsize = 0;
+		ULONG *index = 0;
+
+		GetDataStreamFromFormat(fmt, args, 0, 0, 0, &indexsize);
+		if (indexsize > 0)
+			index = (ULONG *)malloc(indexsize);
+		if (index) {
+			GetDataStreamFromFormat(fmt, args, 0, &datasize, index, &indexsize);
+			if (datasize > 0)
+				data = (RAWARG)malloc(datasize);
+			if (data)
+				GetDataStreamFromFormat(fmt, args, data, &datasize, index, &indexsize);
+		}
+		if (data)
+			VFPrintf(Output(), fmt, data);
+		else
+			Printf("%s", fmt);
+		free(data);
+		free(index);
+#else
 		VFPrintf(Output(), fmt, (RAWARG)args);
+#endif
 		Printf("\n");
 		va_end(args);
 		return;
