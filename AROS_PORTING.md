@@ -17,6 +17,17 @@ BebboSSH source tree:
 https://franke.ms/git/bebbo/bebbossh
 ```
 
+The current AROS tree has been checked against BebboSSH upstream source version
+1.45. The canonical upstream commit from a fresh upstream clone is:
+
+```text
+5d68dd169cfbb701c5fe8debda8df0a8d896320e
+```
+
+That upstream snapshot includes the 1.45 `bebbosshkeygen` OpenSSH key-format
+fixes and the constant-upper-bound KEX reply timing envelope. Both are present
+in this AROS tree, with AROS-specific compatibility changes layered on top.
+
 AROS porting changes are by Michele Dipace
 <michele.dipace@kaffeine.net> and are licensed under GPLv3 or later,
 consistent with the upstream project.

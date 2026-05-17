@@ -6,7 +6,7 @@
 **Upstream architecture:** m68k-amigaos
 **AROS fork targets:** i386 `alt-abiv0` stable, x86_64 experimental
 **Type:** comm/net
-**Version:** 1.44
+**Version:** 1.45
 **Required:** bsdsocket.library (e.g. AmiTCP)
 **Replaces:** amigassh
 
@@ -18,6 +18,8 @@ This repository is a derivative work / fork of the original BebboSSH project by
 Stefan "Bebbo" Franke.
 
 - Original upstream source: https://franke.ms/git/bebbo/bebbossh
+- Upstream source baseline checked for this AROS fork: BebboSSH 1.45,
+  commit `5d68dd169cfbb701c5fe8debda8df0a8d896320e`
 - AROS porting changes: Copyright (C) 2026 Michele Dipace
   <michele.dipace@kaffeine.net>
 - License of the AROS modifications: GNU GPL v3 or later, consistent with
