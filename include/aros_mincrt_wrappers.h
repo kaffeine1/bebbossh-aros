@@ -27,6 +27,7 @@ int bebbossh_aros_connect(struct Library *base, int s, struct sockaddr *name, so
 int bebbossh_aros_send(struct Library *base, int s, const void *msg, int len, int flags);
 int bebbossh_aros_recv(struct Library *base, int s, void *buf, int len, int flags);
 int bebbossh_aros_shutdown(struct Library *base, int s, int how);
+int bebbossh_aros_errno(struct Library *base);
 int bebbossh_aros_ioctl_socket(struct Library *base, int s, unsigned long request, char *argp);
 int bebbossh_aros_close_socket(struct Library *base, int s);
 int bebbossh_aros_wait_select(struct Library *base, int nfds, fd_set *readfds, fd_set *writefds,
@@ -61,6 +62,7 @@ LONG bebbossh_aros_ioerr(void);
 #undef send
 #undef recv
 #undef shutdown
+#undef Errno
 #undef IoctlSocket
 #undef CloseSocket
 #undef WaitSelect
@@ -89,6 +91,7 @@ LONG bebbossh_aros_ioerr(void);
 #define send(s, msg, len, flags) bebbossh_aros_send(SocketBase, (s), (msg), (len), (flags))
 #define recv(s, buf, len, flags) bebbossh_aros_recv(SocketBase, (s), (buf), (len), (flags))
 #define shutdown(s, how) bebbossh_aros_shutdown(SocketBase, (s), (how))
+#define Errno() bebbossh_aros_errno(SocketBase)
 #define IoctlSocket(s, request, argp) bebbossh_aros_ioctl_socket(SocketBase, (s), (request), (argp))
 #define CloseSocket(s) bebbossh_aros_close_socket(SocketBase, (s))
 #define WaitSelect(nfds, readfds, writefds, exceptfds, timeout, sigmask) \

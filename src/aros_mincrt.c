@@ -619,6 +619,23 @@ int bebbossh_aros_shutdown(struct Library *base, int s, int how)
 #endif
 }
 
+int bebbossh_aros_errno(struct Library *base)
+{
+#if defined(__x86_64__)
+    APTR func = bebbossh_aros_libcall_base(base, 27);
+    APTR save;
+    int ret;
+    if (!func)
+        return 0;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12" : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((int (*)(void))func)();
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return Errno();
+#endif
+}
+
 int bebbossh_aros_ioctl_socket(struct Library *base, int s, unsigned long request, char *argp)
 {
 #if defined(__x86_64__)

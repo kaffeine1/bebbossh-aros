@@ -659,8 +659,6 @@ int SftpChannel::handleData(char *data, unsigned outerLen) {
 
 #if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
 		switch (k) {
-		case SSH_FXP_OPEN:
-		case SSH_FXP_READ:
 		case SSH_FXP_WRITE:
 		case SSH_FXP_SETSTAT:
 		case SSH_FXP_FSETSTAT:
@@ -698,6 +696,14 @@ int SftpChannel::handleData(char *data, unsigned outerLen) {
 			flags = getInt32(p);
 			p += 4;
 			auto mode = flags2mode(flags);
+
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
+			if (flags & (SSH2_FXF_WRITE | SSH2_FXF_APPEND | SSH2_FXF_CREAT |
+					SSH2_FXF_TRUNC | SSH2_FXF_EXCL)) {
+				result = SSH_FX_OP_UNSUPPORTED;
+				goto Status;
+			}
+#endif
 
 			if (flags & SSH2_FXF_EXCL) {
 				FPTR lock = LockF((char* )path, SHARED_LOCK);
