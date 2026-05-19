@@ -663,7 +663,6 @@ int SftpChannel::handleData(char *data, unsigned outerLen) {
 		case SSH_FXP_FSETSTAT:
 		case SSH_FXP_MKDIR:
 		case SSH_FXP_RMDIR:
-		case SSH_FXP_RENAME:
 		case SSH_FXP_READLINK:
 		case SSH_FXP_SYMLINK:
 			result = SSH_FX_OP_UNSUPPORTED;
@@ -1165,10 +1164,12 @@ printf("locked dir %s = %08lx\n", path, dir);
 			uint8_t *from = sshString(p);
 			if (p > p0) // out of bounds
 				return -1;
+			uint8_t *fromEnd = p;
 
 			uint8_t *to= sshString(p);
 			if (p > p0) // out of bounds
 				return -1;
+			*fromEnd = 0;
 			*p = 0;
 
 			logme(L_DEBUG, "@%ld:%ld sftp SSH_FXP_RENAME for %s -> %s", server->getSockFd(), channel, from, to);
