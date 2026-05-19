@@ -402,26 +402,30 @@ void setAttrs(uint8_t * p, uint8_t * path) {
 		tv.tv_sec += u;
 
 #if BEBBOSSH_AMIGA_API
-		struct DateStamp date;
-
-		tv.tv_sec -= 252460800;        // amiga offset in seconds
-		tv.tv_sec -= BEBBOSSH_TIMEZONE;
-
-		date.ds_Days = tv.tv_sec / (24 * 60 * 60);
-		tv.tv_sec -= date.ds_Days * (24 * 60 * 60);
-		date.ds_Minute = tv.tv_sec / 60;
-		tv.tv_sec -= date.ds_Minute * 60;
-		date.ds_Tick = tv.tv_usec / (1000000 / TICKS_PER_SECOND) + tv.tv_secs * TICKS_PER_SECOND;
-
-		SetFileDate((char* )path, &date);
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
+			// SetFileDate is a v36 DOS call not yet validated in the raw mincrt path.
 #else
-		struct timespec times[2];
-		times[0].tv_sec  = tv.tv_sec;
-		times[0].tv_nsec = tv.tv_usec * 1000;
-		times[1].tv_sec  = tv.tv_sec;
-		times[1].tv_nsec = tv.tv_usec * 1000;
+			struct DateStamp date;
 
-		utimensat(AT_FDCWD, (char *)path, times, 0);
+			tv.tv_sec -= 252460800;        // amiga offset in seconds
+			tv.tv_sec -= BEBBOSSH_TIMEZONE;
+
+			date.ds_Days = tv.tv_sec / (24 * 60 * 60);
+			tv.tv_sec -= date.ds_Days * (24 * 60 * 60);
+			date.ds_Minute = tv.tv_sec / 60;
+			tv.tv_sec -= date.ds_Minute * 60;
+			date.ds_Tick = tv.tv_usec / (1000000 / TICKS_PER_SECOND) + tv.tv_secs * TICKS_PER_SECOND;
+
+			SetFileDate((char* )path, &date);
+#endif
+#else
+			struct timespec times[2];
+			times[0].tv_sec  = tv.tv_sec;
+			times[0].tv_nsec = tv.tv_usec * 1000;
+			times[1].tv_sec  = tv.tv_sec;
+			times[1].tv_nsec = tv.tv_usec * 1000;
+
+			utimensat(AT_FDCWD, (char *)path, times, 0);
 #endif
 #if 0
 		struct DateStamp * stamp = &date;
@@ -661,8 +665,6 @@ int SftpChannel::handleData(char *data, unsigned outerLen) {
 		switch (k) {
 		case SSH_FXP_SETSTAT:
 		case SSH_FXP_FSETSTAT:
-		case SSH_FXP_MKDIR:
-		case SSH_FXP_RMDIR:
 		case SSH_FXP_READLINK:
 		case SSH_FXP_SYMLINK:
 			result = SSH_FX_OP_UNSUPPORTED;
