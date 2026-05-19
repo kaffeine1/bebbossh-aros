@@ -662,7 +662,6 @@ int SftpChannel::handleData(char *data, unsigned outerLen) {
 		case SSH_FXP_SETSTAT:
 		case SSH_FXP_FSETSTAT:
 		case SSH_FXP_MKDIR:
-		case SSH_FXP_REMOVE:
 		case SSH_FXP_RMDIR:
 		case SSH_FXP_RENAME:
 		case SSH_FXP_READLINK:
@@ -991,8 +990,22 @@ printf("locked dir %s = %08lx\n", path, dir);
 
 			logme(L_DEBUG, "@%ld:%ld sftp SSH_FXP_REMOVE/SSH_FXP_RMDIR for %s", server->getSockFd(), channel, path);
 
-			if (DeleteFile((char *)path))
+			BPTR lock = Lock((char *)path, SHARED_LOCK);
+			if (!lock) {
+				result = SSH_FX_NO_SUCH_FILE;
+				goto Status;
+			}
+			UnLock(lock);
+
+			if (DeleteFile((char *)path)) {
 				result = SSH_FX_OK;
+			} else {
+				lock = Lock((char *)path, SHARED_LOCK);
+				if (!lock)
+					result = SSH_FX_OK;
+				else
+					UnLock(lock);
+			}
 			goto Status;
 		}
 
