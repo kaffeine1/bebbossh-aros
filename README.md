@@ -90,6 +90,10 @@ Runtime status on AROS One i386:
   file on `DH0:` has been verified to truncate correctly. AROS SFTP uploads
   also keep the AmigaDOS execute protection allowed, so uploaded binaries can
   be started without a manual `protect +e` step.
+- SFTP browse, upload, download, remove, rename with overwrite, mkdir/rmdir,
+  and chmod have also been validated on the AROS x86_64 minimal-runtime daemon.
+  x86_64 SFTP timestamp preservation is currently a no-op, and symbolic-link
+  SFTP requests remain unsupported.
 - The AROS daemon uses a larger listen backlog, and its per-loop accept burst
   can be configured with `ListenAcceptBurst` or the AROS `-B` option. The
   hosted default stays conservative while short-session churn remains under
@@ -182,6 +186,11 @@ zero-delay loops, which looks like an SSH auth failure even when the daemon
 remains healthy.
 The x86_64 entropy path and non-hosted AROS One daemon validation remain
 experimental, so x86_64 builds are published as experimental/pre-release kits.
+The x86_64 minimal-runtime daemon now validates SFTP read/write operations
+end-to-end under QEMU, including `ls`, `get`, `put`, `rm`, `rename` with
+overwrite, `mkdir`, `rmdir`, and `chmod`. SFTP `readlink`/`symlink` remain
+unsupported, and x86_64 `SetFileDate` timestamp preservation is intentionally
+disabled until that DOS v36 call is validated in the raw runtime wrapper path.
 
 ### AROS automation workflow
 

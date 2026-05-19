@@ -224,6 +224,8 @@ client-state, and TLS-status. Hosted i386 and hosted x86_64 also pass
 askpass-based zero-delay SCP/SFTP stress with sizes 257, 4096, 65536, and
 1048576 bytes, 800 consecutive askpass-based C:Version exec connections, and
 50 repeated bebbosshkeygen runs through OpenSSH exec from a clean runtime.
+The x86_64 minimal-runtime daemon has also been validated for SFTP ls, get,
+put, rm, rename with overwrite, mkdir, rmdir, and chmod under QEMU.
 
 Known Limits
 ------------
@@ -249,6 +251,9 @@ Known Limits
   they do not block the daemon's synchronous exec path.
 - Shell redirection and pipes (`>`, `<`, `|`) are rejected on AROS until they
   are stable. Rejected redirection returns SSH exit status 2.
+- SFTP readlink and symlink requests are not implemented on AROS x86_64
+  minimal-runtime builds yet. SFTP timestamp preservation is also a no-op on
+  that target until the DOS SetFileDate wrapper path is validated.
 - The AROS random fallback mixes multiple local runtime entropy sources because
   no system CSPRNG is currently used by this port. Replace it with a real AROS
   CSPRNG if one becomes available. Minimal-runtime builds avoid fragile AROS OS

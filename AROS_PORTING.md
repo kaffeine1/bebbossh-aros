@@ -245,6 +245,13 @@ connections, and 50 repeated `bebbosshkeygen` executions through OpenSSH exec
 from a clean runtime. Keep x86_64 marked experimental until the entropy path is
 reviewed and non-hosted AROS One daemon validation is closed.
 
+On the AROS x86_64 minimal-runtime daemon, SFTP has been validated end-to-end
+for directory browsing, downloads, uploads, remove, rename including overwrite,
+mkdir/rmdir, and chmod. `READLINK`/`SYMLINK` remain unsupported because the
+symlink path still depends on DOS device-proc calls that are not wrapped in the
+minimal runtime. `SetFileDate` timestamp preservation is intentionally skipped
+on x86_64/mincrt until that DOS v36 call is validated in the raw wrapper path.
+
 Current hosted i386 runtime status: hosted AROS i386 starts with AROSTCP/TAP
 networking and authenticates OpenSSH password clients. After the default AROS
 command stack was raised to 1 MiB, it passes the telegram-amiga offline
@@ -581,6 +588,10 @@ SFTP/SCP status:
 - AROS SFTP upload permission mapping keeps AmigaDOS execute protection
   allowed. This avoids byte-correct uploaded binaries failing at boot with
   `File non eseguibile` after OpenSSH sends Unix-style `0644` permissions.
+- AROS x86_64/mincrt SFTP has additionally been validated for `put`, `get`,
+  `rm`, `rename` with overwrite, `mkdir`, `rmdir`, and `chmod` under QEMU.
+  x86_64/mincrt does not currently preserve SFTP mtime changes, and symlink
+  requests remain unsupported.
 
 Clean install status:
 
