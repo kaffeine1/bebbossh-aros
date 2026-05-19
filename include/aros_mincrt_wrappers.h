@@ -44,11 +44,15 @@ void bebbossh_aros_close(BPTR file);
 LONG bebbossh_aros_read(BPTR file, void *buf, LONG len);
 LONG bebbossh_aros_write(BPTR file, const void *buf, LONG len);
 LONG bebbossh_aros_seek(BPTR file, LONG offset, LONG mode);
+LONG bebbossh_aros_delete_file(const char *name);
+LONG bebbossh_aros_rename(const char *oldName, const char *newName);
 BPTR bebbossh_aros_lock(const char *name, LONG mode);
 void bebbossh_aros_unlock(BPTR lock);
 LONG bebbossh_aros_examine(BPTR lock, struct FileInfoBlock *fib);
 LONG bebbossh_aros_exnext(BPTR lock, struct FileInfoBlock *fib);
+BPTR bebbossh_aros_create_dir(const char *name);
 LONG bebbossh_aros_ioerr(void);
+LONG bebbossh_aros_set_protection(const char *name, LONG mask);
 
 #ifdef __cplusplus
 }
@@ -77,11 +81,15 @@ LONG bebbossh_aros_ioerr(void);
 #undef Read
 #undef Write
 #undef Seek
+#undef DeleteFile
+#undef Rename
 #undef Lock
 #undef UnLock
 #undef Examine
 #undef ExNext
+#undef CreateDir
 #undef IoErr
+#undef SetProtection
 
 #define socket(domain, type, protocol) bebbossh_aros_socket(SocketBase, (domain), (type), (protocol))
 #define bind(s, name, namelen) bebbossh_aros_bind(SocketBase, (s), (name), (namelen))
@@ -107,11 +115,15 @@ LONG bebbossh_aros_ioerr(void);
 #define Read(file, buf, len) bebbossh_aros_read((file), (buf), (len))
 #define Write(file, buf, len) bebbossh_aros_write((file), (buf), (len))
 #define Seek(file, offset, mode) bebbossh_aros_seek((file), (offset), (mode))
+#define DeleteFile(name) bebbossh_aros_delete_file((name))
+#define Rename(oldName, newName) bebbossh_aros_rename((oldName), (newName))
 #define Lock(name, mode) bebbossh_aros_lock((name), (mode))
 #define UnLock(lock) bebbossh_aros_unlock((lock))
 #define Examine(lock, fib) bebbossh_aros_examine((lock), (fib))
 #define ExNext(lock, fib) bebbossh_aros_exnext((lock), (fib))
+#define CreateDir(name) bebbossh_aros_create_dir((name))
 #define IoErr() bebbossh_aros_ioerr()
+#define SetProtection(name, mask) bebbossh_aros_set_protection((name), (mask))
 
 #endif
 

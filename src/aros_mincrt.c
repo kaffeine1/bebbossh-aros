@@ -1108,6 +1108,42 @@ LONG bebbossh_aros_seek(BPTR file, LONG offset, LONG mode)
 #endif
 }
 
+LONG bebbossh_aros_delete_file(const char *name)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 12);
+    APTR save;
+    LONG ret;
+
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((LONG (*)(CONST_STRPTR))func)(name);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return DeleteFile(name);
+#endif
+}
+
+LONG bebbossh_aros_rename(const char *oldName, const char *newName)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 13);
+    APTR save;
+    LONG ret;
+
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((LONG (*)(CONST_STRPTR, CONST_STRPTR))func)(oldName, newName);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return Rename(oldName, newName);
+#endif
+}
+
 BPTR bebbossh_aros_lock(const char *name, LONG mode)
 {
 #if defined(__x86_64__)
@@ -1185,6 +1221,24 @@ LONG bebbossh_aros_exnext(BPTR lock, struct FileInfoBlock *fib)
 #endif
 }
 
+BPTR bebbossh_aros_create_dir(const char *name)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 20);
+    APTR save;
+    BPTR ret;
+
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((BPTR (*)(CONST_STRPTR))func)(name);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return CreateDir(name);
+#endif
+}
+
 LONG bebbossh_aros_ioerr(void)
 {
 #if defined(__x86_64__)
@@ -1200,6 +1254,24 @@ LONG bebbossh_aros_ioerr(void)
     return ret;
 #else
     return IoErr();
+#endif
+}
+
+LONG bebbossh_aros_set_protection(const char *name, LONG mask)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 31);
+    APTR save;
+    LONG ret;
+
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((LONG (*)(CONST_STRPTR, LONG))func)(name, mask);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return SetProtection(name, mask);
 #endif
 }
 

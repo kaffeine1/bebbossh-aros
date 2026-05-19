@@ -652,14 +652,13 @@ int SftpChannel::handleData(char *data, unsigned outerLen) {
 				}
 			}
 		}
-			break;
+		break;
 		default:
 			handle = 0;
 		}
 
 #if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
 		switch (k) {
-		case SSH_FXP_WRITE:
 		case SSH_FXP_SETSTAT:
 		case SSH_FXP_FSETSTAT:
 		case SSH_FXP_MKDIR:
@@ -697,14 +696,6 @@ int SftpChannel::handleData(char *data, unsigned outerLen) {
 			p += 4;
 			auto mode = flags2mode(flags);
 
-#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
-			if (flags & (SSH2_FXF_WRITE | SSH2_FXF_APPEND | SSH2_FXF_CREAT |
-					SSH2_FXF_TRUNC | SSH2_FXF_EXCL)) {
-				result = SSH_FX_OP_UNSUPPORTED;
-				goto Status;
-			}
-#endif
-
 			if (flags & SSH2_FXF_EXCL) {
 				FPTR lock = LockF((char* )path, SHARED_LOCK);
 				if (lock) {
@@ -719,11 +710,13 @@ int SftpChannel::handleData(char *data, unsigned outerLen) {
 			logme(L_DEBUG, "@%ld:%ld sftp SSH_FXP_OPEN for %s flags=%ld->mode=%ld", server->getSockFd(), channel, path, flags, mode);
 
 #if BEBBOSSH_AROS
+#if !(defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__))
 			if ((flags & SSH2_FXF_WRITE) && (flags & SSH2_FXF_CREAT) &&
 					!(flags & SSH2_FXF_EXCL) && !(flags & SSH2_FXF_APPEND)) {
 				DeleteFile((char *)path);
 				mode = MODE_NEWFILE;
 			}
+#endif
 #endif
 
 			BPTR file = Open((char* )path, mode);
@@ -731,7 +724,9 @@ int SftpChannel::handleData(char *data, unsigned outerLen) {
 			if (file && mode == MODE_NEWFILE) { // reopen shared
 				Close(file);
 #if BEBBOSSH_AROS
+#if !(defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__))
 				SetProtection((char* )path, 0);
+#endif
 #endif
 				file = Open((char* )path, MODE_READWRITE);
 			}
