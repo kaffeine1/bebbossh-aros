@@ -663,8 +663,6 @@ int SftpChannel::handleData(char *data, unsigned outerLen) {
 
 #if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
 		switch (k) {
-		case SSH_FXP_SETSTAT:
-		case SSH_FXP_FSETSTAT:
 		case SSH_FXP_READLINK:
 		case SSH_FXP_SYMLINK:
 			result = SSH_FX_OP_UNSUPPORTED;
@@ -903,6 +901,7 @@ printf("locked dir %s = %08lx\n", path, dir);
 				path = sshString(p);
 				if (p > p0) // out of bounds
 					return -1;
+				*p = 0;
 			}
 			if (!normalize(path)) {
 				result =  SSH_FX_NO_SUCH_PATH;
