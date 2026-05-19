@@ -1091,6 +1091,101 @@ LONG bebbossh_aros_seek(BPTR file, LONG offset, LONG mode)
 #endif
 }
 
+BPTR bebbossh_aros_lock(const char *name, LONG mode)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 14);
+    APTR save;
+    BPTR ret;
+
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((BPTR (*)(CONST_STRPTR, LONG))func)(name, mode);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return Lock(name, mode);
+#endif
+}
+
+void bebbossh_aros_unlock(BPTR lock)
+{
+#if defined(__x86_64__)
+    if (lock) {
+        APTR base = DOSBase;
+        APTR func = __AROS_GETVECADDR(base, 15);
+        APTR save;
+
+        __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                             : "=&rm"(save) : "rm"(base) : "r12");
+        ((void (*)(BPTR))func)(lock);
+        __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    }
+#else
+    if (lock)
+        UnLock(lock);
+#endif
+}
+
+LONG bebbossh_aros_examine(BPTR lock, struct FileInfoBlock *fib)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 17);
+    APTR save;
+    LONG ret;
+
+    if (!lock || !fib)
+        return 0;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((LONG (*)(BPTR, struct FileInfoBlock *))func)(lock, fib);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return Examine(lock, fib);
+#endif
+}
+
+LONG bebbossh_aros_exnext(BPTR lock, struct FileInfoBlock *fib)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 18);
+    APTR save;
+    LONG ret;
+
+    if (!lock || !fib)
+        return 0;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((LONG (*)(BPTR, struct FileInfoBlock *))func)(lock, fib);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return ExNext(lock, fib);
+#endif
+}
+
+LONG bebbossh_aros_ioerr(void)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 22);
+    APTR save;
+    LONG ret;
+
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((LONG (*)(void))func)();
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return IoErr();
+#endif
+}
+
 int fflush(void *stream)
 {
     (void)stream;

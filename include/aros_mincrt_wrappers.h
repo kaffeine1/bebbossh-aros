@@ -38,6 +38,16 @@ void bebbossh_aros_signal(struct Task *task, ULONG signalSet);
 void bebbossh_aros_init_semaphore(struct SignalSemaphore *sigSem);
 void bebbossh_aros_obtain_semaphore(struct SignalSemaphore *sigSem);
 void bebbossh_aros_release_semaphore(struct SignalSemaphore *sigSem);
+BPTR bebbossh_aros_open(const char *name, LONG mode);
+void bebbossh_aros_close(BPTR file);
+LONG bebbossh_aros_read(BPTR file, void *buf, LONG len);
+LONG bebbossh_aros_write(BPTR file, const void *buf, LONG len);
+LONG bebbossh_aros_seek(BPTR file, LONG offset, LONG mode);
+BPTR bebbossh_aros_lock(const char *name, LONG mode);
+void bebbossh_aros_unlock(BPTR lock);
+LONG bebbossh_aros_examine(BPTR lock, struct FileInfoBlock *fib);
+LONG bebbossh_aros_exnext(BPTR lock, struct FileInfoBlock *fib);
+LONG bebbossh_aros_ioerr(void);
 
 #ifdef __cplusplus
 }
@@ -52,14 +62,24 @@ void bebbossh_aros_release_semaphore(struct SignalSemaphore *sigSem);
 #undef recv
 #undef shutdown
 #undef IoctlSocket
-	#undef CloseSocket
-	#undef WaitSelect
-	#undef Delay
-	#undef DateStamp
-	#undef Signal
+#undef CloseSocket
+#undef WaitSelect
+#undef Delay
+#undef DateStamp
+#undef Signal
 #undef InitSemaphore
 #undef ObtainSemaphore
 #undef ReleaseSemaphore
+#undef Open
+#undef Close
+#undef Read
+#undef Write
+#undef Seek
+#undef Lock
+#undef UnLock
+#undef Examine
+#undef ExNext
+#undef IoErr
 
 #define socket(domain, type, protocol) bebbossh_aros_socket(SocketBase, (domain), (type), (protocol))
 #define bind(s, name, namelen) bebbossh_aros_bind(SocketBase, (s), (name), (namelen))
@@ -71,14 +91,24 @@ void bebbossh_aros_release_semaphore(struct SignalSemaphore *sigSem);
 #define shutdown(s, how) bebbossh_aros_shutdown(SocketBase, (s), (how))
 #define IoctlSocket(s, request, argp) bebbossh_aros_ioctl_socket(SocketBase, (s), (request), (argp))
 #define CloseSocket(s) bebbossh_aros_close_socket(SocketBase, (s))
-	#define WaitSelect(nfds, readfds, writefds, exceptfds, timeout, sigmask) \
-		bebbossh_aros_wait_select(SocketBase, (nfds), (readfds), (writefds), (exceptfds), (timeout), (sigmask))
-	#define Delay(ticks) bebbossh_aros_delay((ticks))
-	#define DateStamp(ds) bebbossh_aros_datestamp((ds))
+#define WaitSelect(nfds, readfds, writefds, exceptfds, timeout, sigmask) \
+	bebbossh_aros_wait_select(SocketBase, (nfds), (readfds), (writefds), (exceptfds), (timeout), (sigmask))
+#define Delay(ticks) bebbossh_aros_delay((ticks))
+#define DateStamp(ds) bebbossh_aros_datestamp((ds))
 #define Signal(task, signalSet) bebbossh_aros_signal((task), (signalSet))
 #define InitSemaphore(sigSem) bebbossh_aros_init_semaphore((sigSem))
 #define ObtainSemaphore(sigSem) bebbossh_aros_obtain_semaphore((sigSem))
 #define ReleaseSemaphore(sigSem) bebbossh_aros_release_semaphore((sigSem))
+#define Open(name, mode) bebbossh_aros_open((name), (mode))
+#define Close(file) bebbossh_aros_close((file))
+#define Read(file, buf, len) bebbossh_aros_read((file), (buf), (len))
+#define Write(file, buf, len) bebbossh_aros_write((file), (buf), (len))
+#define Seek(file, offset, mode) bebbossh_aros_seek((file), (offset), (mode))
+#define Lock(name, mode) bebbossh_aros_lock((name), (mode))
+#define UnLock(lock) bebbossh_aros_unlock((lock))
+#define Examine(lock, fib) bebbossh_aros_examine((lock), (fib))
+#define ExNext(lock, fib) bebbossh_aros_exnext((lock), (fib))
+#define IoErr() bebbossh_aros_ioerr()
 
 #endif
 

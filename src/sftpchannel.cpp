@@ -256,6 +256,9 @@ bool sanitize(char * path) {
 
 	if (colon && colon > path) {
 #if BEBBOSSH_AMIGA_API
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
+		return true;
+#else
 #if BEBBOSSH_AROS
 		struct DevProc *dp = GetDeviceProc((CONST_STRPTR)path, NULL);
 		if (dp) {
@@ -279,6 +282,7 @@ bool sanitize(char * path) {
 		UnLockDosList(LDF_ALL | LDF_READ);
 		*colon = x;
 		if (!dl)
+#endif
 #endif
 #endif
 			return false;
@@ -652,6 +656,26 @@ int SftpChannel::handleData(char *data, unsigned outerLen) {
 		default:
 			handle = 0;
 		}
+
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
+		switch (k) {
+		case SSH_FXP_OPEN:
+		case SSH_FXP_READ:
+		case SSH_FXP_WRITE:
+		case SSH_FXP_SETSTAT:
+		case SSH_FXP_FSETSTAT:
+		case SSH_FXP_MKDIR:
+		case SSH_FXP_REMOVE:
+		case SSH_FXP_RMDIR:
+		case SSH_FXP_RENAME:
+		case SSH_FXP_READLINK:
+		case SSH_FXP_SYMLINK:
+			result = SSH_FX_OP_UNSUPPORTED;
+			goto Status;
+		default:
+			break;
+		}
+#endif
 
 		switch (k) {
 		case SSH_FXP_INIT:

@@ -1229,22 +1229,14 @@ bool SshSession::handleChannelRequest(uint8_t *p) {
 				goto Error;
 			}
 			ShellChannel *sc = (ShellChannel*) c;
-				if (sc->hasShell() || sc->hasExec()) {
-					logme(L_ERROR, "@%ld %s requested but already has a shell/exec", sockFd);
-					goto Error;
-				}
+			if (sc->hasShell() || sc->hasExec()) {
+				logme(L_ERROR, "@%ld %s requested but already has a shell/exec", sockFd);
+				goto Error;
+			}
 
-#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
-				outdata[5] = SSH_MSG_CHANNEL_FAILURE;
-				putInt32Aligned((outdata + 6) , channelNo);
-				write(outdata + 5, 5);
-				close();
-				return false;
-#endif
-				SftpChannel *sfc = new SftpChannel(c->getServer(), channelNo); // TODO Remote channelNo
-				delete c;
-
-			channels.replace(channelNo, sfc);
+			SftpChannel *sfc = new SftpChannel(c->getServer(), channelNo); // TODO Remote channelNo
+			Channel *old = channels.replace(channelNo, sfc);
+			delete old;
 
 			outdata[5] = SSH_MSG_CHANNEL_SUCCESS;
 			putInt32Aligned((outdata + 6) , channelNo); // TODO Remote channelNo
