@@ -414,7 +414,7 @@ void setAttrs(uint8_t * p, uint8_t * path) {
 			tv.tv_sec -= date.ds_Days * (24 * 60 * 60);
 			date.ds_Minute = tv.tv_sec / 60;
 			tv.tv_sec -= date.ds_Minute * 60;
-			date.ds_Tick = tv.tv_usec / (1000000 / TICKS_PER_SECOND) + tv.tv_secs * TICKS_PER_SECOND;
+			date.ds_Tick = tv.tv_usec / (1000000 / TICKS_PER_SECOND) + tv.tv_sec * TICKS_PER_SECOND;
 
 			SetFileDate((char* )path, &date);
 #endif
