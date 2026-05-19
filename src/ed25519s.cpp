@@ -24,8 +24,8 @@
 #include "test.h"
 
 #if defined(__AROS__) && defined(__x86_64__) && defined(BEBBOSSH_TRACE_KEYGEN)
-#include <proto/dos.h>
-#define KGTRACE(s) Printf("%s\n", (s))
+extern "C" int puts(const char *);
+#define KGTRACE(s) puts(s)
 #else
 #define KGTRACE(s) ((void)0)
 #endif

@@ -46,6 +46,7 @@
 #include <proto/exec.h>
 #include <proto/socket.h>
 #include <proto/timer.h>
+#include <aros_mincrt_wrappers.h>
 
 #define DPTR BPTR
 
@@ -85,10 +86,14 @@ ShellChannel::ShellChannel(SshSession * server, uint32_t channel, ChannelType ty
 	arosExecStarted.tv_secs = 0;
 	arosExecStarted.tv_micro = 0;
 #endif
+	#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
+	dir = 0;
+	#else
 	if (homeDir)
 		dir = Lock(homeDir, SHARED_LOCK);
 	if (!dir)
 		dir = Lock("RAM:", SHARED_LOCK);
+	#endif
 	logme(L_DEBUG, "@%ld:%ld opening shell channel", server->getSockFd(), channel);
 	inBuffer = (char *)malloc(inBufferLen);
 }
@@ -105,8 +110,10 @@ ShellChannel::~ShellChannel() {
 	if (arosExecOutName[0])
 		DeleteFile(arosExecOutName);
 #endif
+	#if !(defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT))
 	if (dir)
 		UnLock(dir);
+	#endif
 #endif
 	logme(L_DEBUG, "@%ld:%ld terminating shell channel", server->getSockFd(), channel);
 }
@@ -1015,6 +1022,10 @@ bool ShellChannel::finishArosExecImmediate(uint32_t exitStatus) {
 }
 
 bool ShellChannel::startArosLoadedExecFile(bool closeAfterCommand) {
+#if defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
+	(void)closeAfterCommand;
+	return finishArosExecImmediate(0);
+#endif
 	int keywordLen = 0;
 	char *argp;
 	int argLen = 0;
@@ -1104,6 +1115,10 @@ bool ShellChannel::startArosLoadedExecFile(bool closeAfterCommand) {
 }
 
 bool ShellChannel::startArosExecFile(bool closeAfterCommand) {
+#if defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
+	(void)closeAfterCommand;
+	return finishArosExecImmediate(0);
+#endif
 #if defined(BEBBOSSH_AROS_MINCRT)
 	int keywordLen = 0;
 	while (xbuffer[keywordLen] && xbuffer[keywordLen] > 32)
@@ -1136,6 +1151,14 @@ bool ShellChannel::startArosExecFile(bool closeAfterCommand) {
 }
 
 bool ShellChannel::runArosExec(bool closeAfterCommand) {
+#if defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
+	if (closeAfterCommand)
+		return finishArosExecImmediate(0);
+	static const char msg[] = "bebbosshd/AROS: exec backend is not available on x86_64 mincrt yet\r\n";
+	server->channelWrite(channel, msg, sizeof(msg) - 1);
+	prompt();
+	return drainBufferedInput();
+#endif
 	char outName[96];
 	snprintf(outName, sizeof(outName), "T:bebbosshd-%lx-%lx.out",
 			(ULONG)server->getSockFd(), (ULONG)channel);

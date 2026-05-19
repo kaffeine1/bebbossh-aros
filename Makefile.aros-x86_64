@@ -9,7 +9,9 @@ PACKAGE_DIR ?= dist/bebbossh-aros-x86_64
 AROS_TARGET_TRIPLET ?= x86_64-aros
 SDK_GCC_VERSION ?= 10.5.0
 STRIP_OUTPUTS ?= yes
-TARGET_CFLAGS ?= -mcmodel=large -fno-asynchronous-unwind-tables -fno-unwind-tables -fno-reorder-blocks-and-partition -DBEBBOSSH_AROS_MINCRT=1
+SDK_LDFLAGS ?= -nostdlib
+STARTUP ?= $(shell $(CC) -print-file-name=startup.o)
+TARGET_CFLAGS ?= -mcmodel=large -fno-asynchronous-unwind-tables -fno-unwind-tables -fno-reorder-blocks-and-partition -DFD_SETSIZE=1024 -DBEBBOSSH_AROS_MINCRT=1
 CXXFLAGS ?= -fno-exceptions -fno-rtti -fno-weak
 SSHD_SOURCES ?= bebbosshd.cpp sshsession.cpp forwardchannel.cpp sftpchannel.cpp shellchannel.cpp channel.cpp stack.cpp c++support.cpp home.cpp aros_startup_flags.c aros_mincrt.c
 KEYGEN_SOURCES ?= bebbosshkeygen.cpp c++support.cpp home.cpp aros_startup_flags.c aros_mincrt.c

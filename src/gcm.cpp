@@ -40,11 +40,16 @@
 #include <string.h>
 #include <stdlib.h>
 
-#ifdef __AMIGA__
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
+#define BSSH_GCM_ALLOC(a) malloc(a)
+#define BSSH_GCM_FREE(a) free(a)
+#elif defined(__AMIGA__)
 #include <proto/exec.h>
+#define BSSH_GCM_ALLOC(a) AllocVec((a), MEMF_PUBLIC)
+#define BSSH_GCM_FREE(a) FreeVec(a)
 #else
-#define AllocVec(a,b) malloc(a)
-#define FreeVec(a) free(a)
+#define BSSH_GCM_ALLOC(a) malloc(a)
+#define BSSH_GCM_FREE(a) free(a)
 #endif
 
 #include "gcm.h"
@@ -219,18 +224,18 @@ GCM::GCM(BlockCipher *_bc) :
 
 GCM::~GCM() {
 	delete bc;
-#ifdef __AMIGA__
+#if defined(__AMIGA__) && !(defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT))
 	struct ExecBase * SysBase = *(struct ExecBase **)4;
 #endif
-	if (_m) { memset(_m, 0, sizeof(gcm_m_array)); FreeVec(_m); }
+	if (_m) { memset(_m, 0, sizeof(gcm_m_array)); BSSH_GCM_FREE(_m); }
 }
 
 bool GCM::initM() {
-#ifdef __AMIGA__
+#if defined(__AMIGA__) && !(defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT))
 	struct ExecBase * SysBase = *(struct ExecBase **)4;
 #endif
 	if (!_m)
-		_m = (gcm_m_array*)AllocVec(sizeof(gcm_m_array), MEMF_PUBLIC);
+		_m = (gcm_m_array*)BSSH_GCM_ALLOC(sizeof(gcm_m_array));
 	if (!_m)
 		return false;
 

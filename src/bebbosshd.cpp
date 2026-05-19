@@ -51,6 +51,7 @@
 #include <proto/dos.h>
 #include <proto/exec.h>
 #include <proto/socket.h>
+#include <aros_mincrt_wrappers.h>
 #include <proto/timer.h>
 #if BEBBOSSH_AROS
 #include <bsdsocket/socketbasetags.h>
@@ -78,6 +79,7 @@
 #include "shellchannel.h"
 
 static __far char theBuffer[2*CHUNKSIZE - 256];
+
 
 #if BEBBOSSH_AMIGA_API
 struct SignalSemaphore theLock;
@@ -151,6 +153,30 @@ int acceptSock = -1;
 int stopped;
 bool timerOn;
 int noopMask;
+#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
+static int arosSocketErrno;
+static int arosSocketHErrno;
+#endif
+
+static bool isSelectableFd(int fd)
+{
+	return fd >= 0 && fd < FD_SETSIZE;
+}
+
+static bool setSelectableFd(fd_set *fds, int fd, int *maxFd)
+{
+	if (!isSelectableFd(fd))
+		return false;
+	FD_SET(fd, fds);
+	if (maxFd && fd > *maxFd)
+		*maxFd = fd;
+	return true;
+}
+
+static bool isFdReady(fd_set *fds, int fd)
+{
+	return isSelectableFd(fd) && FD_ISSET(fd, fds);
+}
 
 enum Errors {
 	NO_ERROR,
@@ -174,6 +200,18 @@ static Stack<SshSession> *clientsPtr;
 struct MsgPort * timerPort;
 struct timerequest * timerIO;
 struct Device * TimerBase = 0;
+
+#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
+extern "C" struct MsgPort *bebbossh_aros_create_msgport(void);
+extern "C" void bebbossh_aros_delete_msgport(struct MsgPort *port);
+extern "C" APTR bebbossh_aros_create_iorequest(struct MsgPort *replyPort, ULONG size);
+extern "C" void bebbossh_aros_delete_iorequest(APTR request);
+extern "C" LONG bebbossh_aros_open_device(const char *name, IPTR unit, struct IORequest *request, ULONG flags);
+extern "C" void bebbossh_aros_close_device(struct IORequest *request);
+extern "C" struct Library *bebbossh_aros_open_library(const char *name, ULONG version);
+extern "C" void bebbossh_aros_close_library(struct Library *library);
+extern "C" struct Task *bebbossh_aros_find_task(const char *name);
+#endif
 
 __stdargs struct IORequest* CreateExtIO(CONST struct MsgPort *port, LONG iosize) {
 	struct IORequest *ioreq = NULL;
@@ -497,7 +535,11 @@ void cleanup() {
 #if BEBBOSSH_AMIGA_API
 	if (SocketBase) {
 		logme(L_FINE, "closing %s", bsdName);
+#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
+		bebbossh_aros_close_library(SocketBase);
+#else
 		CloseLibrary(SocketBase);
+#endif
 		SocketBase = 0;
 	}
 
@@ -511,14 +553,18 @@ void cleanup() {
 			WaitIO(&timerIO->tr_node);
 		}
 		timerOn = false;
+#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
+		bebbossh_aros_close_device(&timerIO->tr_node);
+#else
 		CloseDevice(&timerIO->tr_node);
+#endif
 		TimerBase = 0;
 	}
 
 	if (timerIO) {
 		logme(L_FINE, "free timer request");
 #if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
-		DeleteIORequest(timerIO);
+		bebbossh_aros_delete_iorequest(timerIO);
 #else
 		free(timerIO);
 #endif
@@ -527,13 +573,21 @@ void cleanup() {
 
 	if (timerPort) {
 		logme(L_FINE, "free timer message port");
+#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
+		bebbossh_aros_delete_msgport(timerPort);
+#else
 		DeleteMsgPort(timerPort);
+#endif
 		timerPort = 0;
 	}
 
 	if (port) {
 		logme(L_FINE, "free default message port");
+#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
+		bebbossh_aros_delete_msgport(port);
+#else
 		DeleteMsgPort(port);
+#endif
 		port = 0;
 	}
 
@@ -573,15 +627,21 @@ static bool init() {
 	if (curDir)
 		orgDir = CurrentDir(curDir);
 #endif
-
+#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
+	port = bebbossh_aros_create_msgport();
+#else
 	port = CreateMsgPort();
+#endif
 	if (0 == port) {
 		error = ERR_MESSAGE_PORT;
 		return false;
 	}
 	logme(L_FINE, "got default message port %08lX", port);
-
+#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
+	timerPort = bebbossh_aros_create_msgport();
+#else
 	timerPort = CreateMsgPort();
+#endif
 	if (0 == timerPort) {
 		error = ERR_MESSAGE_PORT;
 		return false;
@@ -589,7 +649,7 @@ static bool init() {
 	logme(L_FINE, "got timer message port");
 
 #if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
-	timerIO = (struct timerequest *)CreateIORequest(timerPort, sizeof(struct timerequest));
+	timerIO = (struct timerequest *)bebbossh_aros_create_iorequest(timerPort, sizeof(struct timerequest));
 #else
 	timerIO = (struct timerequest *)CreateExtIO(timerPort, sizeof(struct timerequest));
 #endif
@@ -598,23 +658,43 @@ static bool init() {
 		return false;
 	}
 	logme(L_FINE, "got timer request");
-
+#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
+	if (bebbossh_aros_open_device(TIMERNAME, UNIT_VBLANK, &timerIO->tr_node, 0)) {
+#else
 	if (OpenDevice(TIMERNAME, UNIT_VBLANK, &timerIO->tr_node, 0)) {
+#endif
 		error = ERR_TIMER;
 		return false;
 	}
 	TimerBase = timerIO->tr_node.io_Device;
 	logme(L_FINE, "opened timer device");
-
+#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
+	SocketBase = bebbossh_aros_open_library(bsdName, 3);
+#else
 	SocketBase = OpenLibrary(bsdName, 3);
+#endif
 	if (0 == SocketBase) {
 		error = ERR_BSD;
 		return false;
 	}
 	logme(L_FINE, "opened %s", bsdName);
-
-	SocketBaseTags(SBTM_SETVAL(SBTC_BREAKMASK), 0, TAG_DONE);
+#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
+		{
+			struct TagItem tags[] = {
+				{ SBTM_SETVAL(SBTC_DTABLESIZE), 64 },
+				{ SBTM_SETVAL(SBTC_ERRNOPTR(sizeof(arosSocketErrno))), (IPTR)&arosSocketErrno },
+				{ SBTM_SETVAL(SBTC_HERRNOLONGPTR), (IPTR)&arosSocketHErrno },
+				{ SBTM_SETVAL(SBTC_BREAKMASK), 0 },
+				{ TAG_DONE, 0 }
+			};
+			ULONG failedTag = bebbossh_aros_socket_base_tag_list(SocketBase, tags);
+			if (failedTag)
+				logme(L_WARN, "SocketBaseTagList failed at tag index %ld", (LONG)failedTag);
+		}
+#else
+		SocketBaseTags(SBTM_SETVAL(SBTC_BREAKMASK), 0, TAG_DONE);
 #endif
+	#endif
 
 	//Create socket
 	acceptSock = socket(AF_INET, SOCK_STREAM, 0);
@@ -875,32 +955,29 @@ static void parseParams(unsigned argc, char **argv) {
 }
 
 __stdargs int main(int argc, char *argv[]) {
-#if BEBBOSSH_AROS
-	logme(L_DEBUG, "bebbosshd/AROS: start");
-#endif
+	#if BEBBOSSH_AROS
+		logme(L_DEBUG, "bebbosshd/AROS: start");
+	#endif
 	listenersPtr = new Stack<Listener>();
 	clientsPtr = new Stack<SshSession>();
 	atexit(cleanup);
-
 	InitSemaphore(&theLock);
 
-#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
+	#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
 	hostKeyName = "PROGDIR:HOSTKEY";
 	passwords = "PROGDIR:PASSWD";
 	homeDir = "AROS:";
 	setLogLevel(L_NONE);
-#else
+	#else
 	readIni();
-#endif
-#if BEBBOSSH_AROS
+	#endif
+	#if BEBBOSSH_AROS
 	logme(L_DEBUG, "bebbosshd/AROS: config read");
-#endif
-
+	#endif
 	parseParams(argc, argv);
-#if BEBBOSSH_AROS
+	#if BEBBOSSH_AROS
 	logme(L_DEBUG, "bebbosshd/AROS: params parsed, port %ld", (LONG)serverPort);
-#endif
-
+	#endif
 	if (!loadEd25519Key(hostPK, hostSK, hostKeyName)) {
 #if BEBBOSSH_AROS
 		logme(L_DEBUG, "bebbosshd/AROS: trying PROGDIR host key");
@@ -909,11 +986,11 @@ __stdargs int main(int argc, char *argv[]) {
 		}
 #else
 		return error = ERR_KEYFILE;
-#endif
+	#endif
 	}
-#if BEBBOSSH_AROS
+	#if BEBBOSSH_AROS
 	logme(L_DEBUG, "bebbosshd/AROS: host key loaded");
-#endif
+	#endif
 
 	do { // while (0);
 		if (!init())
@@ -923,53 +1000,61 @@ __stdargs int main(int argc, char *argv[]) {
 #endif
 
 #if BEBBOSSH_AMIGA_API
+#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
+		thisTask = 0;
+#else
 		thisTask = FindTask(NULL);
 		logme(L_TRACE, "self %08lX mp %08lX", thisTask, &((struct Process *)thisTask)->pr_MsgPort);
+#endif
 
 		ULONG portMask = (1 << port->mp_SigBit);
 		ULONG timerMask = (1 << timerPort->mp_SigBit);
 #endif
 
-		struct sockaddr_in server;
+			struct sockaddr_in server;
 
-		//Prepare the sockaddr_in structure
-		server.sin_family = AF_INET;
-		server.sin_addr.s_addr = serverAddress;
-		server.sin_port = htons(serverPort);
+			//Prepare the sockaddr_in structure
+			memset(&server, 0, sizeof(server));
+#if BEBBOSSH_AROS
+			server.sin_len = sizeof(server);
+#endif
+			server.sin_family = AF_INET;
+			server.sin_addr.s_addr = serverAddress;
+			server.sin_port = htons(serverPort);
 #if BEBBOSSH_AROS
 		logme(L_DEBUG, "bebbosshd/AROS: binding port %ld backlog %ld accept burst %ld",
 				(LONG)serverPort, (LONG)listenBacklog, (LONG)listenAcceptBurst);
 #endif
 
 		//Bind
-		if ( bind(acceptSock,(struct sockaddr *)&server , sizeof(server)) < 0) {
-			logme(L_ERROR, "can't bind on %ld.%ld.%ld.%ld:%ld",
-				(0xff & (server.sin_addr.s_addr >> 24)),
-				(0xff & (server.sin_addr.s_addr >> 16)),
-				(0xff & (server.sin_addr.s_addr >> 8)),
-				(0xff & server.sin_addr.s_addr), htons(server.sin_port));
-			error = ERR_BIND;
-			break;
-		}
+			if ( bind(acceptSock,(struct sockaddr *)&server , sizeof(server)) < 0) {
+				logme(L_ERROR, "can't bind on %ld.%ld.%ld.%ld:%ld",
+					(0xff & (server.sin_addr.s_addr >> 24)),
+					(0xff & (server.sin_addr.s_addr >> 16)),
+					(0xff & (server.sin_addr.s_addr >> 8)),
+					(0xff & server.sin_addr.s_addr), htons(server.sin_port));
+				error = ERR_BIND;
+				break;
+			}
 
-		//Listen
-		if (listen(acceptSock, listenBacklog) < 0) {
-			logme(L_ERROR, "can't listen on socket %ld backlog %ld", acceptSock, listenBacklog);
-			error = ERR_LISTEN_SOCKET;
-			break;
-		}
+			//Listen
+			if (listen(acceptSock, listenBacklog) < 0) {
+				logme(L_ERROR, "can't listen on socket %ld backlog %ld", acceptSock, listenBacklog);
+				error = ERR_LISTEN_SOCKET;
+				break;
+			}
 #if BEBBOSSH_AROS
-		{
-			long flags = 1;
-			IoctlSocket(acceptSock, FIONBIO, (char *)&flags);
-		}
+			{
+				long flags = 1;
+				IoctlSocket(acceptSock, FIONBIO, (char *)&flags);
+			}
 #endif
-#if BEBBOSSH_AROS
-		logme(L_DEBUG, "bebbosshd/AROS: listening");
-#endif
+	#if BEBBOSSH_AROS
+			logme(L_DEBUG, "bebbosshd/AROS: listening");
+	#endif
 
-		//Accept and incoming connection
-		logme(L_INFO, "waiting for incoming connections on %ld.%ld.%ld.%ld:%ld",
+			//Accept and incoming connection
+			logme(L_INFO, "waiting for incoming connections on %ld.%ld.%ld.%ld:%ld",
 				(0xff & (server.sin_addr.s_addr >> 24)),
 				(0xff & (server.sin_addr.s_addr >> 16)),
 				(0xff & (server.sin_addr.s_addr >> 8)),
@@ -997,8 +1082,10 @@ __stdargs int main(int argc, char *argv[]) {
 			int selectMax = acceptSock;
 
 			// accept new until cancel signalled.
-			if (!stopped)
-				FD_SET(acceptSock, &readfds);
+			if (!stopped && !setSelectableFd(&readfds, acceptSock, &selectMax)) {
+				logme(L_ERROR, "listen socket fd %ld exceeds FD_SETSIZE=%ld", acceptSock, FD_SETSIZE);
+				stopped = 1;
+			}
 
 			uint32_t sz = listeners.getMax();
 			if (sz) {
@@ -1011,10 +1098,12 @@ __stdargs int main(int argc, char *argv[]) {
 					logme(L_ULTRA, "waiting for %ld", l->getSockFd());
 					if (l->isOpen() && l->isBufferFree()) {
 						int fd = l->getSockFd();
-						++n;
-						FD_SET(fd, &readfds);
-						if (fd > selectMax)
-							selectMax = fd;
+						if (setSelectableFd(&readfds, fd, &selectMax)) {
+							++n;
+						} else {
+							logme(L_ERROR, "client socket fd %ld exceeds FD_SETSIZE=%ld", fd, FD_SETSIZE);
+							l->close();
+						}
 					}
 				}
 				if (!n)
@@ -1024,13 +1113,13 @@ __stdargs int main(int argc, char *argv[]) {
 #if BEBBOSSH_AMIGA_API
 			ULONG signales = SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | portMask | timerMask;
 #if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
-			struct timeval waitTimeout;
-			waitTimeout.tv_sec = 1;
-			waitTimeout.tv_usec = 0;
-			select(selectMax + 1, &readfds, NULL, NULL, &waitTimeout);
-			signales = 0;
-			checkFinished();
-			pruneDeadClients();
+				struct timeval waitTimeout;
+				waitTimeout.tv_sec = 1;
+				waitTimeout.tv_usec = 0;
+				WaitSelect(selectMax + 1, &readfds, NULL, NULL, &waitTimeout, &signales);
+				signales = 0;
+				checkFinished();
+				pruneDeadClients();
 #else
 			WaitSelect(selectMax + 1, &readfds, NULL, NULL, 0, &signales);
 #endif
@@ -1076,9 +1165,7 @@ __stdargs int main(int argc, char *argv[]) {
 				if (c) {
 					int h = c->getHandle();
 					if (h) {
-						FD_SET(h, &readfds);
-						if (h > sn)
-							sn = h;
+						setSelectableFd(&readfds, h, &sn);
 					}
 				}
 			}
@@ -1092,39 +1179,79 @@ __stdargs int main(int argc, char *argv[]) {
 			sz = listeners.getMax();
 			for (uint32_t i = 0; i < sz; ++i) {
 				Listener *l = listeners[i];
-				if (l && l->isOpen() && FD_ISSET(l->getSockFd(), &readfds)) {
+				if (l && l->isOpen() && isFdReady(&readfds, l->getSockFd())) {
 					hasReadyClient = true;
 					break;
 				}
 			}
 
+			bool acceptReady = isFdReady(&readfds, acceptSock);
+#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
+				// Some AROS x86_64 environments do not reliably report the listening
+				// socket as readable. The socket is non-blocking, so a slow poll keeps
+				// accepting connections without depending entirely on select().
+				(void)acceptReady;
+#endif
+
 			// handle new connections, but do not starve already-ready sessions
-			if (!hasReadyClient && FD_ISSET(acceptSock, &readfds)) {
-				int accepted = 0;
-				for (;;) {
-					struct sockaddr_in peer;
-					socklen_t peerLen = sizeof(peer);
-					int clientFds = accept(acceptSock, (struct sockaddr* )&peer, &peerLen);
-					if (clientFds < 0) {
-						int err = Errno();
-						if (accepted
+#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
+			if (!hasReadyClient) {
+#else
+			if (!hasReadyClient && acceptReady) {
+#endif
+					int accepted = 0;
+					for (;;) {
+						struct sockaddr_in peer;
+						socklen_t peerLen = sizeof(peer);
+#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
+						int clientFds = accept(acceptSock, NULL, NULL);
+#else
+						int clientFds = accept(acceptSock, (struct sockaddr* )&peer, &peerLen);
+#endif
+						if (clientFds < 0) {
+#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
+							if (arosSocketErrno != EAGAIN
 #ifdef EWOULDBLOCK
-							|| err == EWOULDBLOCK
+								&& arosSocketErrno != EWOULDBLOCK
+#endif
+								) {
+							}
+							break;
+#else
+							int err = Errno();
+							if (accepted
+	#ifdef EWOULDBLOCK
+								|| err == EWOULDBLOCK
 #endif
 							|| err == EAGAIN) {
 							break;
 						}
-						logme(L_DEBUG, "Socket shutdown for %ld errno=%ld", acceptSock, err);
-						stopped = 1;
-						break;
-					}
+							logme(L_DEBUG, "Socket shutdown for %ld errno=%ld", acceptSock, err);
+							stopped = 1;
+							break;
+#endif
+						}
 
-					logme(L_INFO, "new connection from %ld.%ld.%ld.%ld:%ld on socket %ld",
-							(0xff & (peer.sin_addr.s_addr >> 24)),
-							(0xff & (peer.sin_addr.s_addr >> 16)),
-							(0xff & (peer.sin_addr.s_addr >> 8)),
-							(0xff & peer.sin_addr.s_addr), peer.sin_port, clientFds);
-					SshSession *cs = new SshSession(clientFds);
+#if !(BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT))
+						logme(L_INFO, "new connection from %ld.%ld.%ld.%ld:%ld on socket %ld",
+								(0xff & (peer.sin_addr.s_addr >> 24)),
+								(0xff & (peer.sin_addr.s_addr >> 16)),
+								(0xff & (peer.sin_addr.s_addr >> 8)),
+								(0xff & peer.sin_addr.s_addr), peer.sin_port, clientFds);
+#endif
+						if (!isSelectableFd(clientFds)) {
+							logme(L_ERROR, "rejecting socket fd %ld beyond FD_SETSIZE=%ld", clientFds, FD_SETSIZE);
+							CloseSocket(clientFds);
+							++accepted;
+							break;
+						}
+#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
+						{
+							long flags = 1;
+							IoctlSocket(clientFds, FIONBIO, (char *)&flags);
+						}
+#endif
+						SshSession *cs = new SshSession(clientFds);
 					if (!cs) {
 						CloseSocket(clientFds);
 					} else {
@@ -1136,10 +1263,10 @@ __stdargs int main(int argc, char *argv[]) {
 							delete (c1 ? c1 : c2);
 						}
 
-						clients.add(clientFds, cs);
-						listeners.add(clientFds, cs);
-						cs->start();
-					}
+							clients.add(clientFds, cs);
+							listeners.add(clientFds, cs);
+							cs->start();
+						}
 
 					++accepted;
 					if (accepted >= listenAcceptBurst)
@@ -1151,11 +1278,11 @@ __stdargs int main(int argc, char *argv[]) {
 			for (int i = 0; i < csz; ++i) {
 				auto c = clients[i];
 				if (c) {
-					int h = c->getHandle();
-					if (h && FD_ISSET(h, &readfds)) {
-						if (c->readHandle() < 0) {
-							c->close();
-						}
+						int h = c->getHandle();
+						if (h && isFdReady(&readfds, h)) {
+							if (c->readHandle() < 0) {
+								c->close();
+							}
 					}
 				}
 			}
@@ -1165,11 +1292,11 @@ __stdargs int main(int argc, char *argv[]) {
 			bool somethingClosed = false;
 			for (uint32_t i = 0; i < sz; ++i) {
 				Listener *l = listeners[i];
-				if (!l)
-					continue;
+					if (!l)
+						continue;
 
-				if (FD_ISSET(l->getSockFd(), &readfds)) {
-		 			//Receive a message from server
+						if (isFdReady(&readfds, l->getSockFd())) {
+							//Receive a message from server
 					int readSize = recv(l->getSockFd(), theBuffer, CHUNKSIZE, 0);
 					logme(L_FINE, "read %ld from fd=%ld", readSize, l->getSockFd());
 

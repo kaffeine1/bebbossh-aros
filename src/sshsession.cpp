@@ -48,6 +48,7 @@
 #include <proto/dos.h>
 #include <proto/exec.h>
 #include <proto/socket.h>
+#include <aros_mincrt_wrappers.h>
 
 #define DPTR BPTR
 extern struct SignalSemaphore theLock;
@@ -108,6 +109,7 @@ static int conv_func(int num_msg,
 
 #include "revision.h"
 
+
 char const * AES128 = "aes128-gcm@openssh.com";
 char const * CHACHA20 = "chacha20-poly1305@openssh.com";
 
@@ -119,6 +121,40 @@ extern uint8_t hostPK[32];
 extern uint8_t hostSK[64];
 
 extern char const *passwords;
+
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
+extern "C" BPTR bebbossh_aros_open(const char *name, LONG mode);
+extern "C" void bebbossh_aros_close(BPTR file);
+extern "C" LONG bebbossh_aros_read(BPTR file, void *buf, LONG len);
+#define BSSH_OPEN(name, mode) bebbossh_aros_open((name), (mode))
+#define BSSH_CLOSE(file) bebbossh_aros_close((file))
+#define BSSH_READ(file, buf, len) bebbossh_aros_read((file), (buf), (len))
+static char *bssh_fgets(BPTR file, char *buf, LONG len)
+{
+	if (!file || !buf || len <= 1)
+		return 0;
+
+	LONG used = 0;
+	while (used < len - 1) {
+		char c;
+		LONG got = BSSH_READ(file, &c, 1);
+		if (got <= 0)
+			break;
+		buf[used++] = c;
+		if (c == '\n')
+			break;
+	}
+	if (!used)
+		return 0;
+	buf[used] = 0;
+	return buf;
+}
+#define BSSH_FGETS(file, buf, len) bssh_fgets((file), (buf), (len))
+#else
+#define BSSH_OPEN(name, mode) Open((name), (mode))
+#define BSSH_CLOSE(file) Close((file))
+#define BSSH_FGETS(file, buf, len) FGets((file), (buf), (len))
+#endif
 
 static unsigned SSHNO;
 static char const *hello = "SSH-2.0-" _VNAME "\r\n";
@@ -135,30 +171,52 @@ static bool loadPasswordCache() {
 		return passwordCache != 0;
 
 	passwordCacheLoaded = true;
-	BPTR pwd = Open(passwords, MODE_OLDFILE);
+	BPTR pwd = BSSH_OPEN(passwords, MODE_OLDFILE);
 	if (!pwd) {
 		logme(L_ERROR, "can't open `%s`", passwords);
 		return false;
 	}
 
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
+	static char cache[4096];
+	char line[256];
+	size_t used = 0;
+	cache[0] = 0;
+
+	for (;;) {
+		char *s = BSSH_FGETS(pwd, line, sizeof(line));
+		if (!s)
+			break;
+		size_t len = strlen(line);
+		if (used + len + 1 >= sizeof(cache))
+			break;
+		memcpy(cache + used, line, len);
+		used += len;
+		cache[used] = 0;
+	}
+	BSSH_CLOSE(pwd);
+
+	passwordCache = cache;
+	return passwordCache[0] != 0;
+#else
 	char line[256];
 	size_t used = 0;
 	char *cache = (char *)malloc(1);
 	if (!cache) {
-		Close(pwd);
+		BSSH_CLOSE(pwd);
 		return false;
 	}
 	cache[0] = 0;
 
 	for (;;) {
-		char *s = FGets(pwd, line, sizeof(line));
+		char *s = BSSH_FGETS(pwd, line, sizeof(line));
 		if (!s)
 			break;
 		size_t len = strlen(line);
 		char *next = (char *)realloc(cache, used + len + 1);
 		if (!next) {
 			free(cache);
-			Close(pwd);
+			BSSH_CLOSE(pwd);
 			return false;
 		}
 		cache = next;
@@ -166,10 +224,11 @@ static bool loadPasswordCache() {
 		used += len;
 		cache[used] = 0;
 	}
-	Close(pwd);
+	BSSH_CLOSE(pwd);
 
 	passwordCache = cache;
 	return true;
+#endif
 }
 #endif
 
@@ -311,6 +370,8 @@ void SshSession::sendBreak() const {
 }
 
 bool SshSession::isAlive() const {
+	if (dead)
+		return false;
 	logme(L_DEBUG, "server has %ld channels", channels.getCount());
 	if (channels.getCount()) {
 		for (int i = 0; i < channels.getMax(); ++i) {
@@ -341,13 +402,14 @@ ShellChannel* SshSession::findShellChannelByBreakPort(struct MsgPort *mp) const 
 SshSession::SshSession(int _sock) :
 		state(HELLO),
 		readAead(0), readBc(0), readCounterBc(0),
-		writeAead(0), writeBc(0), writeCounterBc(0),
-		channels(10), windowsize(CHUNKSIZE), maxsize(CHUNKSIZE),
-		inpos(indatax), inChannelUse(0), inChannelSize(0), inChannelBuf(0),
-		kexLen(0), username(0)
+			writeAead(0), writeBc(0), writeCounterBc(0),
+				channels(10), windowsize(CHUNKSIZE), maxsize(CHUNKSIZE),
+				inpos(indatax), inChannelUse(0), inChannelSize(0), inChannelBuf(0),
+				kexLen(0), username(0), dead(false)
 {
 	sockFd = _sock;
 	open = true;
+	usernameStorage[0] = 0;
 	name[0] = 'S';
 	name[1] = 'S';
 	name[2] = 'H';
@@ -362,14 +424,14 @@ SshSession::~SshSession() {
 		Channel *c = channels.remove(i);
 		delete c;
 	}
-	if (readAead) delete readAead;
-	if (writeAead) delete writeAead;
-	if (readBc) delete readBc;
-	if (writeBc) delete writeBc;
-	if (readCounterBc) delete readCounterBc;
-	if (writeCounterBc) delete writeCounterBc;
+	if (readAead) { delete readAead; readAead = 0; }
+	if (writeAead) { delete writeAead; writeAead = 0; }
+	if (readBc) { delete readBc; readBc = 0; }
+	if (writeBc) { delete writeBc; writeBc = 0; }
+	if (readCounterBc) { delete readCounterBc; readCounterBc = 0; }
+	if (writeCounterBc) { delete writeCounterBc; writeCounterBc = 0; }
 	free(inChannelBuf);
-	if (username) free(username);
+	if (username && username != usernameStorage) free(username);
 
 	memset(name, 0xde, (char*)&readAead - (char*)&name);
 }
@@ -391,6 +453,7 @@ void SshSession::start() {
 
 void SshSession::close() {
 	logme(L_FINE, "@%ld closing socket for %s", sockFd, name);
+	dead = true;
 	abort();
 	if (open) {
 #if BEBBOSSH_AMIGA_API
@@ -454,7 +517,11 @@ void SshSession::noop() {
 
 int SshSession::write(void const *data, int len) {
 	int sub = 0;
+	if (dead || !open)
+		return -1;
 	if (state >= AUTH) {
+		if (!writeAead)
+			return -1;
 		if (isLogLevel(L_TRACE)) {
 			_dump("send plain", data, len > 128 ? 128 : len);
 			if (len > 128) {
@@ -514,6 +581,8 @@ int SshSession::write(void const *data, int len) {
 
 int SshSession::processSocketData(void *_data, int len) {
 	logme(L_FINE, "processSocketData %ld", len);
+	if (dead)
+		return false;
 	if (len > CHUNKSIZE) // can't happen...
 		return false;
 
@@ -881,25 +950,25 @@ int SshSession::consumeSocketData(char *indata, int len) {
 
 		state = AUTH;
 		break;
-	case LOGGEDIN:
-	case AUTH: {
-		uint8_t *p = (uint8_t*) indata + 6;
-		// state >= AUTH -> decrypt incoming data
-		int len = decryptPacket((uint8_t*) indata, packetSize);
-		if (0 == len)
-			return -1;
+		case LOGGEDIN:
+		case AUTH: {
+			uint8_t *p = (uint8_t*) indata + 6;
+			// state >= AUTH -> decrypt incoming data
+			int len = decryptPacket((uint8_t*) indata, packetSize);
+			if (0 == len)
+				return -1;
 
 		packetSize += 16; // add signature size
 
-		switch (indata[5]) {
-		case SSH_MSG_SERVICE_REQUEST:
-			logme(L_FINE, "@%ld got SSH_MSG_SERVICE_REQUEST", sockFd);
-			handleServiceRequest(p);
-			break;
-		case SSH_MSG_USERAUTH_REQUEST:
-			logme(L_FINE, "@%ld got SSH_MSG_USERAUTH_REQUEST", sockFd);
-			if (handleUserAuthRequest(p)) {
-				state = LOGGEDIN;
+			switch (indata[5]) {
+			case SSH_MSG_SERVICE_REQUEST:
+				logme(L_FINE, "@%ld got SSH_MSG_SERVICE_REQUEST", sockFd);
+				handleServiceRequest(p);
+				break;
+			case SSH_MSG_USERAUTH_REQUEST:
+				logme(L_FINE, "@%ld got SSH_MSG_USERAUTH_REQUEST", sockFd);
+				if (handleUserAuthRequest(p)) {
+					state = LOGGEDIN;
 			}
 			break;
 		case SSH_MSG_CHANNEL_OPEN:
@@ -943,6 +1012,10 @@ int SshSession::consumeSocketData(char *indata, int len) {
 
 bool SshSession::login(uint8_t *user, uint8_t *pass) {
 #if BEBBOSSH_AMIGA_API
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
+	passwordCacheLoaded = false;
+	passwordCache = 0;
+#endif
 	if (!loadPasswordCache())
 		return false;
 
@@ -990,10 +1063,10 @@ bool SshSession::login(uint8_t *user, uint8_t *pass) {
 		break;
 	}
 
-	if (r)
-		logme(L_INFO, "@%ld login success for user `%s`", sockFd, user);
-	else
-		logme(L_INFO, "@%ld login failed for user `%s`", sockFd, user);
+		if (r)
+			logme(L_INFO, "@%ld login success for user `%s`", sockFd, user);
+		else
+			logme(L_INFO, "@%ld login failed for user `%s`", sockFd, user);
 	return r;
 #elif BEBBOSSH_PAM_AUTH
     pam_handle_t *pamh = NULL;
@@ -1156,13 +1229,20 @@ bool SshSession::handleChannelRequest(uint8_t *p) {
 				goto Error;
 			}
 			ShellChannel *sc = (ShellChannel*) c;
-			if (sc->hasShell() || sc->hasExec()) {
-				logme(L_ERROR, "@%ld %s requested but already has a shell/exec", sockFd);
-				goto Error;
-			}
+				if (sc->hasShell() || sc->hasExec()) {
+					logme(L_ERROR, "@%ld %s requested but already has a shell/exec", sockFd);
+					goto Error;
+				}
 
-			SftpChannel *sfc = new SftpChannel(c->getServer(), channelNo); // TODO Remote channelNo
-			delete c;
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
+				outdata[5] = SSH_MSG_CHANNEL_FAILURE;
+				putInt32Aligned((outdata + 6) , channelNo);
+				write(outdata + 5, 5);
+				close();
+				return false;
+#endif
+				SftpChannel *sfc = new SftpChannel(c->getServer(), channelNo); // TODO Remote channelNo
+				delete c;
 
 			channels.replace(channelNo, sfc);
 
@@ -1262,14 +1342,14 @@ static bool authorizeKey(uint8_t *hostBase64, uint8_t *buffer) {
 	extern char const * sshDotDir;
 	static char const * authorized_keys;
 	if (!authorized_keys) authorized_keys = concat(sshDotDir, "/authorized_keys", NULL);
-	BPTR f = Open(authorized_keys, MODE_OLDFILE);
+	BPTR f = BSSH_OPEN(authorized_keys, MODE_OLDFILE);
 	if (!f)
 		return false;
 
 	bool r = false;
 	while (!r) {
 		char *p = (char*) buffer;
-		if (!FGets(f, p, 256))
+		if (!BSSH_FGETS(f, p, 256))
 			break;
 
 		// split
@@ -1291,7 +1371,7 @@ static bool authorizeKey(uint8_t *hostBase64, uint8_t *buffer) {
 
 		r = 0 == strcmp(c, (char*) hostBase64);
 	}
-	Close(f);
+	BSSH_CLOSE(f);
 	return r;
 }
 
@@ -1313,9 +1393,15 @@ bool SshSession::handleUserAuthRequest(uint8_t *p) {
 		if (login(user, s)) {
 			write(loginSuccess, sizeof(loginSuccess));
 			logme(L_FINE, "@%ld sent SSH_MSG_USERAUTH_SUCCESS", sockFd);
-			username = strdup((char *)user);
-			return true;
-		}
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
+				strncpy(usernameStorage, (char *)user, sizeof(usernameStorage) - 1);
+				usernameStorage[sizeof(usernameStorage) - 1] = 0;
+				username = usernameStorage;
+#else
+				username = strdup((char *)user);
+#endif
+				return true;
+			}
 	} else if (0 == strcmp((char*) s, "publickey")) {
 		*p++ = auth;
 		uint8_t *blob = p;
@@ -1346,23 +1432,35 @@ bool SshSession::handleUserAuthRequest(uint8_t *p) {
 								memcpy(t, p5, len);
 								len += 36;
 //								_dump("vfymsg", m, len);
-								if (ge_verify_ed25519(m, len, p, pk)) {
-									write(loginSuccess, sizeof(loginSuccess));
-									logme(L_FINE, "@%ld sent SSH_MSG_USERAUTH_SUCCESS", sockFd);
-									username = strdup((char *)user);
-									return true;
-								}
+									if (ge_verify_ed25519(m, len, p, pk)) {
+										write(loginSuccess, sizeof(loginSuccess));
+										logme(L_FINE, "@%ld sent SSH_MSG_USERAUTH_SUCCESS", sockFd);
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
+										strncpy(usernameStorage, (char *)user, sizeof(usernameStorage) - 1);
+										usernameStorage[sizeof(usernameStorage) - 1] = 0;
+										username = usernameStorage;
+#else
+										username = strdup((char *)user);
+#endif
+										return true;
+									}
 							}
 						}
 					} else {
 						outdata[5] = SSH_MSG_USERAUTH_PK_OK;
 						memcpy(&outdata[6], blob, 70);
 
-						write(outdata + 5, 71);
-						logme(L_FINE, "@%ld sent SSH_MSG_USERAUTH_PK_OK", sockFd);
-						username = strdup((char *)user);
-						return true;
-					}
+							write(outdata + 5, 71);
+							logme(L_FINE, "@%ld sent SSH_MSG_USERAUTH_PK_OK", sockFd);
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
+							strncpy(usernameStorage, (char *)user, sizeof(usernameStorage) - 1);
+							usernameStorage[sizeof(usernameStorage) - 1] = 0;
+							username = usernameStorage;
+#else
+							username = strdup((char *)user);
+#endif
+							return true;
+						}
 				}
 			}
 		}
@@ -1388,6 +1486,8 @@ void SshSession::handleServiceRequest(uint8_t *p) {
 }
 
 int SshSession::decryptPacket(uint8_t *p, unsigned len) {
+	if (!readAead || state < AUTH || !open || dead)
+		return 0;
 	readAead->init(keyMat.encIvRead, 12);
 
 	if (readCounterBc) {

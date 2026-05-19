@@ -45,9 +45,36 @@
 #include <proto/dos.h>
 #include <proto/exec.h>
 #include <amistdio.h>
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
+extern "C" BPTR bebbossh_aros_open(const char *name, LONG mode);
+extern "C" void bebbossh_aros_close(BPTR file);
+extern "C" LONG bebbossh_aros_read(BPTR file, void *buf, LONG len);
+extern "C" LONG bebbossh_aros_seek(BPTR file, LONG offset, LONG mode);
+extern "C" APTR bebbossh_aros_allocvec(IPTR byteSize, ULONG requirements);
+extern "C" void bebbossh_aros_freevec(APTR memoryBlock);
+#define BSSH_OPEN(name, mode) bebbossh_aros_open((name), (mode))
+#define BSSH_CLOSE(file) bebbossh_aros_close((file))
+#define BSSH_READ(file, buf, len) bebbossh_aros_read((file), (buf), (len))
+#define BSSH_SEEK(file, offset, mode) bebbossh_aros_seek((file), (offset), (mode))
+#define BSSH_ALLOCVEC(size, flags) bebbossh_aros_allocvec((size), (flags))
+#define BSSH_FREEVEC(ptr) bebbossh_aros_freevec((ptr))
+#else
+#define BSSH_OPEN(name, mode) Open((name), (mode))
+#define BSSH_CLOSE(file) Close((file))
+#define BSSH_READ(file, buf, len) Read((file), (buf), (len))
+#define BSSH_SEEK(file, offset, mode) Seek((file), (offset), (mode))
+#define BSSH_ALLOCVEC(size, flags) AllocVec((size), (flags))
+#define BSSH_FREEVEC(ptr) FreeVec((ptr))
+#endif
 #else
 #include <stdio.h>
 #include "amiemul.h"
+#define BSSH_OPEN(name, mode) Open((name), (mode))
+#define BSSH_CLOSE(file) Close((file))
+#define BSSH_READ(file, buf, len) Read((file), (buf), (len))
+#define BSSH_SEEK(file, offset, mode) Seek((file), (offset), (mode))
+#define BSSH_ALLOCVEC(size, flags) AllocVec((size), (flags))
+#define BSSH_FREEVEC(ptr) FreeVec((ptr))
 #endif
 
 #ifdef __AMIGA__
@@ -69,7 +96,7 @@ bool loadEd25519Key(uint8_t * pk, uint8_t * sk, char const * keyfilename) {
 	if (!keyFile) keyFile = concat(sshDir, ".ssh/id_ed25519", NULL);
 	if (!keyfilename) keyfilename = keyFile;
 
-	BPTR kfile = Open(keyfilename, MODE_OLDFILE);
+	BPTR kfile = BSSH_OPEN(keyfilename, MODE_OLDFILE);
 	if (!kfile) {
 		if (strcmp(keyfilename, keyFile))
 			logme(L_ERROR, "can't open `%s` for reading", keyfilename);
@@ -77,15 +104,15 @@ bool loadEd25519Key(uint8_t * pk, uint8_t * sk, char const * keyfilename) {
 	}
 	logme(L_DEBUG, "loading key file `%s`", keyfilename);
 
-	Seek(kfile, 0, OFFSET_END);
-	int size = Seek(kfile, 0, OFFSET_BEGINNING);
-	char * keymime = (char *)AllocVec(size + 1, MEMF_PUBLIC);
-	uint8_t * keydata = (uint8_t *)AllocVec(size, MEMF_PUBLIC);
+	BSSH_SEEK(kfile, 0, OFFSET_END);
+	int size = BSSH_SEEK(kfile, 0, OFFSET_BEGINNING);
+	char * keymime = (char *)BSSH_ALLOCVEC(size + 1, MEMF_PUBLIC);
+	uint8_t * keydata = (uint8_t *)BSSH_ALLOCVEC(size, MEMF_PUBLIC);
 
 	bool r = true;
 	if (keydata && keymime) {
 		for (int read = 0; read < size;) {
-			int in = Read(kfile, keymime + read, size - read);
+			int in = BSSH_READ(kfile, keymime + read, size - read);
 			if (in <= 0) {
 				r = false;
 				break;
@@ -139,12 +166,12 @@ bool loadEd25519Key(uint8_t * pk, uint8_t * sk, char const * keyfilename) {
 		}
 		memset(keydata, 0, size);
 		memset(keymime, 0, size);
-		FreeVec(keydata);
-		FreeVec(keymime);
+		BSSH_FREEVEC(keydata);
+		BSSH_FREEVEC(keymime);
 	} else {
 		r = false;
 		logme(L_ERROR, "no mem for %ld bytes", size);
 	}
-	Close(kfile);
+	BSSH_CLOSE(kfile);
 	return r;
 }

@@ -97,6 +97,8 @@ struct SshSession : public Listener {
 	uint32_t kexLen;
 
 	char * username;
+	char usernameStorage[64];
+	bool dead;
 
 	SshSession(int _sock);
 	virtual ~SshSession();

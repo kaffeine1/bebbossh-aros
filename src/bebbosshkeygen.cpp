@@ -43,19 +43,37 @@
 #include <rand.h>
 #include <test.h>
 #include <ssh.h>
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
+#include <ed25519i.h>
+#endif
 #include "revision.h"
 
 #if BEBBOSSH_AMIGA_API
 #include <amistdio.h>
 #include <proto/dos.h>
 #include <proto/exec.h>
-#if BEBBOSSH_AROS
+#if defined(BEBBOSSH_AROS_MINCRT)
+extern "C" BPTR bebbossh_aros_open(const char *name, LONG mode);
+extern "C" void bebbossh_aros_close(BPTR file);
+extern "C" LONG bebbossh_aros_write(BPTR file, const void *buf, LONG len);
+#define BSSH_OPEN(name, mode) bebbossh_aros_open((name), (mode))
+#define BSSH_CLOSE(file) bebbossh_aros_close((file))
+#define BSSH_WRITE(file, buf, len) bebbossh_aros_write((file), (buf), (len))
+#else
+#define BSSH_OPEN(name, mode) Open((name), (mode))
+#define BSSH_CLOSE(file) Close(file)
+#define BSSH_WRITE(file, buf, len) Write((file), (buf), (len))
+#endif
+#if BEBBOSSH_AROS && !defined(BEBBOSSH_AROS_MINCRT)
 #define puts(s) Printf("%s\n", (s))
 #define printf Printf
 #define fflush(s) ((void)0)
 #endif
 #else
 #include "amiemul.h"
+#define BSSH_OPEN(name, mode) Open((name), (mode))
+#define BSSH_CLOSE(file) Close(file)
+#define BSSH_WRITE(file, buf, len) Write((file), (buf), (len))
 #endif
 
 
@@ -63,6 +81,12 @@ static char const *filename;
 static char outfilename[256];
 
 static char comment[256] = "Amiga";
+
+#if defined(__AROS__) && defined(BEBBOSSH_TRACE_KEYGEN)
+#define KGMAINTRACE(s) puts(s)
+#else
+#define KGMAINTRACE(s) ((void)0)
+#endif
 
 static char *readLine(char *buf, int len) {
 #if BEBBOSSH_AMIGA_API
@@ -86,7 +110,7 @@ static void printUsage() {
     puts("    -?           display this help");
 }
 
-static void parseParams(unsigned argc, char **argv) {
+static int parseParams(unsigned argc, char **argv) {
 	char *arg = 0;
 	int normal = 0;
 
@@ -122,16 +146,16 @@ static void parseParams(unsigned argc, char **argv) {
 	}
 	if (normal)
 		puts("ignoring additional arguments");
-	return;
+	return 0;
 
 	usage: printUsage();
-	exit(0);
+	return 1;
 
 	missing: printf("missing parameter for %s\r\n", arg);
-	exit(10);
+	return 10;
 
 	invalid: printf("invalid option %s\r\n", arg);
-	exit(10);
+	return 10;
 }
 
 extern char const * sshDir;
@@ -139,11 +163,17 @@ extern char const * sshDir;
 __stdargs int main(int argc, char **argv) {
 	static char buf[256];
 
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
+	filename = "HOSTKEY";
+#else
 	filename = concat(sshDir, ".ssh/id_ed25519", NULL);
+#endif
 
 	strcpy(outfilename, filename);
 
-	parseParams(argc, argv);
+	int paramStatus = parseParams(argc, argv);
+	if (paramStatus)
+		return paramStatus == 1 ? 0 : paramStatus;
 
 #if defined(__AMIGA__) && !BEBBOSSH_AROS
 	// remove the program arguments from stdin
@@ -166,20 +196,34 @@ __stdargs int main(int argc, char **argv) {
 		}
 	}
 
-	BPTR xist = Open(outfilename, MODE_OLDFILE);
+#if !(defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT))
+	BPTR xist = BSSH_OPEN(outfilename, MODE_OLDFILE);
 	if (xist) {
-		Close(xist);
+		BSSH_CLOSE(xist);
 		printf("%s already exists.\nOverwrite (y/n)? ", outfilename);
 		static char buf2[4];
 		fflush(stdout);
 		readLine(buf2, 3);
 		if (*buf2 != 'y' && *buf2 != 'Y')
-			return 0;
+				return 0;
 	}
+#endif
 
 	static uint8_t pk[32];
 	static uint8_t sk[64];
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
+	static uint8_t az[64];
+	KGMAINTRACE("keygen: before randfill");
+	randfill(sk, 32);
+	KGMAINTRACE("keygen: after randfill");
+	secret_expand(az, sk);
+	KGMAINTRACE("keygen: after secret_expand");
+	ge_pubkey(pk, az);
+	KGMAINTRACE("keygen: after ge_pubkey");
+	memcpy(sk + 32, pk, 32);
+#else
 	ge_new_keypair_ed25519(pk, sk);
+#endif
 
 	static char gfx[9][21];
 	memset(gfx, ' ', sizeof(gfx));
@@ -213,7 +257,7 @@ __stdargs int main(int argc, char **argv) {
 	}
 	puts("+----[SHA256]-----+");
 
-	BPTR out = Open(outfilename, MODE_NEWFILE);
+	BPTR out = BSSH_OPEN(outfilename, MODE_NEWFILE);
 	if (!out) {
 		char *p = outfilename + strlen(outfilename);
 		while (p > outfilename) {
@@ -227,7 +271,7 @@ __stdargs int main(int argc, char **argv) {
 			mkdir(outfilename, 0777);
 			*p = c;
 		}
-		out = Open(outfilename, MODE_NEWFILE);
+		out = BSSH_OPEN(outfilename, MODE_NEWFILE);
 		if (!out) {
 			printf("can't write to: %s", outfilename);
 			return 10;
@@ -290,18 +334,18 @@ __stdargs int main(int argc, char **argv) {
 	static uint8_t mime[512];
 	mimeEncode(mime, key, t - key);
 
-	Write(out, "-----BEGIN OPENSSH PRIVATE KEY-----\n", 36);
+	BSSH_WRITE(out, "-----BEGIN OPENSSH PRIVATE KEY-----\n", 36);
 
 	for (uint8_t *p = mime, *q = p + strlen((char*) mime); p < q; p += 72) {
 		int l = q - p;
 		if (l > 72)
 			l = 72;
-		Write(out, p, l);
-		Write(out, "\n", 1);
+		BSSH_WRITE(out, p, l);
+		BSSH_WRITE(out, "\n", 1);
 	}
 
-	Write(out, "-----END OPENSSH PRIVATE KEY-----\n", 34);
-	Close(out);
+	BSSH_WRITE(out, "-----END OPENSSH PRIVATE KEY-----\n", 34);
+	BSSH_CLOSE(out);
 
 	/* write public key */
 	uint8_t pubbuf[4 + 11 + 4 + 32];
@@ -313,19 +357,19 @@ __stdargs int main(int argc, char **argv) {
 	mimeEncode(mime, pubbuf, pp - pubbuf);
 
 	strcat(outfilename, ".pub");
-	out = Open(outfilename, MODE_NEWFILE);
+	out = BSSH_OPEN(outfilename, MODE_NEWFILE);
 	if (!out) {
 		printf("can't write %s", outfilename);
 		return 5;
 	}
 
-	Write(out, "ssh-ed25519 ", 12);
-	Write(out, mime, strlen((char* )mime));
-	Write(out, " ", 1);
-	Write(out, comment, strlen(comment));
-	Write(out, "\n", 1);
+	BSSH_WRITE(out, "ssh-ed25519 ", 12);
+	BSSH_WRITE(out, mime, strlen((char* )mime));
+	BSSH_WRITE(out, " ", 1);
+	BSSH_WRITE(out, comment, strlen(comment));
+	BSSH_WRITE(out, "\n", 1);
 
-	Close(out);
+	BSSH_CLOSE(out);
 
 	return 0;
 }

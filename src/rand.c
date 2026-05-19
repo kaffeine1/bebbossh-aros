@@ -62,10 +62,12 @@
 
 #if defined(__AROS__)
 static uint64_t aros_rdtsc(void) {
-#if (defined(__i386__) || defined(__x86_64__)) && defined(__GNUC__)
-    uint32_t lo, hi;
-    __asm__ volatile("rdtsc" : "=a"(lo), "=d"(hi));
-    return ((uint64_t)hi << 32) | lo;
+	#if defined(__x86_64__) && defined(BEBBOSSH_AROS_MINCRT)
+	    return 0;
+	#elif (defined(__i386__) || defined(__x86_64__)) && defined(__GNUC__)
+	    uint32_t lo, hi;
+	    __asm__ volatile("rdtsc" : "=a"(lo), "=d"(hi));
+	    return ((uint64_t)hi << 32) | lo;
 #else
     return 0;
 #endif
@@ -99,14 +101,23 @@ void randfill(void * _to, unsigned len) {
     static int seeded;
 
 #if defined(__x86_64__)
-    static uint64_t counter;
-    uintptr_t frame = (uintptr_t)&frame;
-    uint64_t entropy = aros_rdtsc() ^
-            (uint64_t)(uintptr_t)_to ^
-            ((uint64_t)len << 32) ^
-            (uint64_t)(uintptr_t)&state ^
-            (uint64_t)frame ^
-            (++counter * UINT64_C(0x9e3779b97f4a7c15));
+	    static uint64_t counter;
+#if !defined(BEBBOSSH_AROS_MINCRT)
+	    struct DateStamp ds;
+#endif
+	    uintptr_t frame = (uintptr_t)&frame;
+	    uint64_t entropy = aros_rdtsc() ^
+	            (uint64_t)(uintptr_t)_to ^
+	            ((uint64_t)len << 32) ^
+	            (uint64_t)(uintptr_t)&state ^
+	            (uint64_t)frame ^
+	            (++counter * UINT64_C(0x9e3779b97f4a7c15));
+#if !defined(BEBBOSSH_AROS_MINCRT)
+	    DateStamp(&ds);
+	    entropy ^= ((uint64_t)(uint32_t)ds.ds_Days << 33) ^
+	            ((uint64_t)(uint32_t)ds.ds_Minute << 17) ^
+	            (uint32_t)ds.ds_Tick;
+#endif
 
     if (!seeded) {
         state = entropy ^ UINT64_C(0xd1b54a32d192ed03);

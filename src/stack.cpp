@@ -36,6 +36,7 @@
 #include "platform.h"
 #if BEBBOSSH_AMIGA_API
 #include <proto/socket.h>
+#include <aros_mincrt_wrappers.h>
 #else
 #include "amiemul.h"
 #endif

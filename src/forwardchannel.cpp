@@ -9,6 +9,7 @@
 #if BEBBOSSH_AMIGA_API
 #include <proto/exec.h>
 #include <proto/socket.h>
+#include <aros_mincrt_wrappers.h>
 
 extern struct SignalSemaphore theLock;
 

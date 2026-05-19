@@ -56,6 +56,11 @@ enum DebugLevel DEBUG_LEVEL__data = L_WARN;
 enum DebugLevel * DEBUG_LEVEL = &DEBUG_LEVEL__data;
 
 void logme(enum DebugLevel lvl, char const *fmt, ...) {
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
+	(void)lvl;
+	(void)fmt;
+	return;
+#endif
 	if (lvl <= *DEBUG_LEVEL) {
 		va_list args;
 		va_start(args, fmt);

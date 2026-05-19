@@ -30,7 +30,7 @@
  */
 
 #include <inttypes.h>
-#ifdef __AMIGA__
+#if defined(__AMIGA__) || defined(__AROS__)
 #include <proto/dos.h>
 #include <amistdio.h>
 #else
