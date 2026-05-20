@@ -1022,9 +1022,8 @@ bool ShellChannel::finishArosExecImmediate(uint32_t exitStatus) {
 }
 
 bool ShellChannel::startArosLoadedExecFile(bool closeAfterCommand) {
-#if defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
-	(void)closeAfterCommand;
-	return finishArosExecImmediate(0);
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
+	return runArosExecMincrtX64(closeAfterCommand);
 #endif
 	int keywordLen = 0;
 	char *argp;
@@ -1115,9 +1114,8 @@ bool ShellChannel::startArosLoadedExecFile(bool closeAfterCommand) {
 }
 
 bool ShellChannel::startArosExecFile(bool closeAfterCommand) {
-#if defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
-	(void)closeAfterCommand;
-	return finishArosExecImmediate(0);
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
+	return runArosExecMincrtX64(closeAfterCommand);
 #endif
 #if defined(BEBBOSSH_AROS_MINCRT)
 	int keywordLen = 0;
@@ -1151,13 +1149,8 @@ bool ShellChannel::startArosExecFile(bool closeAfterCommand) {
 }
 
 bool ShellChannel::runArosExec(bool closeAfterCommand) {
-#if defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
-	if (closeAfterCommand)
-		return finishArosExecImmediate(0);
-	static const char msg[] = "bebbosshd/AROS: exec backend is not available on x86_64 mincrt yet\r\n";
-	server->channelWrite(channel, msg, sizeof(msg) - 1);
-	prompt();
-	return drainBufferedInput();
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
+	return runArosExecMincrtX64(closeAfterCommand);
 #endif
 	char outName[96];
 	snprintf(outName, sizeof(outName), "T:bebbosshd-%lx-%lx.out",
@@ -1220,6 +1213,81 @@ bool ShellChannel::runArosExec(bool closeAfterCommand) {
 	prompt();
 	return drainBufferedInput();
 }
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
+bool ShellChannel::runArosExecMincrtX64(bool closeAfterCommand) {
+	char outName[96];
+	snprintf(outName, sizeof(outName), "T:bebbosshd-%lx-%lx.out",
+			(ULONG)server->getSockFd(), (ULONG)channel);
+
+	DeleteFile(outName);
+	BPTR input = Open("NIL:", MODE_OLDFILE);
+	BPTR output = Open(outName, MODE_NEWFILE);
+	if (!input || !output) {
+		static const char msg[] = "bebbosshd/AROS: cannot open command I/O files\r\n";
+		server->channelWrite(channel, msg, sizeof(msg) - 1);
+		if (input)
+			Close(input);
+		if (output)
+			Close(output);
+		DeleteFile(outName);
+		if (closeAfterCommand) {
+			server->closeChannel(this, 20);
+			return false;
+		}
+
+		prompt();
+		return drainBufferedInput();
+	}
+
+	struct TagItem tags[] = {
+			{ SYS_Input, (IPTR)input },
+			{ SYS_Output, (IPTR)output },
+			{ SYS_Error, (IPTR)output },
+			{ SYS_UserShell, (IPTR)TRUE },
+			{ NP_StackSize, (IPTR)stackSize },
+			{ TAG_DONE, 0 }
+	};
+
+	BPTR oldDir = 0;
+	if (dir)
+		oldDir = CurrentDir(dir);
+	LONG rc = bebbossh_aros_system_tag_list((CONST_STRPTR)xbuffer, tags);
+	if (dir)
+		CurrentDir(oldDir);
+
+	if (input)
+		Close(input);
+	Close(output);
+
+	output = Open(outName, MODE_OLDFILE);
+	if (output) {
+		char buf[2048];
+		for (;;) {
+			LONG got = Read(output, buf, sizeof(buf));
+			if (got <= 0)
+				break;
+			server->channelWrite(channel, buf, got);
+		}
+		Close(output);
+	}
+	DeleteFile(outName);
+
+	if (rc && !closeAfterCommand) {
+		char msg[80];
+		int len = snprintf(msg, sizeof(msg), "bebbosshd/AROS: command returned %ld\r\n", rc);
+		server->channelWrite(channel, msg, len);
+	}
+
+	if (closeAfterCommand) {
+		uint32_t exitStatus = (rc < 0 || rc > 255) ? 255 : (uint32_t)rc;
+		server->closeChannel(this, exitStatus);
+		return false;
+	}
+
+	prompt();
+	return drainBufferedInput();
+}
+#endif
 #endif
 
 bool ShellChannel::startCommand(){

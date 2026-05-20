@@ -226,6 +226,9 @@ askpass-based zero-delay SCP/SFTP stress with sizes 257, 4096, 65536, and
 50 repeated bebbosshkeygen runs through OpenSSH exec from a clean runtime.
 The x86_64 minimal-runtime daemon has also been validated for SFTP ls, get,
 put, rm, rename with overwrite, mkdir, rmdir, and chmod under QEMU.
+On the AROS One x86_64/mincrt QEMU test VM, SSH exec also returns real output
+for short non-interactive commands: C:Version returned Kickstart 51.51,
+Workbench 40.0, and echo ok returned ok.
 
 Known Limits
 ------------
@@ -247,6 +250,10 @@ Known Limits
   status is propagated to the SSH client.
 - Non-PTY exec has a soft 30-second timeout that sends a break to the command
   task and reports the timeout to the client.
+- AROS x86_64/mincrt uses a synchronous SystemTagList backend for real command
+  output. It is validated for short bounded commands, but while a command runs
+  the daemon main loop is blocked. Use AROS console/VNC or i386 for long-running
+  validation commands until an asynchronous x86_64 exec backend exists.
 - Known stdin-driven interactive commands are rejected with exit status 2, so
   they do not block the daemon's synchronous exec path.
 - Shell redirection and pipes (`>`, `<`, `|`) are rejected on AROS until they

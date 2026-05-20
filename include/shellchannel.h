@@ -190,6 +190,9 @@ public:
 	bool startArosLoadedExecFile(bool closeAfterCommand);
 	bool finishArosExecImmediate(uint32_t exitStatus);
 	bool runArosExec(bool closeAfterCommand);
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
+	bool runArosExecMincrtX64(bool closeAfterCommand);
+#endif
 #endif
 
 	struct MsgPort * setBreakPort(struct MsgPort * p1, struct MsgPort * p2);

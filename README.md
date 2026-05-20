@@ -94,6 +94,11 @@ Runtime status on AROS One i386:
   and chmod have also been validated on the AROS x86_64 minimal-runtime daemon.
   x86_64 SFTP timestamp preservation is currently a no-op, and symbolic-link
   SFTP requests remain unsupported.
+- On the AROS x86_64 minimal-runtime daemon, SSH exec now returns real output
+  for short non-interactive commands such as `C:Version` and `echo ok`. This
+  path uses a synchronous `SystemTagList()` backend and captures stdout/stderr
+  through a temporary `T:` file. While the command is running, the daemon main
+  loop is blocked; use it for short bounded commands only.
 - The AROS daemon uses a larger listen backlog, and its per-loop accept burst
   can be configured with `ListenAcceptBurst` or the AROS `-B` option. The
   hosted default stays conservative while short-session churn remains under
@@ -191,6 +196,14 @@ end-to-end under QEMU, including `ls`, `get`, `put`, `rm`, `rename` with
 overwrite, `mkdir`, `rmdir`, and `chmod`. SFTP `readlink`/`symlink` remain
 unsupported, and x86_64 `SetFileDate` timestamp preservation is intentionally
 disabled until that DOS v36 call is validated in the raw runtime wrapper path.
+The same QEMU x86_64/mincrt daemon now validates real SSH command output for
+short non-interactive commands: `C:Version` returns
+`Kickstart 51.51, Workbench 40.0`, and `echo ok` returns `ok`. The backend is
+synchronous and uses raw DOS `SystemTagList` (`LVO 101`) plus `CurrentDir`
+(`LVO 21`), both verified against the x86_64 cross-toolchain
+`Developer/SDK/fd/dos_lib.fd`. Long-running or stuck commands block the daemon
+until they return; for long validation jobs, run the program from an AROS
+console/VNC session or use the i386 daemon path.
 
 ### AROS automation workflow
 

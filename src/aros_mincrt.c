@@ -1239,6 +1239,24 @@ BPTR bebbossh_aros_create_dir(const char *name)
 #endif
 }
 
+BPTR bebbossh_aros_current_dir(BPTR lock)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 21);
+    APTR save;
+    BPTR ret;
+
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((BPTR (*)(BPTR))func)(lock);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return CurrentDir(lock);
+#endif
+}
+
 LONG bebbossh_aros_ioerr(void)
 {
 #if defined(__x86_64__)
@@ -1272,6 +1290,26 @@ LONG bebbossh_aros_set_protection(const char *name, LONG mask)
     return ret;
 #else
     return SetProtection(name, mask);
+#endif
+}
+
+LONG bebbossh_aros_system_tag_list(CONST_STRPTR command, struct TagItem *tags)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 101);
+    APTR save;
+    LONG ret;
+
+    if (!func)
+        return -1;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((LONG (*)(CONST_STRPTR, struct TagItem *))func)(command, tags);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return SystemTagList(command, tags);
 #endif
 }
 

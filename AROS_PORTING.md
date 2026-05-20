@@ -164,6 +164,9 @@ The first runtime validation goal for x86_64 is deliberately small:
   Done in hosted AROS x86_64 with TAP networking.
 - Non-PTY exec returns complete output and exit status for simple commands
   such as `C:Version` and `C:Echo OK`. Done in hosted AROS x86_64.
+- On AROS One x86_64/mincrt under QEMU, short non-interactive exec also returns
+  real output through the synchronous `SystemTagList` backend. `C:Version`
+  returned `Kickstart 51.51, Workbench 40.0`, and `echo ok` returned `ok`.
 - Explicit missing commands return SSH exit status 127 and leave the daemon
   usable. Done in hosted AROS x86_64.
 - The telegram-amiga offline automation suite passes on hosted AROS x86_64:
@@ -251,6 +254,17 @@ mkdir/rmdir, and chmod. `READLINK`/`SYMLINK` remain unsupported because the
 symlink path still depends on DOS device-proc calls that are not wrapped in the
 minimal runtime. `SetFileDate` timestamp preservation is intentionally skipped
 on x86_64/mincrt until that DOS v36 call is validated in the raw wrapper path.
+
+AROS x86_64/mincrt SSH exec uses a synchronous DOS `SystemTagList` backend for
+real command output. The raw wrapper LVOs were verified from the x86_64 SDK
+`Developer/SDK/fd/dos_lib.fd`: `CurrentDir` is LVO 21 and `SystemTagList` is
+LVO 101 (`bias 606`). The command's stdout and stderr are redirected to a
+temporary `T:` file, read back over SSH, and deleted. This avoids the earlier
+`CreateNewProcTagList`/mincrt crash class, but it is deliberately blocking:
+while the command is running, the daemon main loop does not service other
+clients. Treat it as a short-command automation path. Long-running validation
+commands should be run from the AROS console/VNC or on the i386 daemon until an
+asynchronous x86_64 exec backend exists.
 
 Current hosted i386 runtime status: hosted AROS i386 starts with AROSTCP/TAP
 networking and authenticates OpenSSH password clients. After the default AROS
@@ -410,9 +424,14 @@ AROS runtime notes:
   The backend runs `SystemTags()` inside a child task, redirects command output
   to a temporary `T:` file, and sends it back over SSH after the command exits.
   The command return code is sent as the SSH `exit-status`.
+- On x86_64/mincrt, the backend instead uses synchronous `SystemTagList()` in
+  the daemon task with raw DOS wrappers (`CurrentDir` LVO 21,
+  `SystemTagList` LVO 101). This returns real output for short commands but
+  blocks the daemon until the command exits.
 - Non-PTY exec has a soft 30-second timeout. The daemon remains responsive
   while the child task runs; on timeout it writes a warning and sends a break to
-  the command task.
+  the command task. This timeout applies to the child-task backend; the
+  x86_64/mincrt synchronous backend should only be used for bounded commands.
 - AROS remote exec rejects shell redirection and pipes (`>`, `<`, `|`) before
   calling `SystemTags()`. A remote `>/NIL:` test degraded the daemon, so these
   constructs are intentionally unsupported until a safer execution backend is

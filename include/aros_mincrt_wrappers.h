@@ -51,8 +51,10 @@ void bebbossh_aros_unlock(BPTR lock);
 LONG bebbossh_aros_examine(BPTR lock, struct FileInfoBlock *fib);
 LONG bebbossh_aros_exnext(BPTR lock, struct FileInfoBlock *fib);
 BPTR bebbossh_aros_create_dir(const char *name);
+BPTR bebbossh_aros_current_dir(BPTR lock);
 LONG bebbossh_aros_ioerr(void);
 LONG bebbossh_aros_set_protection(const char *name, LONG mask);
+LONG bebbossh_aros_system_tag_list(CONST_STRPTR command, struct TagItem *tags);
 
 #ifdef __cplusplus
 }
@@ -88,6 +90,7 @@ LONG bebbossh_aros_set_protection(const char *name, LONG mask);
 #undef Examine
 #undef ExNext
 #undef CreateDir
+#undef CurrentDir
 #undef IoErr
 #undef SetProtection
 
@@ -122,6 +125,7 @@ LONG bebbossh_aros_set_protection(const char *name, LONG mask);
 #define Examine(lock, fib) bebbossh_aros_examine((lock), (fib))
 #define ExNext(lock, fib) bebbossh_aros_exnext((lock), (fib))
 #define CreateDir(name) bebbossh_aros_create_dir((name))
+#define CurrentDir(lock) bebbossh_aros_current_dir((lock))
 #define IoErr() bebbossh_aros_ioerr()
 #define SetProtection(name, mask) bebbossh_aros_set_protection((name), (mask))
 
