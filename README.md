@@ -99,6 +99,10 @@ Runtime status on AROS One i386:
   path uses a synchronous `SystemTagList()` backend and captures stdout/stderr
   through a temporary `T:` file. While the command is running, the daemon main
   loop is blocked; use it for short bounded commands only.
+- On AROS x86_64/mincrt, the interactive shell currently rejects `cd` with a
+  clear message because changing the daemon task's current directory through
+  the raw `CurrentDir()` path is not stable there yet. Use explicit paths such
+  as `dir C:` on x86_64/mincrt. i386 keeps working `cd` support.
 - The AROS daemon uses a larger listen backlog, and its per-loop accept burst
   can be configured with `ListenAcceptBurst` or the AROS `-B` option. The
   hosted default stays conservative while short-session churn remains under
@@ -204,6 +208,8 @@ synchronous and uses raw DOS `SystemTagList` (`LVO 101`) plus `CurrentDir`
 `Developer/SDK/fd/dos_lib.fd`. Long-running or stuck commands block the daemon
 until they return; for long validation jobs, run the program from an AROS
 console/VNC session or use the i386 daemon path.
+The x86_64/mincrt interactive shell also rejects `cd`; use explicit command
+paths such as `dir C:` until the raw `CurrentDir()` shell path is made safe.
 
 ### AROS automation workflow
 

@@ -266,6 +266,11 @@ clients. Treat it as a short-command automation path. Long-running validation
 commands should be run from the AROS console/VNC or on the i386 daemon until an
 asynchronous x86_64 exec backend exists.
 
+The x86_64/mincrt interactive shell deliberately rejects `cd` for now. A shell
+loop showed that changing current directory through the raw `CurrentDir()` path
+can block the daemon on that target. Use explicit paths such as `dir C:` on
+x86_64/mincrt; i386 retains working `cd` support.
+
 Current hosted i386 runtime status: hosted AROS i386 starts with AROSTCP/TAP
 networking and authenticates OpenSSH password clients. After the default AROS
 command stack was raised to 1 MiB, it passes the telegram-amiga offline
@@ -428,6 +433,9 @@ AROS runtime notes:
   the daemon task with raw DOS wrappers (`CurrentDir` LVO 21,
   `SystemTagList` LVO 101). This returns real output for short commands but
   blocks the daemon until the command exits.
+- The x86_64/mincrt interactive shell rejects `cd` and asks the caller to use
+  explicit paths. This avoids a daemon hang in the raw `CurrentDir()` shell
+  path while keeping `dir <path>`, exec, and SFTP usable.
 - Non-PTY exec has a soft 30-second timeout. The daemon remains responsive
   while the child task runs; on timeout it writes a warning and sends a break to
   the command task. This timeout applies to the child-task backend; the

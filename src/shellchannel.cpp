@@ -448,6 +448,11 @@ void ShellChannel::cmdCD(char * q) {
 	if (0 == strcmp(q, "?")) {
 		server->channelWrite(channel, "cd <path>\r\n", 11);
 	} else {
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
+		static const char msg[] = "bebbosshd/AROS: cd is not supported on x86_64 mincrt shell yet; use explicit paths\r\n";
+		server->channelWrite(channel, msg, sizeof(msg) - 1);
+		return;
+#endif
 		// no absolute path, change directory
 		logme(L_FINE, "@%ld:%ld cd -> %s", server->getSockFd(), channel, q);
 		BPTR old = CurrentDir(dir);
