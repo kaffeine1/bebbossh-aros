@@ -142,6 +142,10 @@ Published 32-bit builds are attached to GitHub Releases as
 `bebbossh-aros-i386-abiv0-<version>.zip` and
 `bebbossh-aros-i386-abiv0-<version>.tar.gz` runtime kits.
 
+The latest complete public i386 runtime release is:
+
+https://github.com/kaffeine1/bebbossh-aros/releases/tag/v0.2.5-aros-i386-abiv0
+
 For public i386 release validation, use the clean-VM checklist in
 `docs/AROS_I386_RELEASE.md`. The host-side asset/runtime smoke can be run with:
 

@@ -19,6 +19,13 @@ contains:
 AROS x86_64 is a separate experimental target and is not part of the i386
 release gate.
 
+The latest complete public i386 runtime release is published on GitHub
+Releases, next to the repository tag list:
+
+```text
+https://github.com/kaffeine1/bebbossh-aros/releases/tag/v0.2.5-aros-i386-abiv0
+```
+
 ## Public Asset Gate
 
 After publishing a release, verify the assets from GitHub rather than the local
@@ -77,6 +84,37 @@ VM as the only release proof.
    BEBBOSSH_AROS_WORKDIR=T: \
    ./scripts/aros-i386-public-release-smoke.sh
    ```
+
+## Optional C: Command Install
+
+AROS normally searches `C:` for shell commands. The client-side tools can be
+copied there and then called without a full path:
+
+```text
+copy DH0:BSSHPKG/bebbossh C:
+copy DH0:BSSHPKG/bebboscp C:
+copy DH0:BSSHPKG/bebbosshkeygen C:
+protect C:bebbossh +e
+protect C:bebboscp +e
+protect C:bebbosshkeygen +e
+```
+
+Then these work from any AROS Shell:
+
+```text
+bebbossh user@host
+bebboscp localfile user@host:remotefile
+bebbosshkeygen -f DH0:BSSHPKG/ssh_host_ed25519_key
+```
+
+For `bebbosshd`, prefer keeping the daemon and its config together in
+`DH0:BSSHPKG`. The package defaults use `PROGDIR:` paths, and when a program is
+run from `C:`, `PROGDIR:` becomes `C:`. If the daemon is installed in `C:`, pass
+explicit config paths:
+
+```text
+bebbosshd -A DH0:BSSHPKG/passwd -K DH0:BSSHPKG/ssh_host_ed25519_key -H DH0:
+```
 
 ## AROS Native Client Gate
 

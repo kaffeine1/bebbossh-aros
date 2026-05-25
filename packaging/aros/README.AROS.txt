@@ -73,6 +73,41 @@ The example configuration uses PROGDIR: paths, so the server can find
 sshd_config, passwd, and ssh_host_ed25519_key when launched from its own
 directory.
 
+Installing Commands In C:
+-------------------------
+
+AROS normally searches C: for shell commands. If you copy the command-line
+tools there, they can be called without a full path:
+
+  copy bebbossh C:
+  copy bebboscp C:
+  copy bebbosshkeygen C:
+  protect C:bebbossh +e
+  protect C:bebboscp +e
+  protect C:bebbosshkeygen +e
+
+After that, these forms work from an AROS Shell:
+
+  bebbossh user@host
+  bebboscp localfile user@host:remotefile
+  bebbosshkeygen -f DH0:BebboSSH/ssh_host_ed25519_key
+
+You may also copy bebbosshd to C:, but the packaged sshd_config.example uses
+PROGDIR: paths. If bebbosshd is run from C:, PROGDIR: is C:, so the daemon will
+look for C:sshd_config, C:passwd, and C:ssh_host_ed25519_key unless you pass
+explicit paths. The recommended server layout is still to keep bebbosshd and
+its config files together in a directory such as DH0:BSSHPKG and start it from
+there.
+
+If you want bebbosshd in C: anyway, launch it with explicit configuration:
+
+  bebbosshd -A DH0:BSSHPKG/passwd -K DH0:BSSHPKG/ssh_host_ed25519_key -H DH0:
+
+or keep the default PROGDIR: configuration by running:
+
+  cd DH0:BSSHPKG
+  bebbosshd
+
 Configuration Files
 -------------------
 
