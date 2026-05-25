@@ -162,7 +162,8 @@ enum ptype {
 };
 
 // network
-static int sockfd;
+static int sockfd = -1;
+static int reservedSockFd = -1;
 static struct sockaddr_in sinLocal;
 static struct sockaddr_in sinRemote;
 static fd_set readfds;
@@ -1139,8 +1140,10 @@ void cleanup() {
 	if (readCounterBc) delete readCounterBc;
 	if (writeCounterBc) delete writeCounterBc;
 
-	if (sockfd != 0)
+	if (sockfd >= 0)
 		CloseSocket(sockfd);
+	if (reservedSockFd >= 0)
+		CloseSocket(reservedSockFd);
 
 #ifdef __AMIGA__
     if (SocketBase != 0)
@@ -1214,7 +1217,7 @@ bool connectClient() {
 	atexit(cleanup);
 
 #ifdef __AMIGA__
-#if !(defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__))
+#if !defined(__AROS__)
 	// see DOS RKRM: converted to a buffered stream before flushing!
 	FGetC(stdin);
 	fflush(stdin);
@@ -1298,6 +1301,10 @@ bool connectClient() {
 #endif
 
 		sockfd = socket(AF_INET, SOCK_STREAM, 0);
+		if (sockfd == 0) {
+			reservedSockFd = sockfd;
+			sockfd = socket(AF_INET, SOCK_STREAM, 0);
+		}
 
 		logme(L_FINE, "opened socket %ld", sockfd);
 		if (sockfd < 0) {
@@ -1313,7 +1320,11 @@ bool connectClient() {
 		}
 
 		// bind to a local port before connecting
+		memset(&sinLocal, 0, sizeof(sinLocal));
 		sinLocal.sin_family = AF_INET;
+#if BEBBOSSH_AROS
+		sinLocal.sin_len = sizeof(sinLocal);
+#endif
 		sinLocal.sin_addr.s_addr = INADDR_ANY;
 		if (bind(sockfd, (struct sockaddr *)&sinLocal, sizeof(sinLocal))) {
 			error = ERROR_BIND;
@@ -1321,11 +1332,16 @@ bool connectClient() {
 		}
 		logme(L_FINE, "bound socket");
 
+		memset(&sinRemote, 0, sizeof(sinRemote));
 		sinRemote.sin_family = host->h_addrtype;
+#if BEBBOSSH_AROS
+		sinRemote.sin_len = sizeof(sinRemote);
+#endif
 		sinRemote.sin_port = htons(port);
-		sinRemote.sin_addr.s_addr = getInt32(host->h_addr);
+		memcpy(&sinRemote.sin_addr.s_addr, host->h_addr, sizeof(sinRemote.sin_addr.s_addr));
 
 		if (0 != connect(sockfd, (struct sockaddr* )&sinRemote, sizeof(sinRemote))) {
+			logme(L_ERROR, "connect failed, errno=%ld", Errno());
 			error = ERROR_CONNECT;
 			break;
 		}

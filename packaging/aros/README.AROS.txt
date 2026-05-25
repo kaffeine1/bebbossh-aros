@@ -205,7 +205,10 @@ Current Runtime Status
 
 Verified for the published AROS One i386 alt-abiv0 runtime kit:
 
-- `bebbossh` and `bebboscp` start and print usage/help on AROS One i386.
+- `bebbossh` completes loopback SSH exec through `bebbosshd` from a real AROS
+  shell on AROS One i386.
+- `bebboscp` completes a loopback SCP copy from a real AROS shell on AROS One
+  i386, with byte-identical source and destination files.
 - `bebbosshkeygen` generates Ed25519 key pairs on AROS One i386.
 - SSH protocol identification, KEX, and password authentication.
 - Remote exec for simple non-interactive commands such as version and dir.

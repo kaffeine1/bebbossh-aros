@@ -63,7 +63,9 @@ The AROS port currently includes:
 Runtime status on AROS One i386:
 
 - `bebbossh` and `bebboscp` build for AROS One i386 `alt-abiv0` and have been
-  smoke-tested on the i386 lab VM through their usage/help paths.
+  validated from a real AROS shell on the i386 lab VM. `bebbossh` completed a
+  loopback SSH exec through `bebbosshd`, and `bebboscp` completed a loopback
+  SCP copy with byte-identical source and destination files.
 - `bebbosshd` starts, loads an Ed25519 host key, binds port 22, and listens.
 - `bebbosshkeygen` starts on AROS One i386 and reaches ED25519 key generation.
 - OpenSSH from the host completes protocol identification, key exchange, and

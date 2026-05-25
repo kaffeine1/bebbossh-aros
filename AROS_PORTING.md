@@ -363,8 +363,11 @@ Package validation on AROS One i386:
 - `sshd_config.example` and `passwd.example` were copied to runtime names.
 - `DH0:BSSHPKG/bebbosshkeygen -f DH0:BSSHPKG/ssh_host_ed25519_key` generated
   a fresh host key inside AROS.
-- `bebbossh` and `bebboscp` i386 `alt-abiv0` client binaries start on the
-  AROS One i386 lab VM and print their usage/help text.
+- `bebbossh` i386 `alt-abiv0` completed loopback SSH exec through `bebbosshd`
+  from a real AROS shell on the AROS One i386 lab VM.
+- `bebboscp` i386 `alt-abiv0` completed a loopback SCP copy from a real AROS
+  shell on the AROS One i386 lab VM, with byte-identical source and destination
+  files.
 - `DH0:BSSHPKG/bebbosshd -p 2222` started from the packaged directory.
 - Through QEMU forwarding at `127.0.0.1:12222`, OpenSSH completed auth and
   `version` returned `Kickstart 51.51, Workbench 40.0`.

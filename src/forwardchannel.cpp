@@ -51,7 +51,11 @@ bool ForwardChannel::init(uint8_t * src, uint32_t srcPort, uint8_t * to, uint32_
 		return false;
 
 	// bind to a local port before connecting
+	memset(&sinLocal, 0, sizeof(sinLocal));
 	sinLocal.sin_family = AF_INET;
+#if BEBBOSSH_AROS
+	sinLocal.sin_len = sizeof(sinLocal);
+#endif
 	sinLocal.sin_addr.s_addr = INADDR_ANY;
 
 	logme(L_TRACE, "@%ld:%ld binding on %ld.%ld.%ld.%ld:%ld", server->getSockFd(), channel,
@@ -65,7 +69,11 @@ bool ForwardChannel::init(uint8_t * src, uint32_t srcPort, uint8_t * to, uint32_
 		return false;
 	}
 
+	memset(&sinRemote, 0, sizeof(sinRemote));
 	sinRemote.sin_family = host->h_addrtype;
+#if BEBBOSSH_AROS
+	sinRemote.sin_len = sizeof(sinRemote);
+#endif
 	sinRemote.sin_port = htons((uint16_t)toPort);
 	memcpy(&sinRemote.sin_addr.s_addr, host->h_addr, sizeof(sinRemote.sin_addr.s_addr));
 
