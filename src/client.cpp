@@ -34,6 +34,8 @@
  */
 #include <inttypes.h>
 #include <fnmatch.h>
+#include <errno.h>
+#include <stdlib.h>
 
 #include <netdb.h>
 #include <unistd.h>
@@ -42,13 +44,23 @@
 #include <sys/stat.h>
 #include <netinet/in.h>
 
+#if defined(__AROS__) && !defined(__AMIGA__)
+#define __AMIGA__ 1
+#endif
+
 #ifdef __AMIGA__
 #include <amistdio.h>
 
 #include <proto/dos.h>
 #include <proto/exec.h>
+#if !(defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__))
 #include <proto/intuition.h>
+#endif
 #include <proto/socket.h>
+
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
+#include <aros_mincrt_wrappers.h>
+#endif
 
 #else
 #include <stdio.h>
@@ -56,6 +68,7 @@
 #endif
 
 #include <log.h>
+#include <platform.h>
 #include <ssh.h>
 
 #include <test.h>
@@ -72,7 +85,19 @@
 #include "clientchannel.h"
 #include "revision.h"
 
+struct Window;
+
 // #define DUMP_PACKETS 1
+
+#if BEBBOSSH_AMIGA_API
+#define BSSH_FGETS(file, buf, len) FGets((file), (buf), (len))
+#define BSSH_STDIN() Input()
+#define BSSH_WRITE_FILE(file, buf, len) Write((file), (buf), (len))
+#else
+#define BSSH_FGETS(file, buf, len) fgets((buf), (len), (file))
+#define BSSH_STDIN() stdin
+#define BSSH_WRITE_FILE(file, buf, len) fwrite((buf), 1, (len), (file))
+#endif
 
 #if defined(DUMP_HASH)
 static uint8_t * hsd;
@@ -154,6 +179,7 @@ extern BPTR stdoutBptr;
 short escape;
 // the window...
 struct Window * theWindow;
+struct IntuitionBase * IntuitionBase;
 static char const * orgWindowTitle;
 extern struct IntuitionBase * IntuitionBase;
 // the key material,
@@ -542,8 +568,8 @@ static bool verifyHost(uint8_t const * hostBase64) {
 	Seek(f, OFFSET_BEGINNING, 0);
 	while(!r) {
 		char * p = buf + 1000;
-		if (!fgets(p, buffersize - 1000, f))
-			break;
+			if (!BSSH_FGETS(f, p, buffersize - 1000))
+				break;
 
 	    char *n, *c, *k;
 	    parse_line(p, &n, &c, &k);
@@ -561,7 +587,7 @@ static bool verifyHost(uint8_t const * hostBase64) {
 		printf("do you trust host %s with ssh-ed25519 key %s? Then enter: yes\n", hostname, hostBase64);
 		fflush(stdout);
 		*buf = 0;
-		fgets(buf, 5, stdin);
+			BSSH_FGETS(BSSH_STDIN(), buf, 5);
 		if (0 == strncmp("yes", (char *)buffer, 3)) {
 			r = true;
 			if (replace) {
@@ -581,7 +607,7 @@ static bool verifyHost(uint8_t const * hostBase64) {
 
 				char *out = mem;
 				char * p = buf + 1000;
-				while (fgets(p, buffersize - 1000, f)) {
+					while (BSSH_FGETS(f, p, buffersize - 1000)) {
 					char *n, *c, *k;
 					parse_line(p, &n, &c, &k);
 
@@ -608,7 +634,10 @@ static bool verifyHost(uint8_t const * hostBase64) {
 			} else {
 				// just append
 				Seek(f, OFFSET_END, 0);
-				fprintf(f, "%s ssh-ed25519 %s\n", hostname, hostBase64);
+					char line[1024];
+					int n = snprintf(line, sizeof(line), "%s ssh-ed25519 %s\n", hostname, hostBase64);
+					if (n > 0)
+						BSSH_WRITE_FILE(f, line, n);
 			}
 		}
 	}
@@ -808,10 +837,12 @@ static void freeConsole(void) {
         stdinBptr = 0;
     }
 
+#if !(defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__))
     if (theWindow && orgWindowTitle) {
         SetWindowTitles(theWindow, orgWindowTitle, 0);
         theWindow = 0;
     }
+#endif
 
 #elif defined(__linux__) || defined(__unix__)
     if (stdinBptr) {
@@ -990,8 +1021,10 @@ static bool loginPass() {
 		for(;;) {
 #ifdef __AMIGA__
 			signed l = Read(stdinBptr, p, 100);
-			if(SetSignal(0L,SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
-				exit(0);
+#if !(defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__))
+				if(SetSignal(0L,SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
+					exit(0);
+#endif
 #else
 			signed l = Read(stdinBptr, p, 1);
 			if (l <= 0)
@@ -1016,7 +1049,7 @@ static bool loginPass() {
 		Outer:;
 	} else {
 		*p = 0;
-		fgets((char *)p, buffersize - 1000, stdin);
+			BSSH_FGETS(BSSH_STDIN(), (char *)p, buffersize - 1000);
 		p += strlen((char *)p);
 		while (p > q + 5 && p[-1] < 32)
 			--p;
@@ -1181,14 +1214,17 @@ bool connectClient() {
 	atexit(cleanup);
 
 #ifdef __AMIGA__
+#if !(defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__))
 	// see DOS RKRM: converted to a buffered stream before flushing!
 	FGetC(stdin);
 	fflush(stdin);
 
-	if (escape && !theWindow) {
-		theWindow = IntuitionBase->ActiveWindow;
-		orgWindowTitle = theWindow->Title;
-	}
+		if (escape && !theWindow && IntuitionBase) {
+			theWindow = IntuitionBase->ActiveWindow;
+			if (theWindow)
+				orgWindowTitle = (const char *)theWindow->Title;
+		}
+#endif
 #endif
 
 	do { // while (0);
@@ -1229,7 +1265,17 @@ bool connectClient() {
 			break;
 		}
 
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
+		{
+			struct TagItem tags[] = {
+				{ SBTM_SETVAL(SBTC_BREAKMASK), 0 },
+				{ TAG_DONE, 0 }
+			};
+			(void)bebbossh_aros_socket_base_tag_list(SocketBase, tags);
+		}
+#else
 		SocketBaseTags(SBTM_SETVAL(SBTC_BREAKMASK), 0, TAG_DONE);
+#endif
 
 #elif defined(__linux__) || defined(__unix__)
 		// No library to open: sockets are part of libc/kernel

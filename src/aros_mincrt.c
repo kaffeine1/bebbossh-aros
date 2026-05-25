@@ -21,6 +21,8 @@
 #include <proto/exec.h>
 #include <utility/tagitem.h>
 
+struct hostent;
+
 char *__argstr;
 ULONG __argsize;
 char **__argv;
@@ -636,6 +638,40 @@ int bebbossh_aros_errno(struct Library *base)
 #endif
 }
 
+unsigned long bebbossh_aros_inet_addr(struct Library *base, const char *addr)
+{
+#if defined(__x86_64__)
+    APTR func = bebbossh_aros_libcall_base(base, 30);
+    APTR save;
+    unsigned long ret;
+    if (!func)
+        return (unsigned long)-1;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12" : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((unsigned long (*)(const char *))func)(addr);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return inet_addr(addr);
+#endif
+}
+
+struct hostent *bebbossh_aros_gethostbyname(struct Library *base, const char *name)
+{
+#if defined(__x86_64__)
+    APTR func = bebbossh_aros_libcall_base(base, 35);
+    APTR save;
+    struct hostent *ret;
+    if (!func)
+        return NULL;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12" : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((struct hostent *(*)(const char *))func)(name);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return gethostbyname(name);
+#endif
+}
+
 int bebbossh_aros_ioctl_socket(struct Library *base, int s, unsigned long request, char *argp)
 {
 #if defined(__x86_64__)
@@ -861,6 +897,26 @@ int atoi(const char *s)
         ++s;
     }
     return neg ? -(int)parse_unsigned(s, NULL, 10) : (int)parse_unsigned(s, NULL, 10);
+}
+
+long atol(const char *s)
+{
+    return (long)atoi(s);
+}
+
+char *getenv(const char *name)
+{
+    (void)name;
+    return NULL;
+}
+
+char *stpcpy(char *dst, const char *src)
+{
+    while ((*dst = *src)) {
+        ++dst;
+        ++src;
+    }
+    return dst;
 }
 
 static unsigned rand_state = 0x12345678u;
@@ -1090,6 +1146,42 @@ LONG bebbossh_aros_read(BPTR file, void *buf, LONG len)
 #endif
 }
 
+BPTR bebbossh_aros_input(void)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 9);
+    APTR save;
+    BPTR ret;
+
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((BPTR (*)(void))func)();
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return Input();
+#endif
+}
+
+BPTR bebbossh_aros_output(void)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 10);
+    APTR save;
+    BPTR ret;
+
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((BPTR (*)(void))func)();
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return Output();
+#endif
+}
+
 LONG bebbossh_aros_seek(BPTR file, LONG offset, LONG mode)
 {
 #if defined(__x86_64__)
@@ -1275,6 +1367,106 @@ LONG bebbossh_aros_ioerr(void)
 #endif
 }
 
+LONG bebbossh_aros_wait_for_char(BPTR file, LONG timeout)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 34);
+    APTR save;
+    LONG ret;
+
+    if (!file)
+        return 0;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((LONG (*)(BPTR, LONG))func)(file, timeout);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return WaitForChar(file, timeout);
+#endif
+}
+
+LONG bebbossh_aros_is_interactive(BPTR file)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 36);
+    APTR save;
+    LONG ret;
+
+    if (!file)
+        return 0;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((LONG (*)(BPTR))func)(file);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return IsInteractive(file);
+#endif
+}
+
+char *bebbossh_aros_fgets(BPTR file, char *buf, LONG buflen)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 56);
+    APTR save;
+    char *ret;
+
+    if (!file || !buf || buflen <= 0)
+        return NULL;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((char *(*)(BPTR, char *, LONG))func)(file, buf, buflen);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return FGets(file, buf, buflen);
+#endif
+}
+
+LONG bebbossh_aros_name_from_lock(BPTR lock, char *buffer, LONG length)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 67);
+    APTR save;
+    LONG ret;
+
+    if (!buffer || length <= 0)
+        return 0;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((LONG (*)(BPTR, char *, LONG))func)(lock, buffer, length);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return NameFromLock(lock, buffer, length);
+#endif
+}
+
+LONG bebbossh_aros_set_mode(BPTR file, LONG mode)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 71);
+    APTR save;
+    LONG ret;
+
+    if (!file)
+        return 0;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((LONG (*)(BPTR, LONG))func)(file, mode);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return SetMode(file, mode);
+#endif
+}
+
 LONG bebbossh_aros_set_protection(const char *name, LONG mask)
 {
 #if defined(__x86_64__)
@@ -1399,7 +1591,20 @@ int mkdir(const char *path, unsigned mode)
 
 void exit(int status)
 {
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = base ? __AROS_GETVECADDR(base, 24) : 0;
+    APTR save;
+
+    if (func) {
+        __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                             : "=&rm"(save) : "rm"(base) : "r12");
+        ((void (*)(LONG))func)((LONG)status);
+        __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    }
+#else
     Exit((LONG)status);
+#endif
     for (;;)
         ;
 }

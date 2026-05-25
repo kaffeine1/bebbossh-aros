@@ -10,10 +10,13 @@ AROS_TARGET_TRIPLET ?= x86_64-aros
 SDK_GCC_VERSION ?= 10.5.0
 STRIP_OUTPUTS ?= yes
 SDK_LDFLAGS ?= -nostdlib
-STARTUP ?= $(shell $(CC) -print-file-name=startup.o)
+AROS_X86_64_RUNTIME_SDK ?= $(HOME)/amiga-dev/sdks/aros-one-x86_64
+STARTUP ?= $(firstword $(wildcard $(AROS_X86_64_RUNTIME_SDK)/Development/lib/startup.o) $(shell $(CC) -print-file-name=startup.o))
 TARGET_CFLAGS ?= -mcmodel=large -fno-asynchronous-unwind-tables -fno-unwind-tables -fno-reorder-blocks-and-partition -DFD_SETSIZE=1024 -DBEBBOSSH_AROS_MINCRT=1
 CXXFLAGS ?= -fno-exceptions -fno-rtti -fno-weak
 SSHD_SOURCES ?= bebbosshd.cpp sshsession.cpp forwardchannel.cpp sftpchannel.cpp shellchannel.cpp channel.cpp stack.cpp c++support.cpp home.cpp aros_startup_flags.c aros_mincrt.c
+SSH_SOURCES ?= bebbossh.cpp console.cpp keyboard.cpp client.cpp clientchannel.cpp stack.cpp c++support.cpp home.cpp fnmatch_compat.c aros_startup_flags.c aros_mincrt.c
+SCP_SOURCES ?= bebboscp.cpp console.cpp keyboard.cpp client.cpp clientchannel.cpp stack.cpp c++support.cpp home.cpp fnmatch_compat.c aros_startup_flags.c aros_mincrt.c
 KEYGEN_SOURCES ?= bebbosshkeygen.cpp c++support.cpp home.cpp aros_startup_flags.c aros_mincrt.c
 PROBE_EXTRA_OBJECTS ?= $(OUTDIR)/aros_mincrt.o
 SDK_LIBS ?= -lautoinit -lamiga -laros -ldos -lexec -lutility -lgcc -lautoinit -lamiga

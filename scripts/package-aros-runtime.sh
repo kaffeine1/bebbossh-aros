@@ -7,19 +7,18 @@ set -eu
 outdir=${1:-aros-i386-abiv0-arosone}
 pkgdir=${2:-dist/bebbossh-aros-i386-abiv0}
 
-if [ ! -x "$outdir/bebbosshd" ]; then
-    echo "missing executable: $outdir/bebbosshd" >&2
-    exit 1
-fi
-
-if [ ! -x "$outdir/bebbosshkeygen" ]; then
-    echo "missing executable: $outdir/bebbosshkeygen" >&2
-    exit 1
-fi
+for tool in bebbossh bebboscp bebbosshd bebbosshkeygen; do
+    if [ ! -x "$outdir/$tool" ]; then
+        echo "missing executable: $outdir/$tool" >&2
+        exit 1
+    fi
+done
 
 rm -rf "$pkgdir"
 mkdir -p "$pkgdir"
 
+cp "$outdir/bebbossh" "$pkgdir/bebbossh"
+cp "$outdir/bebboscp" "$pkgdir/bebboscp"
 cp "$outdir/bebbosshd" "$pkgdir/bebbosshd"
 cp "$outdir/bebbosshkeygen" "$pkgdir/bebbosshkeygen"
 cp packaging/aros/sshd_config.example "$pkgdir/sshd_config.example"
@@ -39,6 +38,8 @@ cp LICENSE "$pkgdir/LICENSE"
 (
     cd "$pkgdir"
     shasum -a 256 \
+        bebbossh \
+        bebboscp \
         bebbosshd \
         bebbosshkeygen \
         sshd_config.example \

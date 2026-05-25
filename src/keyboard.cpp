@@ -33,6 +33,12 @@
  *  for integration into bebbossh client/server components.
  * ----------------------------------------------------------------------
  */
+#if defined(__AROS__) && !defined(__AMIGA__)
+#define __AMIGA__ 1
+#endif
+
+#include <platform.h>
+
 #ifdef __AMIGA__
 #include <exec/types.h>
 #include <exec/memory.h>
@@ -66,6 +72,9 @@ static void closeKeyboardSupport() {
 }
 
 uint32_t getKeyboardQualifiers() {
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
+	return 0;
+#else
 	if (!init) {
 		// init once
 		init = true;
@@ -102,6 +111,7 @@ uint32_t getKeyboardQualifiers() {
 		 | ((matrix[12] & (1<<4)) ? ALT : 0)
 		 | ((matrix[12] & (1<<6)) ? LAMIGA : 0)
 		 | ((matrix[12] & (1<<7)) ? RAMIGA : 0);
+#endif
 }
 
 #define NEWLIST(l) ((l)->lh_Head = (struct Node *)&(l)->lh_Tail, \

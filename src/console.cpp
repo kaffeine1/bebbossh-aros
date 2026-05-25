@@ -35,8 +35,15 @@
 
 #include <stdint.h>
 
+#if defined(__AROS__) && !defined(__AMIGA__)
+#define __AMIGA__ 1
+#endif
+
 #ifdef __AMIGA__
 #include <proto/dos.h>
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
+#include <aros_mincrt_wrappers.h>
+#endif
 #else
 #include "amiemul.h"
 #endif

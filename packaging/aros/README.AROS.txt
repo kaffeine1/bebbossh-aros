@@ -1,8 +1,10 @@
 BebboSSH AROS Runtime Kit
 =========================
 
-This kit contains BebboSSH server tools for AROS:
+This kit contains BebboSSH runtime tools for AROS:
 
+- bebbossh
+- bebboscp
 - bebbosshd
 - bebbosshkeygen
 - sshd_config.example
@@ -84,6 +86,8 @@ The recommended layout is to keep all three files in the same directory as
 bebbosshd and use PROGDIR: paths in sshd_config. For example:
 
   DH0:BebboSSH/bebbosshd
+  DH0:BebboSSH/bebbossh
+  DH0:BebboSSH/bebboscp
   DH0:BebboSSH/bebbosshkeygen
   DH0:BebboSSH/sshd_config
   DH0:BebboSSH/passwd
@@ -201,6 +205,8 @@ Current Runtime Status
 
 Verified for the published AROS One i386 alt-abiv0 runtime kit:
 
+- `bebbossh` and `bebboscp` start and print usage/help on AROS One i386.
+- `bebbosshkeygen` generates Ed25519 key pairs on AROS One i386.
 - SSH protocol identification, KEX, and password authentication.
 - Remote exec for simple non-interactive commands such as version and dir.
 - SFTP and OpenSSH scp transfers on T: and DH0:.

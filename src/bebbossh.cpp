@@ -34,6 +34,8 @@
  */
 #include <stdint.h>
 
+#include <platform.h>
+
 #include <stdlib.h>
 #include <signal.h>
 
@@ -44,22 +46,36 @@
 #include <sys/stat.h>
 #include <netinet/in.h>
 
+#if defined(__AROS__) && !defined(__AMIGA__)
+#define __AMIGA__ 1
+#endif
+
 #ifdef __AMIGA__
 #include <amistdio.h>
 #include <dos/dostags.h>
 #include <exec/execbase.h>
+#if !(defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__))
 #include <intuition/intuitionbase.h>
 #include <intuition/intuition.h>
 #include <workbench/startup.h>
+#endif
 
 #include <clib/alib_protos.h>
 #include <proto/dos.h>
 #include <proto/exec.h>
+#if !(defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__))
 #include <proto/icon.h>
 #include <proto/intuition.h>
+#endif
 #include <proto/socket.h>
 
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
+#include <aros_mincrt_wrappers.h>
+#endif
+
+#if !defined(__AROS__)
 #include <stabs.h>
+#endif
 
 #include "keyboard.h"
 #else
@@ -194,7 +210,11 @@ int ConsoleChannel::processChannelData(void *data, int length) {
 		while ((title = strstr((char*) c, "\x1b]0;"))) {
 			unsigned l = title - (char*) c;
 			if (l) {
+#if defined(__AROS__)
+				Write(stdoutBptr ? stdoutBptr : Output(), c, l);
+#else
 				fwrite(c, l, 1, stdout);
+#endif
 				length -= l;
 			}
 
@@ -206,17 +226,23 @@ int ConsoleChannel::processChannelData(void *data, int length) {
 			*end++ = 0;
 			length -= end - title + 4;
 #ifdef __AMIGA__
+#if !(defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__))
 			if (theWindow) {
 				free(myWindowTitle);
 				myWindowTitle = strdup(title);
 				SetWindowTitles(theWindow, myWindowTitle, 0);
 			}
 #endif
+#endif
 			c = end;
 		}
 	}
 	if (length) {
+#if defined(__AROS__)
+		Write(stdoutBptr ? stdoutBptr : Output(), c, length);
+#else
 		fwrite(c, length, 1, stdout);
+#endif
 	}
 	return 0;
 }
@@ -311,17 +337,22 @@ static uint8_t* makeMouseClick(uint8_t *c) {
 				*t = 0;
 				x = atoi(sx);
 				y = atoi(sy);
-				if (!(x | y)) { // 0, 0 -> read from window
-					static unsigned dx, dy;
-					theWindow = IntuitionBase->ActiveWindow;
-					if (theWindow) {
-						struct TextFont *f = theWindow->RPort->Font;
-						dx = f->tf_XSize;
+					if (!(x | y)) { // 0, 0 -> read from window
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
+						x = 1;
+						y = 1;
+#else
+						static unsigned dx, dy;
+						theWindow = IntuitionBase ? IntuitionBase->ActiveWindow : 0;
+						if (theWindow) {
+							struct TextFont *f = theWindow->RPort->Font;
+							dx = f->tf_XSize;
 						dy = f->tf_YSize;
+						}
+						x = 1 + theWindow->GZZMouseX / dx;
+						y = 1 + theWindow->GZZMouseY / dy;
+#endif
 					}
-					x = 1 + theWindow->GZZMouseX / dx;
-					y = 1 + theWindow->GZZMouseY / dy;
-				}
 			}
 		}
 	}
@@ -694,7 +725,7 @@ public:
 				(0xff & (server.sin_addr.s_addr >> 8)), (0xff & server.sin_addr.s_addr), server.sin_port);
 
 		long flags = 1;
-		IoctlSocket(sockFd, FIONBIO, &flags);
+		IoctlSocket(sockFd, FIONBIO, (char *)&flags);
 
 		listen(sockFd, 3);
 
@@ -800,14 +831,20 @@ static void printUsage() {
 }
 
 static void parseParams(unsigned argc, char **argv) {
+#if !(defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__))
 	char *user = getenv("USER");
 	if (user)
 		username = user;
 	char *term = getenv("TERM");
 	if (term)
 		TERM = term;
+#endif
 
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
+	escape = IsInteractive(Input());
+#else
 	escape = IsInteractive(stdin);
+#endif
 
 	unsigned normal = 0;
 	char *arg = 0;
@@ -944,7 +981,7 @@ static void parseParams(unsigned argc, char **argv) {
 	invalid: printf("invalid option %s\n", arg);
 	exit(10);
 }
-#ifdef __AMIGA__
+#if defined(__AMIGA__) && !defined(__AROS__)
 struct Library *IconBase = 0;
 char __stdiowin[128] = "CON://///AUTO/CLOSE/WAIT";
 extern struct WBStartup *_WBenchMsg;

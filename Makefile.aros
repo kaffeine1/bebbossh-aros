@@ -1,5 +1,6 @@
 # Native or SDK-based AROS build.
-# Builds the SSH daemon, key generator, and crypto self-tests, using a static library.
+# Builds the SSH client, SCP client, daemon, key generator, and crypto self-tests,
+# using a static library.
 
 CC ?= gcc
 CXX ?= g++
@@ -56,21 +57,33 @@ SSHD_SOURCES ?= bebbosshd.cpp sshsession.cpp forwardchannel.cpp sftpchannel.cpp 
         shellchannel.cpp channel.cpp stack.cpp c++support.cpp home.cpp \
         aros_startup_flags.c
 
+SSH_SOURCES ?= bebbossh.cpp console.cpp keyboard.cpp client.cpp clientchannel.cpp \
+        stack.cpp c++support.cpp home.cpp fnmatch_compat.c aros_startup_flags.c
+
+SCP_SOURCES ?= bebboscp.cpp console.cpp keyboard.cpp client.cpp clientchannel.cpp \
+        stack.cpp c++support.cpp home.cpp fnmatch_compat.c aros_startup_flags.c
+
 KEYGEN_SOURCES ?= bebbosshkeygen.cpp c++support.cpp home.cpp aros_startup_flags.c
 
 TEST_SOURCES ?= testAES.cpp testChacha20.cpp testEd25519.cpp testGCM.cpp testSHA512.cpp
 
 LIB_OBJECTS = $(patsubst %.cpp,$(OUTDIR)/%.o,$(patsubst %.c,$(OUTDIR)/%.o,$(LIB_SOURCES)))
 SSHD_OBJECTS = $(patsubst %.cpp,$(OUTDIR)/%.o,$(patsubst %.c,$(OUTDIR)/%.o,$(SSHD_SOURCES)))
+SSH_OBJECTS = $(patsubst %.cpp,$(OUTDIR)/%.o,$(patsubst %.c,$(OUTDIR)/%.o,$(SSH_SOURCES)))
+SCP_OBJECTS = $(patsubst %.cpp,$(OUTDIR)/%.o,$(patsubst %.c,$(OUTDIR)/%.o,$(SCP_SOURCES)))
 KEYGEN_OBJECTS = $(patsubst %.cpp,$(OUTDIR)/%.o,$(patsubst %.c,$(OUTDIR)/%.o,$(KEYGEN_SOURCES)))
 TESTS = $(patsubst %.cpp,$(OUTDIR)/%,$(TEST_SOURCES))
 PROBES = $(OUTDIR)/AROSPROBE $(OUTDIR)/AROSPROBE_RET $(OUTDIR)/AROS_ENTROPY_PROBE
 PROBE_EXTRA_OBJECTS ?=
 HEADERS = $(wildcard include/*.h)
 
-.PHONY: all bebbosshd bebbosshkeygen tests probes package-aros-runtime run-tests clean
+.PHONY: all bebbossh bebboscp bebbosshd bebbosshkeygen tests probes package-aros-runtime run-tests clean
 
-all: bebbosshd bebbosshkeygen tests
+all: bebbossh bebboscp bebbosshd bebbosshkeygen tests
+
+bebbossh: $(OUTDIR)/bebbossh
+
+bebboscp: $(OUTDIR)/bebboscp
 
 bebbosshd: $(OUTDIR)/bebbosshd
 
@@ -80,7 +93,7 @@ tests: $(TESTS)
 
 probes: $(PROBES)
 
-package-aros-runtime: bebbosshd bebbosshkeygen
+package-aros-runtime: bebbossh bebboscp bebbosshd bebbosshkeygen
 	./scripts/package-aros-runtime.sh "$(OUTDIR)" "$(PACKAGE_DIR)"
 
 $(OUTDIR):
@@ -92,6 +105,20 @@ $(OUTDIR)/libcryptossh.a: $(LIB_OBJECTS)
 
 $(OUTDIR)/bebbosshd: $(SSHD_OBJECTS) $(OUTDIR)/libcryptossh.a
 	$(CXX) $(LDFLAGS) $(STARTUP) $(SSHD_OBJECTS) $(LIBS) -o $@
+ifneq ($(strip $(STRIP_OUTPUTS)),)
+	$(STRIP) $(STRIPFLAGS) $@
+endif
+	$(POST_LINK)
+
+$(OUTDIR)/bebbossh: $(SSH_OBJECTS) $(OUTDIR)/libcryptossh.a
+	$(CXX) $(LDFLAGS) $(STARTUP) $(SSH_OBJECTS) $(LIBS) -o $@
+ifneq ($(strip $(STRIP_OUTPUTS)),)
+	$(STRIP) $(STRIPFLAGS) $@
+endif
+	$(POST_LINK)
+
+$(OUTDIR)/bebboscp: $(SCP_OBJECTS) $(OUTDIR)/libcryptossh.a
+	$(CXX) $(LDFLAGS) $(STARTUP) $(SCP_OBJECTS) $(LIBS) -o $@
 ifneq ($(strip $(STRIP_OUTPUTS)),)
 	$(STRIP) $(STRIPFLAGS) $@
 endif

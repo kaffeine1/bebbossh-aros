@@ -34,6 +34,8 @@
  */
 #include <stdint.h>
 
+#include <platform.h>
+
 #include <stdlib.h>
 #include <fnmatch.h>
 
@@ -44,22 +46,36 @@
 #include <sys/stat.h>
 #include <netinet/in.h>
 
+#if defined(__AROS__) && !defined(__AMIGA__)
+#define __AMIGA__ 1
+#endif
+
 #ifdef __AMIGA__
 #include <amistdio.h>
 #include <dos/dostags.h>
 #include <exec/execbase.h>
+#if !(defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__))
 #include <intuition/intuitionbase.h>
 #include <intuition/intuition.h>
 #include <workbench/startup.h>
+#endif
 
 #include <clib/alib_protos.h>
 #include <proto/dos.h>
 #include <proto/exec.h>
+#if !(defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__))
 #include <proto/icon.h>
 #include <proto/intuition.h>
+#endif
 #include <proto/socket.h>
 
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
+#include <aros_mincrt_wrappers.h>
+#endif
+
+#if !defined(__AROS__)
 #include <stabs.h>
+#endif
 
 #include "keyboard.h"
 
@@ -1029,14 +1045,14 @@ DstDone:
 		}
 ExamineNext:
 		if (ExNext(currentCs->localDir, &currentCs->fib)) {
-			if (pattern && fnmatch(pattern, currentCs->fib.fib_FileName, FNM_IGNORECASE))
-				goto ExamineNext;
+				if (pattern && fnmatch(pattern, (const char *)currentCs->fib.fib_FileName, FNM_IGNORECASE))
+					goto ExamineNext;
 #ifndef __AMIGA__
 			if (0 == strcmp(currentCs->fib.fib_FileName, ".") || 0 == strcmp(currentCs->fib.fib_FileName, ".."))
 				goto ExamineNext;
 #endif
 
-			char * src = concatPath(currentCs->src, currentCs->fib.fib_FileName);
+				char * src = concatPath(currentCs->src, (char *)currentCs->fib.fib_FileName);
 			bool isDir;
 			if (IS_LINK(currentCs->fib)) {
 				// link, try to open it as file
@@ -1052,8 +1068,8 @@ ExamineNext:
 				isDir = !IS_FILE(currentCs->fib);
 			}
 
-			CopyState * cs = new CopyState(isDir, src,
-					concatPath(currentCs->dst, currentCs->fib.fib_FileName), 0, 0);
+				CopyState * cs = new CopyState(isDir, src,
+						concatPath(currentCs->dst, (char *)currentCs->fib.fib_FileName), 0, 0);
 			if (!cs)
 				return -1;
 
@@ -1309,9 +1325,11 @@ static void printUsage() {
 }
 
 static void parseParams(unsigned argc, char **argv) {
+#if !(defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__))
 	char *user = getenv("USER");
 	if (user)
 		username = user;
+#endif
 
 	unsigned normal = 0;
 	char *arg = 0;

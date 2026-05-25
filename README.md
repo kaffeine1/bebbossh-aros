@@ -45,7 +45,8 @@ for the AROS One/VMware `alt-abiv0` build.
 The AROS port currently includes:
 
 - a shared AROS build makefile (`Makefile.aros`) with target triplet overrides;
-- static AROS builds of `bebbosshd` and `bebbosshkeygen`;
+- static AROS builds of `bebbossh`, `bebboscp`, `bebbosshd`, and
+  `bebbosshkeygen`;
 - compatibility headers for AROS builds;
 - startup/runtime fixes for AROS One `alt-abiv0`;
 - fallback loading of `PROGDIR:sshd_config` and
@@ -61,6 +62,8 @@ The AROS port currently includes:
 
 Runtime status on AROS One i386:
 
+- `bebbossh` and `bebboscp` build for AROS One i386 `alt-abiv0` and have been
+  smoke-tested on the i386 lab VM through their usage/help paths.
 - `bebbosshd` starts, loads an Ed25519 host key, binds port 22, and listens.
 - `bebbosshkeygen` starts on AROS One i386 and reaches ED25519 key generation.
 - OpenSSH from the host completes protocol identification, key exchange, and

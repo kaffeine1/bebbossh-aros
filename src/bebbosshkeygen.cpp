@@ -183,6 +183,7 @@ __stdargs int main(int argc, char **argv) {
 
 	puts("Generating public/private ed25519 key pair");
 
+#if !(defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT))
 	if (0 == strcmp(outfilename, filename)) {
 		printf("Enter file in which to save the key (%s): ", outfilename);
 		fflush(stdout);
@@ -195,6 +196,7 @@ __stdargs int main(int argc, char **argv) {
 			strcpy(outfilename, buf);
 		}
 	}
+#endif
 
 #if !(defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT))
 	BPTR xist = BSSH_OPEN(outfilename, MODE_OLDFILE);
