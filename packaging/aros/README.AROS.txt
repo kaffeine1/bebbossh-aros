@@ -221,6 +221,20 @@ Verified for the published AROS One i386 alt-abiv0 runtime kit:
 - Clean install in a fresh DH0: directory, including host key generation with
   bebbosshkeygen and daemon startup from that directory.
 
+Release Validation
+------------------
+
+The source repository includes a clean-VM i386 release checklist in:
+
+  docs/AROS_I386_RELEASE.md
+
+For host-side validation of a published i386 release archive:
+
+  ./scripts/aros-i386-public-release-smoke.sh
+
+Set BEBBOSSH_AROS_PORT to the QEMU/VMware forwarded SSH port to also run
+SSH/SCP/SFTP smoke checks against a clean AROS One i386 VM.
+
 AROS x86_64 is an experimental parallel target. The current x86_64 kit has
 been validated in hosted AROS x86_64 for short non-interactive OpenSSH
 commands: C:Version and C:Echo OK return complete output and exit status 0,

@@ -28,8 +28,10 @@ mkdir -p "$pkgdir/scripts"
 cp scripts/aros-ssh-smoke-test.sh "$pkgdir/scripts/aros-ssh-smoke-test.sh"
 cp scripts/aros-auth-forward-test.sh "$pkgdir/scripts/aros-auth-forward-test.sh"
 cp scripts/aros-transfer-stress-test.sh "$pkgdir/scripts/aros-transfer-stress-test.sh"
+cp scripts/aros-i386-public-release-smoke.sh "$pkgdir/scripts/aros-i386-public-release-smoke.sh"
 mkdir -p "$pkgdir/docs"
 cp docs/AROS_TESTER.md "$pkgdir/docs/AROS_TESTER.md"
+cp docs/AROS_I386_RELEASE.md "$pkgdir/docs/AROS_I386_RELEASE.md"
 cp README.md "$pkgdir/README.md"
 cp AROS_PORTING.md "$pkgdir/AROS_PORTING.md"
 cp COPYING "$pkgdir/COPYING"
@@ -48,7 +50,9 @@ cp LICENSE "$pkgdir/LICENSE"
         scripts/aros-ssh-smoke-test.sh \
         scripts/aros-auth-forward-test.sh \
         scripts/aros-transfer-stress-test.sh \
+        scripts/aros-i386-public-release-smoke.sh \
         docs/AROS_TESTER.md \
+        docs/AROS_I386_RELEASE.md \
         README.md \
         AROS_PORTING.md \
         COPYING \

@@ -142,6 +142,16 @@ Published 32-bit builds are attached to GitHub Releases as
 `bebbossh-aros-i386-abiv0-<version>.zip` and
 `bebbossh-aros-i386-abiv0-<version>.tar.gz` runtime kits.
 
+For public i386 release validation, use the clean-VM checklist in
+`docs/AROS_I386_RELEASE.md`. The host-side asset/runtime smoke can be run with:
+
+```sh
+./scripts/aros-i386-public-release-smoke.sh
+```
+
+Set `BEBBOSSH_AROS_PORT` to also run SSH/SCP/SFTP checks against a clean AROS
+One i386 VM running the published package.
+
 The experimental AROS x86_64 build wrapper builds the validated keygen and the
 daemon used for hosted AROS smoke tests:
 
