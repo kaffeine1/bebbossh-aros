@@ -313,7 +313,11 @@ Known Limits
   the daemon main loop is blocked. Use AROS console/VNC or i386 for long-running
   validation commands until an asynchronous x86_64 exec backend exists.
 - AROS x86_64/mincrt currently rejects interactive-shell cd. Use explicit paths
-  such as dir C: on that target. i386 keeps working cd support.
+  such as dir C: on that target. The x86_64/mincrt interactive shell uses a
+  static AROS> prompt, disables tab completion, and reports
+  "pwd not available on x86_64 mincrt shell" for pwd so it avoids directory
+  calls that are not yet wrapped there. i386 keeps working cd, pwd, dynamic
+  prompt, and completion support.
 - Known stdin-driven interactive commands are rejected with exit status 2, so
   they do not block the daemon's synchronous exec path.
 - Shell redirection and pipes (`>`, `<`, `|`) are rejected on AROS until they

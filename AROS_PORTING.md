@@ -270,7 +270,12 @@ asynchronous x86_64 exec backend exists.
 The x86_64/mincrt interactive shell deliberately rejects `cd` for now. A shell
 loop showed that changing current directory through the raw `CurrentDir()` path
 can block the daemon on that target. Use explicit paths such as `dir C:` on
-x86_64/mincrt; i386 retains working `cd` support.
+x86_64/mincrt; i386 retains working `cd` support. The current x86_64/mincrt
+interactive shell is intentionally minimal and safe: it emits a static
+`AROS> ` prompt instead of calling `NameFromLock(dir)`, disables tab
+completion instead of calling `DupLock()`/`NameFromLock()`, returns
+`pwd not available on x86_64 mincrt shell` for `pwd`, and exits cleanly without
+crashing the daemon.
 
 Current hosted i386 runtime status: hosted AROS i386 starts with AROSTCP/TAP
 networking and authenticates OpenSSH password clients. After the default AROS

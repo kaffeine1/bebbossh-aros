@@ -243,6 +243,14 @@ void ShellChannel::sendBreak() {
 void ShellChannel::prompt() {
 	if (!hasPty())
 		return;
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
+	{
+		// dir==0 and NameFromLock is unwrapped on x64/mincrt: emit a static prompt
+		static const char sp[] = "AROS> ";
+		server->channelWrite(channel, sp, sizeof(sp) - 1);
+		return;
+	}
+#endif
 	char * p = xbuffer;
 	*p++ = 0x1b;
 	*p++ = '[';
@@ -250,7 +258,7 @@ void ShellChannel::prompt() {
 	*p++ = '2';
 	*p++ = 'm';
 
-	// name anhängen
+	// append the current directory name
 	NameFromLock(dir, p, sizeof(xbuffer) - 12);
 	p += strlen(p);
 
@@ -299,6 +307,10 @@ static void nqsort(char * p, int length, int ml) {
 void ShellChannel::autocomplete() {
 	if (!hasPty())
 		return;
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
+	// dir==0 and DupLock/NameFromLock are unwrapped on x64/mincrt: disable completion
+	return;
+#endif
 
 	// find start of argument
 	char * p = xpos;
@@ -524,6 +536,16 @@ int ShellChannel::handleData(char * indata, unsigned len) {
 
 	if (running) { // forward data to running program
 
+		// guard: never let xpos run past the end of line[CHUNKSIZE]
+		{
+			unsigned avail = (unsigned)((line + CHUNKSIZE) - xpos);
+			if (avail == 0)
+				len = 0;
+			else if (len + 1 > avail)
+				len = avail - 1;
+			indata[len] = 0;
+		}
+
 		// send CTRL c
 		if (len == 1 && *indata == 3)
 			sendBreak();
@@ -581,7 +603,7 @@ int ShellChannel::handleData(char * indata, unsigned len) {
 				continue;
 
 			char c = indata[i];
-			logme(L_TRACE, "@%ld:%ld line[%2d]=%02x %c, %p %p", xpos - line, server->getSockFd(), channel, c & 0xff, (c &0xff) >= ' ' ? (c &0xff) : '.', xpos, xend);
+			logme(L_TRACE, "@%ld:%ld line[%2d]=%02x %c, %p %p", (long)server->getSockFd(), (long)channel, (int)(xpos - line), c & 0xff, (c &0xff) >= ' ' ? (c &0xff) : '.', xpos, xend);
 			switch (c) {
 			case 1: // CTRL+A
 			CTRLA:
@@ -1351,6 +1373,10 @@ bool ShellChannel::startCommand(){
 
 #if BEBBOSSH_AROS
 	if (!hasExec() && keywordLen == 3 && 0 == strnicmp(xbuffer, "pwd", 3)) {
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
+		static const char m[] = "pwd not available on x86_64 mincrt shell\r\n";
+		server->channelWrite(channel, m, sizeof(m) - 1);
+#else
 		char name[512];
 		if (NameFromLock(dir, name, sizeof(name))) {
 			int len = strlen(name);
@@ -1359,6 +1385,7 @@ bool ShellChannel::startCommand(){
 		} else {
 			server->channelWrite(channel, "object not found\r\n", 18);
 		}
+#endif
 		prompt();
 		return drainBufferedInput();
 	}
