@@ -238,142 +238,41 @@ a release or test VM update.
 Current Runtime Status
 ----------------------
 
-Verified for the published AROS One i386 alt-abiv0 runtime kit:
+- i386 (AROS One / VMware i386, the i386-abiv0 kit): stable and validated.
+  SSH exec, SCP/SFTP transfers, and a clean install with host-key generation
+  all work from a real AROS shell.
+- x86_64: experimental and not yet release-ready. Prefer i386 for now.
 
-- `bebbossh` completes loopback SSH exec through `bebbosshd` from a real AROS
-  shell on AROS One i386.
-- `bebboscp` completes a loopback SCP copy from a real AROS shell on AROS One
-  i386, with byte-identical source and destination files.
-- `bebbosshkeygen` generates Ed25519 key pairs on AROS One i386.
-- SSH protocol identification, KEX, and password authentication.
-- Remote exec for simple non-interactive commands such as version and dir.
-- SFTP and OpenSSH scp transfers on T: and DH0:.
-- SFTP mkdir/rmdir on DH0:.
-- 1 MiB and 5 MiB file round-trips.
-- A small telegram-amiga style directory tree round-trip with scp -r.
-- scp overwrite of a smaller file over a larger file on DH0:, verified by byte
-  compare.
-- Clean install in a fresh DH0: directory, including host key generation with
-  bebbosshkeygen and daemon startup from that directory.
-
-Release Validation
-------------------
-
-The source repository includes a clean-VM i386 release checklist in:
-
-  docs/AROS_I386_RELEASE.md
-
-For host-side validation of a published i386 release archive:
-
-  ./scripts/aros-i386-public-release-smoke.sh
-
-Set BEBBOSSH_AROS_PORT to the QEMU/VMware forwarded SSH port to also run
-SSH/SCP/SFTP smoke checks against a clean AROS One i386 VM.
-
-AROS x86_64 is an experimental parallel target. The current x86_64 kit has
-been validated in hosted AROS x86_64 for short non-interactive OpenSSH
-commands: C:Version and C:Echo OK return complete output and exit status 0,
-an explicit missing command returns exit status 127, and the daemon remains
-usable afterwards. Hosted x86_64 and hosted i386 both pass the smoke test for
-PTY exec of simple commands, the minimal interactive shell, SCP/SFTP, and 1 MiB
-and 5 MiB transfer round-trips. Both hosted targets also pass the
-telegram-amiga offline checks for JSON, getUpdates, inbox, sendMessage,
-client-state, and TLS-status. Hosted i386 and hosted x86_64 also pass
-askpass-based zero-delay SCP/SFTP stress with sizes 257, 4096, 65536, and
-1048576 bytes, 800 consecutive askpass-based C:Version exec connections, and
-50 repeated bebbosshkeygen runs through OpenSSH exec from a clean runtime.
-The x86_64 minimal-runtime daemon has also been validated for SFTP ls, get,
-put, rm, rename with overwrite, mkdir, rmdir, and chmod under QEMU.
-On the AROS One x86_64/mincrt QEMU test VM, SSH exec also returns real output
-for short non-interactive commands: C:Version returned Kickstart 51.51,
-Workbench 40.0, and echo ok returned ok.
+A clean-VM i386 release checklist is kept in the source repository under
+docs/AROS_I386_RELEASE.md.
 
 Known Limits
 ------------
 
-- Interactive SSH sessions can run simple commands and return to the prompt.
-- Simple piped stdin for multi-command interactive sessions has been tested
-  with dir, cd, version, and exit. Non-interactive SSH exec remains the
-  recommended automation path for short commands.
-- In an interactive SSH shell, a bare dir command is normalized to one entry
-  per line for readability. Non-interactive ssh ... dir keeps native AROS dir
-  formatting.
-- PTY exec can run simple bounded commands through the same stable AROS command
-  backend used by non-PTY exec.
-- Full PTY-style interactive program support is not complete on AROS yet.
-  Stdin-driven programs such as telegram-test --telegram-client-console are
-  rejected until a stable console/file-handle backend is implemented.
-- Remote exec is intended for short commands at this stage. On AROS it runs in
-  a child task so the daemon main loop remains responsive, and command exit
-  status is propagated to the SSH client.
-- Non-PTY exec has a soft 30-second timeout that sends a break to the command
-  task and reports the timeout to the client.
-- AROS x86_64/mincrt uses a synchronous SystemTagList backend for real command
-  output. It is validated for short bounded commands, but while a command runs
-  the daemon main loop is blocked. Use AROS console/VNC or i386 for long-running
-  validation commands until an asynchronous x86_64 exec backend exists.
-- AROS x86_64/mincrt currently rejects interactive-shell cd. Use explicit paths
-  such as dir C: on that target. The x86_64/mincrt interactive shell uses a
-  static AROS> prompt, disables tab completion, and reports
-  "pwd not available on x86_64 mincrt shell" for pwd so it avoids directory
-  calls that are not yet wrapped there. i386 keeps working cd, pwd, dynamic
-  prompt, and completion support.
-- Known stdin-driven interactive commands are rejected with exit status 2, so
-  they do not block the daemon's synchronous exec path.
-- Shell redirection and pipes (`>`, `<`, `|`) are rejected on AROS until they
-  are stable. Rejected redirection returns SSH exit status 2.
-- SFTP readlink and symlink requests are not implemented on AROS x86_64
-  minimal-runtime builds yet. SFTP timestamp preservation is also a no-op on
-  that target until the DOS SetFileDate wrapper path is validated.
-- The AROS random fallback mixes multiple local runtime entropy sources because
-  no system CSPRNG is currently used by this port. Replace it with a real AROS
-  CSPRNG if one becomes available. Minimal-runtime builds avoid fragile AROS OS
-  entropy calls and mix CPU cycle counter jitter, addresses, buffer identity,
-  length, and an internal counter instead.
-- The packaged transfer stress script defaults to one-second pacing for
-  repeatable automation. Zero-delay mode is useful as an explicit per-target
-  hosted regression stress test. For long macOS OpenSSH password-auth churn,
-  prefer BEBBOSSH_AROS_AUTH_HELPER=askpass; sshpass can intermittently fail to
-  provide its pseudo-terminal prompt at zero delay. The exec-loop test closes
-  client stdin deliberately for short non-interactive command churn; use the
-  smoke test for larger output and PTY/shell coverage. Simultaneous zero-delay
-  stress on both hosted targets, and very long mixed zero-delay sequences that
-  chain exec, transfer, and keygen gates without restarting the hosted runtime,
-  remain soak tests rather than release gates.
-- The test password in passwd.example is not safe. Change it before use.
-- Do not distribute private host keys generated for local testing.
+- Non-interactive SSH exec of short commands is the recommended automation
+  path.
+- Interactive SSH sessions can run simple commands (dir, cd, version, exit) and
+  return to the prompt, but full PTY-style interactive program support is not
+  complete. Stdin-driven programs are rejected with exit status 2.
+- Shell redirection and pipes (`>`, `<`, `|`) are not supported on AROS and are
+  rejected with exit status 2.
+- SFTP readlink/symlink are not implemented, and SFTP timestamp preservation is
+  a no-op.
+- The test password in passwd.example is not safe. Change it before use, and do
+  not distribute private host keys generated for local testing.
 
 Host Test Examples
 ------------------
 
-From the host side, through QEMU forwarding:
+From the host side, through QEMU/VMware port forwarding:
 
   ssh -p 10022 test@127.0.0.1 version
-
-For the current telegram-amiga style automation workflow:
-
-  sshpass -p test ssh -p 10022 test@127.0.0.1 \
-    'DH0:TGTEST/telegram-test --help'
-
-Use DH0: or another persistent volume for uploads. Avoid RAM: in VM setups
-where RAM: file operations have shown freezes. Avoid remote redirection and
-pipes until they are explicitly supported.
-
-OpenSSH scp/SFTP overwrite of a smaller file over a larger file has been
-verified on DH0: and should truncate the destination correctly.
-
-AROS SFTP uploads keep AmigaDOS execute protection allowed, so uploaded
-binaries should remain runnable even when OpenSSH sends Unix-style 0644
-permissions.
-
-Public-key authentication reads ENVARC:.ssh/authorized_keys. Host-side
-automation can validate public-key login and local port forwarding with:
-
-  scripts/aros-auth-forward-test.sh
-
-For forwarding, provide a TCP target reachable from the AROS network with
-BEBBOSSH_AROS_FORWARD_TARGET_HOST and BEBBOSSH_AROS_FORWARD_TARGET_PORT.
-
-For batch SFTP with sshpass, force password authentication in batch mode:
-
   sshpass -p test sftp -oBatchMode=no -P 10022 test@127.0.0.1
+
+Use DH0: or another persistent volume for uploads; avoid RAM: in VM setups
+where RAM: file operations have shown freezes.
+
+Public-key authentication reads ENVARC:.ssh/authorized_keys. AROS SFTP uploads
+keep AmigaDOS execute protection allowed, so uploaded binaries stay runnable
+even when OpenSSH sends Unix-style 0644 permissions, and an scp/SFTP overwrite
+of a larger file by a smaller one truncates the destination correctly.

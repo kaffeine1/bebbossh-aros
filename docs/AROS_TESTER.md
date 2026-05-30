@@ -154,19 +154,12 @@ BEBBOSSH_GATE_I386_FORWARD_PAYLOAD=bebbossh-forward-i386 \
 
 ## Current Validation
 
-The hosted x86_64 and i386 runtimes have passed this smoke test with
-`BEBBOSSH_AROS_WORKDIR=SYS:TGTEST`, including SCP/SFTP round-trips and 1 MiB
-plus 5 MiB transfer stress. Both runtimes also passed the telegram-amiga
-offline checks for JSON, getUpdates, inbox, sendMessage, client-state, and
-TLS-status. Both hosted runtimes also passed public-key authentication and
-`direct-tcpip` forwarding to a host-side TCP listener through their TAP
-gateway addresses.
+The hosted x86_64 and i386 runtimes pass this smoke test on
+`SYS:TGTEST`, including SCP/SFTP round-trips, transfer stress, public-key
+authentication, and `direct-tcpip` forwarding. Both also pass the
+telegram-amiga offline checks (JSON, getUpdates, inbox, sendMessage,
+client-state, TLS-status).
 
-After accept-loop hardening, hosted i386 passed 3 zero-delay transfer stress
-iterations with sizes `257 4096 65536 1048576` on `SYS:TGTEST`. Hosted x86_64
-now passes the focused 5-iteration zero-delay transfer stress target with the
-same sizes after the server loop was changed to service accepted sockets and
-already-ready client sockets in the same iteration. The aggregate hosted gate
-still has an intermittent x86_64 password-auth failure during zero-delay churn
-after the smoke phase. Keep paced stress enabled for routine automation, and
-run zero-delay stress as an explicit short-session robustness regression.
+Known limit: x86_64 has an intermittent password-auth failure during
+zero-delay connection churn. Keep paced stress enabled for routine automation,
+and run zero-delay stress as an explicit short-session robustness regression.

@@ -166,17 +166,3 @@ BEBBOSSH_AROS_PORT=10022 ./scripts/aros-i386-public-release-smoke.sh
 
 If it fails, first confirm that the VM is actually running the public release
 binary and not an older lab `bebbosshd` left in `DH0:BSSHPKG`.
-
-## i386 Completion Backlog
-
-The i386 package is usable for SSH exec, SCP, SFTP, keygen, and basic
-interactive shell commands. Remaining i386 porting work should be tracked as
-separate follow-up items:
-
-- Full PTY-style stdin-driven interactive programs.
-- Broader port-forwarding validation from AROS-native client paths.
-- Longer soak runs on a clean VM after autostart.
-- Release smoke from a clean VM image rather than a long-lived lab disk.
-
-Do not block an i386 bugfix release on x86_64. Keep x86_64 work in its own VM
-and promote it only after it passes the same clean-VM gates.

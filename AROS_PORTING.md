@@ -34,48 +34,27 @@ consistent with the upstream project.
 
 ## What changed
 
-- Added `include/platform.h` to separate Amiga API usage from Linux/POSIX-only
-  server paths.
-- Added `include/compat_endian.h` for hosts without Linux `<endian.h>`.
-- Added `Makefile.aros` for shared AROS builds of `bebbossh`, `bebboscp`,
-  `bebbosshd`, `bebbosshkeygen`, and the crypto self-tests, with target
-  triplet overrides.
-- Added `Makefile.aros-x86_64` as an experimental AROS x86_64 build wrapper.
+- Added a platform/endian compatibility layer to separate Amiga API usage from
+  Linux/POSIX-only server paths.
+- Added `Makefile.aros` (shared i386/x86_64 source build) and
+  `Makefile.aros-x86_64` (x86_64 wrapper), with target triplet overrides.
 - Added an AROS x86_64 minimal startup/runtime path for `bebbosshkeygen` and
-  `bebbosshd`, avoiding standard runtime paths that were unstable on the test
-  VM.
-- Kept m68k assembly out of the AROS build.
-- Kept the interactive AmigaDOS shell path enabled for AROS, while leaving the
-  Linux PTY/PAM path Linux-only.
-- Added AROS-specific fallback random filling in `src/rand.c`.
-- Added AROS startup probes for isolating ABI/startup failures.
-- Added `AROS_ENTROPY_PROBE` for checking AROS timer, task, memory, stack, and
-  CPU-cycle entropy inputs without touching daemon startup.
-- Added `PROGDIR:` fallbacks for ISO-based AROS One testing.
-- Added read-only password-file support so test ISOs can authenticate without
-  writing back hashed passwords.
-- Hardened the AROS `randfill()` fallback by mixing wall-clock time,
-  microseconds, DOS ticks, current task address, heap state, stack address, and
-  x86 CPU cycle counter data where available into an internal 64-bit mixer
-  instead of seeding `rand()` from `time(0)`.
-- Added a minimal AROS remote `exec` backend using `SystemTags()` for
-  non-interactive commands.
-- Added configurable AROS accept-loop burst handling through
-  `ListenAcceptBurst` and the `-B` daemon option, while keeping the hosted
-  default conservative during x86_64 churn investigation.
-- Adjusted SFTP path validation on AROS to use `GetDeviceProc()`, so assigns
-  such as `T:` and `DH0:` resolve correctly.
-- Adjusted SFTP reads to honor explicit client offsets and fail partial writes
-  instead of silently acknowledging short writes.
+  `bebbosshd`, avoiding standard runtime paths that were unstable on the VM.
+- Kept m68k assembly out of the AROS build, kept the interactive AmigaDOS shell
+  path enabled, and left the Linux PTY/PAM path Linux-only.
+- Hardened the AROS `randfill()` fallback to mix several local runtime entropy
+  sources instead of seeding `rand()` from `time(0)`.
+- Added startup/entropy probes for isolating ABI/startup failures.
+- Added `PROGDIR:` config/host-key fallbacks and read-only password-file
+  support for ISO-based AROS One testing.
+- Added an AROS remote `exec` backend for simple non-interactive commands.
+- Added configurable accept-loop burst handling (`ListenAcceptBurst`, `-B`).
+- Adjusted SFTP path validation to resolve assigns, honor explicit client read
+  offsets, and fail (not silently ack) short writes.
 - Raised the default AROS command stack to 1 MiB for all AROS daemon builds.
-  This is required for larger automation commands such as telegram-amiga inbox
-  and client self-tests on hosted i386.
-- Tightened daemon/session cleanup so remaining sessions, listeners, and open
-  channel objects are released on shutdown or abnormal disconnect.
-- Hardened SSH banner and KEX name-list parsing so binary KEX data that arrives
-  with the client banner cannot be interpreted with C string functions.
-- Fixed AROS verbose logging on slow-stack-format ABIs by converting varargs
-  through `GetDataStreamFromFormat()` before calling `VFPrintf()`.
+- Tightened daemon/session cleanup on shutdown and abnormal disconnect.
+- Hardened SSH banner and KEX name-list parsing against binary KEX data
+  arriving with the client banner.
 
 ## Stable AROS i386 build
 
@@ -132,57 +111,21 @@ make -f Makefile.aros-x86_64 bebbosshkeygen bebbosshd \
   AROS_SDK_ROOT=<path-to-aros-x86_64-sdk>
 ```
 
-AROS One x86_64 currently ships ELF64 AROS commands with ELF ABI version 11.
-The x86_64 wrapper therefore patches `EI_ABIVERSION` to 11 after linking and
-stripping. Binaries left at ABI version 1 are rejected by the AROS One x86_64
-Shell as not executable before their startup code runs.
+Packager notes for the x86_64 wrapper:
 
-The wrapper also uses an x86_64-safe code model and disables unwind-table and
-hot/cold partition output that introduced unsupported relocation records in
-early builds. The intended final relocation shape is only `R_X86_64_64`;
-`R_X86_64_32`, `R_X86_64_PC32`, and `R_X86_64_PLT32` should not appear in the
-linked AROS ELF64 executables.
+- AROS One x86_64 ships ELF64 commands with ELF ABI version 11, so the wrapper
+  patches `EI_ABIVERSION` to 11 after link/strip; ABI version 1 binaries are
+  rejected by the Shell.
+- The wrapper uses an x86_64-safe code model and disables unwind-table and
+  hot/cold partition output; the only expected relocation is `R_X86_64_64`.
+- The x86_64 binaries use the minimal AROS runtime with standard init/exit
+  symbol sets disabled, and the random fallback is still experimental (see
+  Known limits). Do not publish a stable x86_64 security release until it is
+  validated on the target VM.
 
-`bebbosshkeygen` x86_64 currently uses a minimal AROS runtime source
-(`src/aros_mincrt.c`) and disables standard AROS init/exit symbol sets. The
-standard startup path reached `main()` in early tests, but crashed during
-startup cleanup or runtime library calls on return. The keygen path has been
-validated from an ISO transfer on AROS One x86_64 by copying to a persistent
-`AROS:` directory, applying `Protect <file> RWED`, generating an Ed25519 key,
-and verifying that both the private key and `.pub` file are written.
-
-The x86_64 random fallback is intentionally still marked experimental. The
-minimal-runtime path avoids the OS entropy calls that crashed on the test VM and
-mixes stack/address jitter, an internal counter, and the x86 CPU cycle counter.
-Do not publish a stable x86_64 security release until this path is validated on
-the target VM and replaced or supplemented if an AROS CSPRNG becomes available.
-
-The first runtime validation goal for x86_64 is deliberately small:
-
-- `bebbosshkeygen` starts and creates an Ed25519 host key. Done on AROS One
-  x86_64 via ISO transfer.
-- `bebbosshd` starts, binds, and authenticates from a modern OpenSSH client.
-  Done in hosted AROS x86_64 with TAP networking.
-- Non-PTY exec returns complete output and exit status for simple commands
-  such as `C:Version` and `C:Echo OK`. Done in hosted AROS x86_64.
-- On AROS One x86_64/mincrt under QEMU, short non-interactive exec also returns
-  real output through the synchronous `SystemTagList` backend. `C:Version`
-  returned `Kickstart 51.51, Workbench 40.0`, and `echo ok` returned `ok`.
-- Explicit missing commands return SSH exit status 127 and leave the daemon
-  usable. Done in hosted AROS x86_64.
-- The telegram-amiga offline automation suite passes on hosted AROS x86_64:
-  `--help`, JSON, getUpdates, inbox, sendMessage, client-state, and TLS-status
-  checks all returned exit status 0.
-- SFTP/SCP upload and download work on a persistent volume. Done in hosted AROS
-  x86_64 on `SYS:TGTEST`, including 1 MiB and 5 MiB transfer round-trips.
-- PTY exec for simple commands and the minimal interactive shell pass the
-  hosted smoke test. The shell sequence covers `dir`, `cd`, `version`, and
-  `exit`.
-
-The AROS-specific task launch code now uses real `struct TagItem` arrays with
-`IPTR` payloads, and synthetic DOS file handles store channel pointers through
-`SIPTR` fields. This avoids the known pointer truncation risks from the i386
-implementation when compiling for x86_64.
+x86_64 is hosted-validated and the mincrt keygen path is also validated on
+AROS One x86_64 via ISO transfer. Detailed test status lives in
+`docs/AROS_TESTER.md`.
 
 ## Release naming
 
@@ -212,83 +155,43 @@ questions are closed.
 
 ## QEMU environment
 
-The local AROS One i386 VM used for validation was configured with a VNC
-display and a writable QEMU FAT shared disk. The host path is installation
-specific; in the AROS desktop this is visible as `Qemu Vfat`.
+Do not run `make` directly inside `Qemu Vfat:`: the AROS toolchain can read
+makefiles from the QEMU FAT handler as if they contained NUL bytes. Likewise,
+do not treat `Qemu Vfat` as a reliable executable transfer path. A native AROS
+command copied through the QEMU FAT shared disk and protected `RWED` on `DH0:`
+was still rejected by the Shell. Prefer an ISO image, a native AROS volume, or
+another byte-preserving transfer path before concluding that a generated binary
+is invalid.
 
-```text
-<VM_SHARED_DIR>
-```
+## Runtime validation summary
 
-Do not run `make` directly inside `Qemu Vfat:`. The AROS toolchain can read
-makefiles from the QEMU FAT handler as if they contained NUL bytes. The VM has
-also frozen during copies and `makedir` on `RAM:`, so avoid large file
-operations in the guest until that is fixed.
+x86_64 (mincrt) is hosted-validated for keygen, daemon bind/auth, non-PTY and
+PTY exec with real output and exit status, the minimal interactive shell,
+missing-command exit 127, telegram-amiga automation, and SFTP/SCP. The keygen
+path is additionally validated on AROS One x86_64 via ISO transfer. Keep x86_64
+marked experimental until the entropy path is reviewed and non-hosted AROS One
+daemon validation is closed. For SFTP/SCP, the validated operations are `ls`,
+`get`, `put`, `rm`, `rename` (including overwrite), `mkdir`, `rmdir`, and
+`chmod`. `READLINK`/`SYMLINK` remain unsupported and x86_64/mincrt does not
+preserve SFTP mtime.
 
-For x86_64 runtime validation, do not treat `Qemu Vfat` as a reliable executable
-transfer path. In the current AROS One x86_64 VM, a native AROS command copied
-through the QEMU FAT shared disk and then protected `RWED` on `DH0:` was still
-rejected by the Shell as not executable. Prefer an ISO image, a native AROS
-volume, or another byte-preserving transfer path before concluding that a
-generated x86_64 binary is invalid.
+Hosted AROS i386 is validated for daemon bind/auth, the telegram-amiga
+automation suite, redirection and interactive-command rejection, PTY exec,
+minimal shell, and SFTP/SCP for the same operation set. This hosted validation
+does not replace the separate AROS One `alt-abiv0` release validation path. For
+detailed test status and counts, see `docs/AROS_TESTER.md`.
 
-Current x86_64 runtime status: ISO transfer to `CD0:` has been validated with
-native AROS commands and generated `bebbosshkeygen` binaries copied to an
-`AROS:` directory and executed successfully. `bebbosshkeygen` can generate
-Ed25519 private/public key files on AROS One x86_64. In hosted AROS x86_64,
-`bebbosshd` starts with AROSTCP/TAP networking, authenticates OpenSSH password
-clients, returns complete output and exit status 0 for `C:Version` and
-`C:Echo OK`, returns exit status 127 for an explicit missing command, and stays
-usable after that failure. It also passes the telegram-amiga offline automation
-suite used for JSON, getUpdates, inbox, sendMessage, client-state, and
-TLS-status checks. Hosted x86_64 now also passes SFTP/SCP upload/download,
-PTY exec, the minimal interactive shell sequence, long 1/5/10/25 MiB transfer
-stress, an askpass-based zero-delay SCP/SFTP stress run with sizes
-`257 4096 65536 1048576`, 800 consecutive askpass-based `C:Version` exec
-connections, and 50 repeated `bebbosshkeygen` executions through OpenSSH exec
-from a clean runtime. Keep x86_64 marked experimental until the entropy path is
-reviewed and non-hosted AROS One daemon validation is closed.
+AROS x86_64/mincrt SSH exec uses a synchronous DOS `SystemTagList` backend that
+redirects command stdout/stderr to a temporary `T:` file, reads it back over
+SSH, and deletes it. This avoids the earlier `CreateNewProcTagList`/mincrt crash
+class, but is deliberately blocking: while a command runs, the daemon main loop
+does not service other clients. Treat it as a short-command automation path; run
+long commands from the AROS console/VNC or on the i386 daemon.
 
-On the AROS x86_64 minimal-runtime daemon, SFTP has been validated end-to-end
-for directory browsing, downloads, uploads, remove, rename including overwrite,
-mkdir/rmdir, and chmod. `READLINK`/`SYMLINK` remain unsupported because the
-symlink path still depends on DOS device-proc calls that are not wrapped in the
-minimal runtime. `SetFileDate` timestamp preservation is intentionally skipped
-on x86_64/mincrt until that DOS v36 call is validated in the raw wrapper path.
-
-AROS x86_64/mincrt SSH exec uses a synchronous DOS `SystemTagList` backend for
-real command output. The raw wrapper LVOs were verified from the x86_64 SDK
-`Developer/SDK/fd/dos_lib.fd`: `CurrentDir` is LVO 21 and `SystemTagList` is
-LVO 101 (`bias 606`). The command's stdout and stderr are redirected to a
-temporary `T:` file, read back over SSH, and deleted. This avoids the earlier
-`CreateNewProcTagList`/mincrt crash class, but it is deliberately blocking:
-while the command is running, the daemon main loop does not service other
-clients. Treat it as a short-command automation path. Long-running validation
-commands should be run from the AROS console/VNC or on the i386 daemon until an
-asynchronous x86_64 exec backend exists.
-
-The x86_64/mincrt interactive shell deliberately rejects `cd` for now. A shell
-loop showed that changing current directory through the raw `CurrentDir()` path
-can block the daemon on that target. Use explicit paths such as `dir C:` on
-x86_64/mincrt; i386 retains working `cd` support. The current x86_64/mincrt
-interactive shell is intentionally minimal and safe: it emits a static
-`AROS> ` prompt instead of calling `NameFromLock(dir)`, disables tab
-completion instead of calling `DupLock()`/`NameFromLock()`, returns
-`pwd not available on x86_64 mincrt shell` for `pwd`, and exits cleanly without
-crashing the daemon.
-
-Current hosted i386 runtime status: hosted AROS i386 starts with AROSTCP/TAP
-networking and authenticates OpenSSH password clients. After the default AROS
-command stack was raised to 1 MiB, it passes the telegram-amiga offline
-automation suite used for `--help`, JSON, getUpdates, inbox, sendMessage,
-client-state, and TLS-status checks. It also passes the hosted smoke test for
-redirection rejection, interactive-command rejection, PTY exec, minimal shell,
-SCP/SFTP, 1 MiB plus 5 MiB transfer stress, an askpass-based zero-delay SCP/SFTP
-stress run with sizes `257 4096 65536 1048576` on `SYS:TGTEST`, 800 consecutive
-askpass-based `C:Version` exec connections, and 50 repeated `bebbosshkeygen`
-executions through OpenSSH exec from a clean runtime. Keep SFTP/SCP stress in
-the regression suite. This hosted validation does not replace the separate AROS
-One `alt-abiv0` release validation path.
+The x86_64/mincrt interactive shell deliberately rejects `cd`, because changing
+current directory through the raw `CurrentDir()` path can block the daemon. Use
+explicit paths such as `dir C:` on x86_64/mincrt; i386 retains working `cd`
+support.
 
 ## Host cross-build for AROS One i386
 
@@ -362,40 +265,13 @@ example config files, runtime README, upstream license files, porting notes,
 and `SHA256SUMS`.
 It intentionally does not include private host keys or real passwords.
 
-Package validation on AROS One i386:
+The generated package has been validated on AROS One i386 end-to-end: copied to
+`DH0:BSSHPKG` with `scp -r`, host key generated in-guest with `bebbosshkeygen`,
+loopback SSH exec and SCP copy completed from a real AROS shell with
+byte-identical files, and the packaged `bebbosshd -p 2222` answered OpenSSH auth
+and SFTP through QEMU forwarding.
 
-- The generated package directory was copied to `DH0:BSSHPKG` with `scp -r`.
-- `sshd_config.example` and `passwd.example` were copied to runtime names.
-- `DH0:BSSHPKG/bebbosshkeygen -f DH0:BSSHPKG/ssh_host_ed25519_key` generated
-  a fresh host key inside AROS.
-- `bebbossh` i386 `alt-abiv0` completed loopback SSH exec through `bebbosshd`
-  from a real AROS shell on the AROS One i386 lab VM.
-- `bebboscp` i386 `alt-abiv0` completed a loopback SCP copy from a real AROS
-  shell on the AROS One i386 lab VM, with byte-identical source and destination
-  files.
-- `DH0:BSSHPKG/bebbosshd -p 2222` started from the packaged directory.
-- Through QEMU forwarding at `127.0.0.1:12222`, OpenSSH completed auth and
-  `version` returned `Kickstart 51.51, Workbench 40.0`.
-- SFTP against the packaged daemon listed the package directory successfully.
-
-To start `bebbosshd` automatically after AROS boot, install the package in a
-persistent directory such as `DH0:BSSHPKG` and add this stanza to
-`S:User-Startup`:
-
-```text
-;BEGIN BebboSSHd AROS
-Stack 262144
-If EXISTS DH0:BSSHPKG/bebbosshd
-    Run DH0:BSSHPKG/bebbosshd
-EndIf
-;END BebboSSHd AROS
-```
-
-The current autostart recommendation intentionally avoids `Run >NIL:` while
-the AROS redirection path is being hardened. Startup status messages are logged
-at debug level, so the normal `DebugLevel 1` package configuration should not
-leave a daemon output window at boot. For diagnostics, temporarily use
-`DebugLevel debug` or launch `bebbosshd` with `-v5`.
+Autostart: see `packaging/aros/README.AROS.txt`.
 
 When replacing `DH0:BSSHPKG/bebbosshd` through SCP/SFTP, delete the existing
 file first, then upload the new binary and download it back for a byte compare.
@@ -409,86 +285,35 @@ stack 262144
 bebbosshd -v5
 ```
 
-AROS runtime notes:
+Known limits:
 
-- The classic Amiga `grabFx()` file-handle hack is disabled on AROS because it
-  reads private memory before `BADDR(Input())` and can fault on the validated
-  AROS i386 runtime.
-- AROS logging does not read the m68k custom chip at `0xdff000`.
-- If `ENVARC:ssh/sshd_config` is missing, AROS builds fall back to
-  `PROGDIR:sshd_config`.
-- If `ENVARC:ssh/ssh_host_ed25519_key` is missing, AROS builds fall back to
-  `PROGDIR:ssh_host_ed25519_key`. The VM test ISO includes a development key
-  for this purpose only.
-- If the password file can only be opened read-only, plaintext test passwords
-  are accepted without rewriting the file to `{ssha256}` format. This is useful
-  for ISO-based tests.
-- AROS does not provide a known system CSPRNG in this porting environment. The
-  current `randfill()` path is a best-effort fallback that mixes several local
-  runtime sources and is materially stronger than the original `time(0)` seed,
-  but it should be replaced if a real AROS CSPRNG or entropy device becomes
-  available.
-- AROS minimal-runtime builds avoid AROS OS entropy calls that have proven
-  fragile in the x86_64 validation VM. That path mixes CPU cycle counter jitter,
-  stack/data/function addresses, output buffer identity, length, and an internal
-  counter through a SplitMix64-style diffuser. Non-minimal AROS builds use the
-  richer AROS source mix where the C runtime and OS calls are available.
-- `bebbosshkeygen` is built as a static AROS executable. The i386 build has
-  been launched successfully on AROS One i386 far enough to generate ED25519
-  randomart.
-- Remote `exec` is implemented for simple non-interactive commands on AROS.
-  The backend runs `SystemTags()` inside a child task, redirects command output
-  to a temporary `T:` file, and sends it back over SSH after the command exits.
-  The command return code is sent as the SSH `exit-status`.
-- On x86_64/mincrt, the backend instead uses synchronous `SystemTagList()` in
-  the daemon task with raw DOS wrappers (`CurrentDir` LVO 21,
-  `SystemTagList` LVO 101). This returns real output for short commands but
-  blocks the daemon until the command exits.
-- The x86_64/mincrt interactive shell rejects `cd` and asks the caller to use
-  explicit paths. This avoids a daemon hang in the raw `CurrentDir()` shell
-  path while keeping `dir <path>`, exec, and SFTP usable.
-- Non-PTY exec has a soft 30-second timeout. The daemon remains responsive
-  while the child task runs; on timeout it writes a warning and sends a break to
-  the command task. This timeout applies to the child-task backend; the
-  x86_64/mincrt synchronous backend should only be used for bounded commands.
-- AROS remote exec rejects shell redirection and pipes (`>`, `<`, `|`) before
-  calling `SystemTags()`. A remote `>/NIL:` test degraded the daemon, so these
-  constructs are intentionally unsupported until a safer execution backend is
-  implemented.
-- Known interactive commands are rejected in non-PTY exec mode with exit status
-  2 and a message asking the caller to use `ssh -tt`. This prevents commands
-  such as `more ?` from blocking the daemon's synchronous non-PTY exec path.
-- Interactive SSH sessions use the same backend for simple commands and return
-  to the prompt after each command.
-- Interactive shell stdin now drains command lines already received in the same
-  SSH packet after an AROS command completes, which keeps piped sequences such
-  as `dir`, `version`, `exit` moving through the minimal shell backend.
-- Interactive `dir` in the SSH shell is translated to `list ... lformat %N`
-  so directory listings are readable one entry per line. Non-interactive
-  `ssh ... dir` keeps the native AROS `dir` output.
-- AROS PTY exec for simple commands is routed through the same output-file
-  command backend used by non-PTY exec. The earlier synthetic DOS file-handle
-  backend caused hosted AROS traps on `version`/`list` and is no longer used for
-  the minimal automation path.
+- Config/host-key fallbacks: if `ENVARC:ssh/sshd_config` or
+  `ENVARC:ssh/ssh_host_ed25519_key` is missing, AROS builds fall back to the
+  matching `PROGDIR:` file. A read-only password file accepts plaintext test
+  passwords without rewriting to `{ssha256}`, which is useful for ISO tests.
+- No known AROS system CSPRNG in this environment. `randfill()` is a best-effort
+  fallback that mixes local runtime entropy sources; it is stronger than the
+  original `time(0)` seed but should be replaced if an AROS CSPRNG becomes
+  available. Minimal-runtime builds avoid the fragile AROS OS entropy calls and
+  use a self-contained mixer instead.
+- Remote `exec` covers simple non-interactive commands only. The child-task
+  backend has a soft 30-second timeout and keeps the daemon responsive; the
+  x86_64/mincrt synchronous backend blocks the daemon and is for bounded
+  commands only.
+- Shell redirection and pipes (`>`, `<`, `|`) are rejected before execution; a
+  remote `>/NIL:` test degraded the daemon.
+- Known interactive/stdin-driven commands are rejected with exit status 2 (even
+  with a PTY requested), asking the caller to use `ssh -tt`, so automation fails
+  fast instead of hanging the synchronous exec path.
+- Interactive `dir` in the SSH shell is translated to `list ... lformat %N` for
+  one-entry-per-line output; non-interactive `ssh ... dir` keeps native output.
 - Full PTY-style interactive program support is still incomplete on AROS.
-  Stdin-driven console programs should remain guarded until a stable file-handle
-  or console-device backend is implemented.
-- Known stdin-driven programs are rejected with exit status 2 even when the
-  client requested a PTY, so automation fails fast instead of hanging on a fake
-  interactive stdin path.
+- The classic Amiga `grabFx()` file-handle hack is disabled (it can fault on the
+  AROS i386 runtime), and AROS logging does not read the m68k custom chip.
 
-Forwarded host ports:
-
-- VNC: `127.0.0.1:5901`
-- guest SSH: `127.0.0.1:10022`
-- guest telnet: `127.0.0.1:10023`
-
-At the time of these notes, `bebbosshd` starts from the AROS One test ISO,
-loads the host key, binds port 22, and listens. OpenSSH from macOS reaches the
-server through QEMU forwarding at `127.0.0.1:10022`, completes SSH protocol
-identification, key exchange, and password authentication.
-
-Remote command execution now works for simple non-interactive commands:
+Remote command execution works for simple non-interactive commands. OpenSSH
+from the host reaches the daemon through QEMU port forwarding, completes auth,
+and runs the command:
 
 ```sh
 sshpass -p test ssh \
@@ -500,145 +325,26 @@ sshpass -p test ssh \
   -p 10022 test@127.0.0.1 version
 ```
 
-This has returned:
+Script di test e variabili: vedi `docs/AROS_TESTER.md`. For rapid SCP/SFTP
+connection churn, `BEBBOSSH_AROS_STRESS_DELAY=0` is a useful regression gate and
+`BEBBOSSH_AROS_AUTH_HELPER=askpass` is preferred for long password-auth churn,
+since `sshpass` can intermittently fail to provide a pseudo-terminal prompt at
+zero delay. Keep the default one-second pacing for downstream automation, and
+use `ListenAcceptBurst` or `bebbosshd -B` for targeted accept-loop experiments
+rather than changing the default package behavior.
 
-```text
-Kickstart 51.51, Workbench 40.0
-```
+Public-key and forwarding: `ENVARC:.ssh/authorized_keys` works for OpenSSH
+Ed25519 public-key login on hosted i386 and x86_64, and `direct-tcpip` local
+forwarding is validated through both hosted runtimes.
+`scripts/aros-auth-forward-test.sh` covers both (forwarding needs a caller-
+provided target listener).
 
-`dir` has also been tested successfully. A `telegram-amiga` invalid-option test
-returned SSH exit status 1. Remote redirection such as `>/NIL:` is blocked with
-exit status 2. Non-PTY exec is intended for short automation commands and now
-runs outside the daemon's main loop. Interactive programs should be launched
-with `ssh -tt`.
-
-The repeatable host-side smoke test for the current AROS automation workflow is:
-
-```sh
-scripts/aros-ssh-smoke-test.sh
-```
-
-Defaults:
-
-```text
-BEBBOSSH_AROS_HOST=127.0.0.1
-BEBBOSSH_AROS_PORT=10022
-BEBBOSSH_AROS_USER=test
-BEBBOSSH_AROS_PASS=test
-BEBBOSSH_AROS_TELEGRAM_TEST=DH0:TGTEST/telegram-test
-BEBBOSSH_AROS_WORKDIR=DH0:TGTEST
-BEBBOSSH_AROS_SHELL_HOME=DH0:
-BEBBOSSH_AROS_TRANSFER_SIZES="1048576 5242880"
-```
-
-It validates:
-
-- `version` over non-interactive SSH.
-- rejection of `version >/NIL:` with exit status 2.
-- daemon health after the rejected redirection.
-- rejection of known interactive commands in non-PTY exec mode.
-- daemon health after the non-PTY interactive-command guard.
-- `telegram-test --help` exit status 0.
-- `telegram-test --definitely-invalid-option` exit status 1.
-- `version` through PTY exec.
-- a piped interactive shell sequence using `dir`, `cd`, `version`, and `exit`.
-- SCP upload/download byte comparison on `DH0:TGTEST`.
-- SFTP `mkdir`, upload, download, compare, remove, and `rmdir` on `DH0:TGTEST`.
-- SCP and SFTP transfer stress round-trips for the configured byte sizes.
-
-For repeated SCP/SFTP stress beyond the smoke test:
-
-```sh
-scripts/aros-transfer-stress-test.sh
-```
-
-Additional defaults:
-
-```text
-BEBBOSSH_AROS_STRESS_ITERATIONS=20
-BEBBOSSH_AROS_STRESS_SIZES="257 4096 65536 1048576"
-BEBBOSSH_AROS_STRESS_DELAY=1
-BEBBOSSH_AROS_AUTH_HELPER=sshpass
-```
-
-Set `BEBBOSSH_AROS_AUTH_HELPER=askpass` for zero-delay churn runs where
-`sshpass` pseudo-terminal prompt handling can become the limiting factor.
-Repeated short exec validation is covered by:
-
-```sh
-BEBBOSSH_AROS_PORT=10022 \
-BEBBOSSH_AROS_EXEC_ITERATIONS=800 \
-scripts/aros-exec-loop-test.sh
-```
-
-The exec-loop test closes client stdin deliberately for short non-interactive
-command churn. Use `scripts/aros-ssh-smoke-test.sh` with
-`BEBBOSSH_AROS_AUTH_HELPER=askpass` for larger command output, PTY exec,
-interactive shell, SCP, and SFTP coverage.
-
-Hosted validation found that `BEBBOSSH_AROS_STRESS_DELAY=0` is a useful
-regression gate for rapid SCP/SFTP connection churn. The stress script's default
-known-hosts file is port-specific, avoiding host-key file sharing between the
-hosted i386 and x86_64 test ports. For long macOS OpenSSH password-auth churn,
-prefer `BEBBOSSH_AROS_AUTH_HELPER=askpass`; `sshpass` can intermittently fail
-to provide a pseudo-terminal prompt at zero delay and report a misleading auth
-failure while the daemon remains healthy. Hosted i386 and x86_64 both pass
-askpass-based zero-delay stress with sizes `257 4096 65536 1048576` on
-`SYS:TGTEST`, and both pass 800 consecutive askpass-based `C:Version` exec
-connections. Simultaneous zero-delay stress on both hosted targets remains a
-soak test rather than a release gate. Very long mixed zero-delay sequences that
-chain exec, transfer, and keygen gates without restarting the hosted runtime
-should also be treated as soak coverage. Keep the default one-second pacing for
-downstream automation, and use zero-delay mode as an explicit per-target
-regression stress test. Use `ListenAcceptBurst` or `bebbosshd -B` for targeted
-accept-loop experiments rather than changing the default package behavior.
-
-Public-key authentication and forwarding status:
-
-- `ENVARC:.ssh/authorized_keys` works for OpenSSH Ed25519 public-key login on
-  hosted AROS i386 and x86_64.
-- `direct-tcpip` local forwarding has been validated from OpenSSH through both
-  hosted runtimes to a host-side TCP listener reachable from the AROS TAP
-  network.
-- `scripts/aros-auth-forward-test.sh` covers public-key login and optional
-  forwarding. Forwarding tests require the caller to provide a reachable target
-  listener with `BEBBOSSH_AROS_FORWARD_TARGET_HOST` and
-  `BEBBOSSH_AROS_FORWARD_TARGET_PORT`.
-
-SFTP/SCP status:
-
-- `sftp` `ls T:` works.
-- `sftp` upload, download, compare, and remove have been tested on `T:`.
-- `sftp` upload, download, compare, and remove have been tested on `DH0:`.
-- `sftp` 1 MiB and 5 MiB upload/download round-trips on `DH0:` matched by
-  SHA-256 and byte compare.
-- SFTP reads honor the offset requested by the client, which is required for
-  non-sequential OpenSSH read patterns.
-- `sftp` `mkdir`, upload inside the directory, `rm`, and `rmdir` have been
-  tested on `DH0:`.
-- OpenSSH `scp` default mode, which uses SFTP, has been tested for upload and
-  download on `T:` and for a 5 MiB round-trip on `DH0:`.
-- OpenSSH `scp -r` has been tested with a temporary 336 KiB
-  `telegram-amiga`-style source tree copied to `DH0:`, copied back, and
-  verified with `diff -qr`.
-- OpenSSH `scp` overwrite of a smaller file over a larger file has been tested
-  on `DH0:` and verified by byte compare.
-- AROS SFTP upload permission mapping keeps AmigaDOS execute protection
-  allowed. This avoids byte-correct uploaded binaries failing at boot with
-  `File non eseguibile` after OpenSSH sends Unix-style `0644` permissions.
-- AROS x86_64/mincrt SFTP has additionally been validated for `put`, `get`,
-  `rm`, `rename` with overwrite, `mkdir`, `rmdir`, and `chmod` under QEMU.
-  x86_64/mincrt does not currently preserve SFTP mtime changes, and symlink
-  requests remain unsupported.
-
-Clean install status:
-
-- The generated runtime kit was copied to a fresh `DH0:` directory.
-- `sshd_config.example` and `passwd.example` were copied to runtime names.
-- `bebbosshkeygen -f <install-dir>/ssh_host_ed25519_key` generated a fresh host
-  key on AROS One i386.
-- `bebbosshd -p 2222` launched from that directory and answered `version`
-  through the QEMU host forward at `127.0.0.1:12222`.
+SFTP/SCP are validated for `ls`, `get`, `put`, `rm`, `rename`, `mkdir`,
+`rmdir`, and `chmod` on `T:` and `DH0:` (including multi-MiB round-trips matched
+by SHA-256, `scp -r` trees, and overwrite). SFTP reads honor the client-
+requested offset. AROS SFTP upload permission mapping keeps AmigaDOS execute
+protection allowed, so byte-correct uploaded binaries do not fail at boot after
+OpenSSH sends Unix-style `0644` permissions.
 
 When using `sshpass` with `sftp -b`, pass `-oBatchMode=no`; OpenSSH otherwise
 forces batch mode authentication and will not send the password:
