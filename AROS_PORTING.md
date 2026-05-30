@@ -56,6 +56,36 @@ consistent with the upstream project.
 - Hardened SSH banner and KEX name-list parsing against binary KEX data
   arriving with the client banner.
 
+## Crypto linking: static, not a shared library
+
+The 68k BebboSSH ships its crypto as a shared library in `Libs:`
+(`libcryptossh.library`, plus `.library020`/`.library060` CPU variants)
+shared by the four tools. This AROS port uses the **same `libcryptossh`
+source** but links it **statically** (`libcryptossh.a`) into each of
+`bebbosshd`, `bebbossh`, `bebboscp`, and `bebbosshkeygen`. The
+`src/libcryptossh.def` export list is kept as the inherited library
+definition but is not used to build a `.library` here.
+
+Why static on AROS:
+
+- The 68k "simple library" build is tied to the 68k/libnix toolchain. On
+  AROS (ELF) a real shared library goes through `genmodule` (a `.conf`
+  skeleton, a Resident/RomTag, and a per-ABI jump table); the 68k `.def`
+  is not reusable as-is.
+- That work is ABI-specific on exactly the two ABIs that were hardest to
+  stabilize — i386 `alt-abiv0` and x86_64 `mincrt`. Static linking keeps
+  relocation/jump-table risk out of the picture.
+- Self-contained binaries avoid the executable/library version mismatch the
+  upstream readme repeatedly warns about ("ensure you are using the recent
+  libcryptossh.library"); each tool carries its own crypto.
+- The cost is size: every binary embeds the crypto (~150 KB). On the AROS
+  i386/x86_64 targets this is marginal, and the four tools rarely run at
+  once, so a shared library would save little RAM.
+
+A native AROS `libcryptossh.library` (via `genmodule`) is possible as future
+work — smaller binaries and a single crypto-update point — but is not
+required for the i386 release and adds risk on the alt-abiv0/mincrt ABIs.
+
 ## Stable AROS i386 build
 
 The current AROS One VM freezes during basic `RAM:` operations such as
