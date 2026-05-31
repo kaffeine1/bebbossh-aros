@@ -203,6 +203,48 @@ was still rejected by the Shell. Prefer an ISO image, a native AROS volume, or
 another byte-preserving transfer path before concluding that a generated binary
 is invalid.
 
+## x86_64 parity status
+
+The x86_64 `mincrt` target now shares the i386 build/packaging/release surface:
+the full toolset (`bebbossh`, `bebboscp`, `bebbosshd`, `bebbosshkeygen`, crypto
+tests) builds by default, packaging is architecture-aware, and there is a
+parallel release smoke script (`scripts/aros-x86_64-public-release-smoke.sh`)
+and checklist (`docs/AROS_X86_64_RELEASE.md`).
+
+Selected i386 runtime behaviors that were disabled on `mincrt` are now available
+as opt-in runtime flags (AROS `ENV:` variables, all default OFF, read via
+`bebbossh_aros_x64_flag()` in `src/aros_mincrt.c`):
+
+- `BEBBOSSH_AROS_X64_SFTP_MTIME` — preserve SFTP modification times
+  (`SetFileDate`) on uploads. Off by default keeps the validated behavior.
+- `BEBBOSSH_AROS_X64_CD` — interactive-shell `cd` / `pwd` / dynamic prompt. When
+  set, the shell holds a real current-directory Lock through the mincrt-safe DOS
+  wrappers; when unset, the shell keeps the static prompt and rejects `cd`.
+
+Deliberately unchanged on x86_64 (documented divergences, not regressions):
+
+- Exec stays synchronous (`SystemTagList`). The i386 async child-task backend
+  (`CreateNewProcTagList`) previously hit a crash class on `mincrt` and is not
+  compiled for x86_64. Porting it is future work gated on VM validation, not a
+  runtime flag.
+- Tab autocomplete stays off (needs a `DupLock` wrapper not yet in the mincrt
+  runtime).
+- Client `USER`/`TERM` fallback and `SetSignal(CTRL_C)` stay off on the x86_64
+  client: `getenv()` is a stub under `mincrt` and `SetSignal` is outside the
+  mincrt link set, so re-enabling them requires new `GetVar`/`SetSignal`
+  wrappers and a link check on the maintainer's toolchain.
+
+Remaining before x86_64 can be promoted from experimental to stable (needs real
+AROS One x86_64 hardware; see `docs/AROS_X86_64_RELEASE.md`):
+
+- Entropy review of the `mincrt` `randfill()` mixer (`src/rand.c`). Acceptance
+  criteria: confirm the mixer draws on independent, non-deterministic runtime
+  sources per call (not a fixed seed), document residual risk, and replace with
+  an AROS CSPRNG if one becomes available.
+- Reproduce and fix the intermittent zero-delay password-auth churn failure
+  (`BEBBOSSH_AROS_STRESS_DELAY=0`).
+- Pass the QEMU AROS One x86_64 daemon gate (`BEBBOSSH_GATE_QEMU_X64_PORT`).
+
 ## Runtime validation summary
 
 x86_64 (mincrt) is hosted-validated for keygen, daemon bind/auth, non-PTY and
