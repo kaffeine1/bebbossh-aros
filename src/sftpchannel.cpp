@@ -402,22 +402,26 @@ void setAttrs(uint8_t * p, uint8_t * path) {
 		tv.tv_sec += u;
 
 #if BEBBOSSH_AMIGA_API
+			bool arosSetFileDate = true;
 #if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
-			// SetFileDate is a v36 DOS call not yet validated in the raw mincrt path.
-#else
-			struct DateStamp date;
-
-			tv.tv_sec -= 252460800;        // amiga offset in seconds
-			tv.tv_sec -= BEBBOSSH_TIMEZONE;
-
-			date.ds_Days = tv.tv_sec / (24 * 60 * 60);
-			tv.tv_sec -= date.ds_Days * (24 * 60 * 60);
-			date.ds_Minute = tv.tv_sec / 60;
-			tv.tv_sec -= date.ds_Minute * 60;
-			date.ds_Tick = tv.tv_usec / (1000000 / TICKS_PER_SECOND) + tv.tv_sec * TICKS_PER_SECOND;
-
-			SetFileDate((char* )path, &date);
+			// SetFileDate on the raw mincrt path is opt-in until validated on an
+			// AROS One x86_64 VM. Enable with: set BEBBOSSH_AROS_X64_SFTP_MTIME 1
+			arosSetFileDate = bebbossh_aros_x64_flag("BEBBOSSH_AROS_X64_SFTP_MTIME") != 0;
 #endif
+			if (arosSetFileDate) {
+				struct DateStamp date;
+
+				tv.tv_sec -= 252460800;        // amiga offset in seconds
+				tv.tv_sec -= BEBBOSSH_TIMEZONE;
+
+				date.ds_Days = tv.tv_sec / (24 * 60 * 60);
+				tv.tv_sec -= date.ds_Days * (24 * 60 * 60);
+				date.ds_Minute = tv.tv_sec / 60;
+				tv.tv_sec -= date.ds_Minute * 60;
+				date.ds_Tick = tv.tv_usec / (1000000 / TICKS_PER_SECOND) + tv.tv_sec * TICKS_PER_SECOND;
+
+				SetFileDate((char* )path, &date);
+			}
 #else
 			struct timespec times[2];
 			times[0].tv_sec  = tv.tv_sec;
