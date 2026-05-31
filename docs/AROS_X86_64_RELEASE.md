@@ -178,12 +178,20 @@ enable them in the daemon's environment before launch:
 
 - `BEBBOSSH_AROS_X64_SFTP_MTIME=1` — preserve SFTP modification times via
   `SetFileDate`.
-- `BEBBOSSH_AROS_X64_CD=1` — enable the interactive-shell `cd` / dynamic prompt
-  path (raw `CurrentDir` could previously block the daemon; validate under
-  `dir`/`cd` churn before relying on it).
-- `BEBBOSSH_AROS_X64_ASYNC_EXEC=1` — use the non-blocking child-task exec backend
-  instead of the synchronous one (the synchronous backend blocks the daemon main
-  loop while a command runs; the async path previously hit a mincrt crash class,
-  so validate carefully).
+- `BEBBOSSH_AROS_X64_CD=1` — enable the interactive-shell `cd` / `pwd` / dynamic
+  prompt path. The shell acquires a real current-directory Lock through the
+  mincrt-safe DOS wrappers; raw `CurrentDir` could previously block the daemon,
+  so validate under `dir`/`cd` churn before relying on it.
 
 When a flag is unset, the current safe default behavior is unchanged.
+
+### Known divergence kept on purpose: synchronous exec
+
+x86_64/`mincrt` runs SSH commands through a synchronous `SystemTagList` backend
+that captures output to a temporary file and streams it back, blocking the
+daemon main loop while a command runs. The non-blocking child-task backend
+(`CreateNewProcTagList`) used by i386 previously hit a crash class on the minimal
+x86_64 runtime, so it is intentionally not compiled for x86_64. Treat the
+synchronous backend as the intended x86_64 behavior for short, bounded commands;
+porting the async backend to mincrt is future work that requires VM validation,
+not a runtime flag.
