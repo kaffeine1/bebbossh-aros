@@ -1611,18 +1611,38 @@ void exit(int status)
 
 /*
  * Read an opt-in runtime flag used to gate experimental x86_64/mincrt parity
- * features without rebuilding. Reuses the mincrt getenv() above (which reads
- * AROS ENV: variables), so a flag is enabled from an AROS shell with e.g.:
- *   set BEBBOSSH_AROS_X64_CD 1
- * Returns 1 when the variable is set to a "true" value, 0 otherwise -- every
- * gated feature therefore defaults OFF and cannot regress current behavior.
+ * features without rebuilding. The mincrt getenv() above is a stub that always
+ * returns NULL, so this reads the AROS environment variable directly: ENV: vars
+ * are files, so it opens "ENV:<name>" via the functional DOS file wrappers.
+ * Enable a flag from an AROS shell with e.g.:  set BEBBOSSH_AROS_X64_CD 1
+ * Returns 1 when the variable exists and its first byte is a "true" value, 0
+ * otherwise -- every gated feature therefore defaults OFF and cannot regress
+ * current behavior.
  */
 int bebbossh_aros_x64_flag(const char *name)
 {
-    char *v = getenv(name);
-    if (!v || !*v)
+    char path[160];
+    const char *env = "ENV:";
+    int i = 0;
+
+    while (env[i] && i < 4) {
+        path[i] = env[i];
+        ++i;
+    }
+    for (int j = 0; name && name[j] && (i + 1) < (int)sizeof(path); ++j)
+        path[i++] = name[j];
+    path[i] = 0;
+
+    BPTR f = bebbossh_aros_open(path, 1005 /* MODE_OLDFILE */);
+    if (!f)
         return 0;
-    if (*v == '0' || *v == 'n' || *v == 'N' || *v == 'f' || *v == 'F')
+
+    char c = 0;
+    LONG n = bebbossh_aros_read(f, &c, 1);
+    bebbossh_aros_close(f);
+    if (n <= 0)
+        return 0;
+    if (c == '0' || c == 'n' || c == 'N' || c == 'f' || c == 'F')
         return 0;
     return 1;
 }
