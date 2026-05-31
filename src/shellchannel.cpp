@@ -88,6 +88,18 @@ ShellChannel::ShellChannel(SshSession * server, uint32_t channel, ChannelType ty
 #endif
 	#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
 	dir = 0;
+	#if defined(__x86_64__)
+	// Opt-in: acquire a real current-directory Lock via the mincrt-safe wrappers
+	// so the interactive shell can support cd/pwd/dynamic prompt. Default OFF
+	// (dir stays 0), preserving the static-prompt, cd-rejecting behavior.
+	// Enable from an AROS shell with: set BEBBOSSH_AROS_X64_CD 1
+	if (bebbossh_aros_x64_flag("BEBBOSSH_AROS_X64_CD")) {
+		if (homeDir)
+			dir = bebbossh_aros_lock(homeDir, SHARED_LOCK);
+		if (!dir)
+			dir = bebbossh_aros_lock("RAM:", SHARED_LOCK);
+	}
+	#endif
 	#else
 	if (homeDir)
 		dir = Lock(homeDir, SHARED_LOCK);
@@ -110,7 +122,12 @@ ShellChannel::~ShellChannel() {
 	if (arosExecOutName[0])
 		DeleteFile(arosExecOutName);
 #endif
-	#if !(defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT))
+	#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
+	// dir is non-zero only when the opt-in cd path acquired it (x86_64); release
+	// it through the mincrt-safe wrapper. A 0 lock is a no-op.
+	if (dir)
+		bebbossh_aros_unlock(dir);
+	#else
 	if (dir)
 		UnLock(dir);
 	#endif
@@ -245,9 +262,21 @@ void ShellChannel::prompt() {
 		return;
 #if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
 	{
-		// dir==0 and NameFromLock is unwrapped on x64/mincrt: emit a static prompt
-		static const char sp[] = "AROS> ";
-		server->channelWrite(channel, sp, sizeof(sp) - 1);
+		if (!dir) {
+			// no held lock (opt-in cd off): emit a static prompt
+			static const char sp[] = "AROS> ";
+			server->channelWrite(channel, sp, sizeof(sp) - 1);
+			return;
+		}
+		// dynamic prompt via the mincrt-safe NameFromLock wrapper
+		char * p = xbuffer;
+		*p++ = 0x1b; *p++ = '['; *p++ = '3'; *p++ = '2'; *p++ = 'm';
+		bebbossh_aros_name_from_lock(dir, p, sizeof(xbuffer) - 12);
+		p += strlen(p);
+		*p++ = '>';
+		*p++ = 0x1b; *p++ = '['; *p++ = '3'; *p++ = '9'; *p++ = 'm';
+		*p++ = ' ';
+		server->channelWrite(channel, xbuffer, p - xbuffer);
 		return;
 	}
 #endif
@@ -461,9 +490,26 @@ void ShellChannel::cmdCD(char * q) {
 		server->channelWrite(channel, "cd <path>\r\n", 11);
 	} else {
 #if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
-		static const char msg[] = "bebbosshd/AROS: cd is not supported on x86_64 mincrt shell yet; use explicit paths\r\n";
-		server->channelWrite(channel, msg, sizeof(msg) - 1);
-		return;
+		if (!dir) {
+			// opt-in cd path not enabled (no held lock)
+			static const char msg[] = "bebbosshd/AROS: cd is not supported on x86_64 mincrt shell yet; use explicit paths\r\n";
+			server->channelWrite(channel, msg, sizeof(msg) - 1);
+			return;
+		}
+		{
+			// change directory through the mincrt-safe wrappers
+			BPTR old = bebbossh_aros_current_dir(dir);
+			BPTR newDir = bebbossh_aros_lock(q, SHARED_LOCK);
+			if (newDir) {
+				bebbossh_aros_current_dir(old);
+				bebbossh_aros_unlock(dir);
+				dir = newDir;
+			} else {
+				server->channelWrite(channel, "object not found\r\n", 18);
+				bebbossh_aros_current_dir(old);
+			}
+			return;
+		}
 #endif
 		// no absolute path, change directory
 		logme(L_FINE, "@%ld:%ld cd -> %s", server->getSockFd(), channel, q);
@@ -1374,8 +1420,19 @@ bool ShellChannel::startCommand(){
 #if BEBBOSSH_AROS
 	if (!hasExec() && keywordLen == 3 && 0 == strnicmp(xbuffer, "pwd", 3)) {
 #if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
-		static const char m[] = "pwd not available on x86_64 mincrt shell\r\n";
-		server->channelWrite(channel, m, sizeof(m) - 1);
+		if (!dir) {
+			static const char m[] = "pwd not available on x86_64 mincrt shell\r\n";
+			server->channelWrite(channel, m, sizeof(m) - 1);
+		} else {
+			char name[512];
+			if (bebbossh_aros_name_from_lock(dir, name, sizeof(name))) {
+				int len = strlen(name);
+				server->channelWrite(channel, name, len);
+				server->channelWrite(channel, "\r\n", 2);
+			} else {
+				server->channelWrite(channel, "object not found\r\n", 18);
+			}
+		}
 #else
 		char name[512];
 		if (NameFromLock(dir, name, sizeof(name))) {
