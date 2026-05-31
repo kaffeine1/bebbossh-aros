@@ -254,8 +254,9 @@ path is additionally validated on AROS One x86_64 via ISO transfer. Keep x86_64
 marked experimental until the entropy path is reviewed and non-hosted AROS One
 daemon validation is closed. For SFTP/SCP, the validated operations are `ls`,
 `get`, `put`, `rm`, `rename` (including overwrite), `mkdir`, `rmdir`, and
-`chmod`. `READLINK`/`SYMLINK` remain unsupported and x86_64/mincrt does not
-preserve SFTP mtime.
+`chmod`. `READLINK`/`SYMLINK` remain unsupported. x86_64/mincrt does not
+preserve SFTP mtime by default; set `BEBBOSSH_AROS_X64_SFTP_MTIME=1` to enable
+the `SetFileDate` path (pending AROS One x86_64 validation).
 
 Hosted AROS i386 is validated for daemon bind/auth, the telegram-amiga
 automation suite, redirection and interactive-command rejection, PTY exec,
@@ -270,10 +271,11 @@ class, but is deliberately blocking: while a command runs, the daemon main loop
 does not service other clients. Treat it as a short-command automation path; run
 long commands from the AROS console/VNC or on the i386 daemon.
 
-The x86_64/mincrt interactive shell deliberately rejects `cd`, because changing
-current directory through the raw `CurrentDir()` path can block the daemon. Use
-explicit paths such as `dir C:` on x86_64/mincrt; i386 retains working `cd`
-support.
+By default the x86_64/mincrt interactive shell rejects `cd`, because changing
+current directory through the raw `CurrentDir()` path can block the daemon; use
+explicit paths such as `dir C:`. Set `BEBBOSSH_AROS_X64_CD=1` to opt into the
+real `cd`/`pwd`/dynamic-prompt path (through the mincrt-safe DOS wrappers),
+pending AROS One x86_64 validation. i386 always has working `cd` support.
 
 ## Host cross-build for AROS One i386
 
@@ -378,10 +380,11 @@ Known limits:
   original `time(0)` seed but should be replaced if an AROS CSPRNG becomes
   available. Minimal-runtime builds avoid the fragile AROS OS entropy calls and
   use a self-contained mixer instead.
-- Remote `exec` covers simple non-interactive commands only. The child-task
-  backend has a soft 30-second timeout and keeps the daemon responsive; the
-  x86_64/mincrt synchronous backend blocks the daemon and is for bounded
-  commands only.
+- Remote `exec` covers simple non-interactive commands only. On i386 the
+  child-task backend has a soft 30-second timeout and keeps the daemon
+  responsive; the x86_64/mincrt synchronous backend blocks the daemon and is for
+  bounded commands only (intentional divergence; see the x86_64 parity status
+  section).
 - Shell redirection and pipes (`>`, `<`, `|`) are rejected before execution; a
   remote `>/NIL:` test degraded the daemon.
 - Known interactive/stdin-driven commands are rejected with exit status 2 (even
