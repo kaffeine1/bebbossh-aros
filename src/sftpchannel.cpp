@@ -37,6 +37,10 @@
 #include <time.h>
 #include <stdlib.h>
 #include "platform.h"
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
+// Opt-in runtime flag reader for experimental x86_64/mincrt parity features.
+extern "C" int bebbossh_aros_x64_flag(const char *name);
+#endif
 
 #if BEBBOSSH_AMIGA_API
 #include <amistdio.h>

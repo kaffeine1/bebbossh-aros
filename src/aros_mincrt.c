@@ -1609,4 +1609,22 @@ void exit(int status)
         ;
 }
 
+/*
+ * Read an opt-in runtime flag used to gate experimental x86_64/mincrt parity
+ * features without rebuilding. Reuses the mincrt getenv() above (which reads
+ * AROS ENV: variables), so a flag is enabled from an AROS shell with e.g.:
+ *   set BEBBOSSH_AROS_X64_CD 1
+ * Returns 1 when the variable is set to a "true" value, 0 otherwise -- every
+ * gated feature therefore defaults OFF and cannot regress current behavior.
+ */
+int bebbossh_aros_x64_flag(const char *name)
+{
+    char *v = getenv(name);
+    if (!v || !*v)
+        return 0;
+    if (*v == '0' || *v == 'n' || *v == 'N' || *v == 'f' || *v == 'F')
+        return 0;
+    return 1;
+}
+
 #endif
