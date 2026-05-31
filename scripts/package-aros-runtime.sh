@@ -7,6 +7,16 @@ set -eu
 outdir=${1:-aros-i386-abiv0-arosone}
 pkgdir=${2:-dist/bebbossh-aros-i386-abiv0}
 
+# Derive the architecture token from the package directory so the kit ships the
+# architecture-specific public-release smoke script and release checklist
+# instead of always embedding the i386 ones.
+case "$pkgdir" in
+    *x86_64*) arch=x86_64; ARCH=X86_64 ;;
+    *) arch=i386; ARCH=I386 ;;
+esac
+release_smoke="scripts/aros-${arch}-public-release-smoke.sh"
+release_doc="docs/AROS_${ARCH}_RELEASE.md"
+
 for tool in bebbossh bebboscp bebbosshd bebbosshkeygen; do
     if [ ! -x "$outdir/$tool" ]; then
         echo "missing executable: $outdir/$tool" >&2
@@ -28,10 +38,22 @@ mkdir -p "$pkgdir/scripts"
 cp scripts/aros-ssh-smoke-test.sh "$pkgdir/scripts/aros-ssh-smoke-test.sh"
 cp scripts/aros-auth-forward-test.sh "$pkgdir/scripts/aros-auth-forward-test.sh"
 cp scripts/aros-transfer-stress-test.sh "$pkgdir/scripts/aros-transfer-stress-test.sh"
-cp scripts/aros-i386-public-release-smoke.sh "$pkgdir/scripts/aros-i386-public-release-smoke.sh"
+have_release_smoke=
+if [ -f "$release_smoke" ]; then
+    cp "$release_smoke" "$pkgdir/$release_smoke"
+    have_release_smoke=yes
+else
+    echo "warning: missing $release_smoke; packaging without it" >&2
+fi
 mkdir -p "$pkgdir/docs"
 cp docs/AROS_TESTER.md "$pkgdir/docs/AROS_TESTER.md"
-cp docs/AROS_I386_RELEASE.md "$pkgdir/docs/AROS_I386_RELEASE.md"
+have_release_doc=
+if [ -f "$release_doc" ]; then
+    cp "$release_doc" "$pkgdir/$release_doc"
+    have_release_doc=yes
+else
+    echo "warning: missing $release_doc; packaging without it" >&2
+fi
 cp README.md "$pkgdir/README.md"
 cp AROS_PORTING.md "$pkgdir/AROS_PORTING.md"
 cp COPYING "$pkgdir/COPYING"
@@ -39,24 +61,16 @@ cp LICENSE "$pkgdir/LICENSE"
 
 (
     cd "$pkgdir"
-    shasum -a 256 \
-        bebbossh \
-        bebboscp \
-        bebbosshd \
-        bebbosshkeygen \
-        sshd_config.example \
-        passwd.example \
-        README.AROS.txt \
+    set -- bebbossh bebboscp bebbosshd bebbosshkeygen \
+        sshd_config.example passwd.example README.AROS.txt \
         scripts/aros-ssh-smoke-test.sh \
         scripts/aros-auth-forward-test.sh \
-        scripts/aros-transfer-stress-test.sh \
-        scripts/aros-i386-public-release-smoke.sh \
-        docs/AROS_TESTER.md \
-        docs/AROS_I386_RELEASE.md \
-        README.md \
-        AROS_PORTING.md \
-        COPYING \
-        LICENSE > SHA256SUMS
+        scripts/aros-transfer-stress-test.sh
+    [ -n "$have_release_smoke" ] && set -- "$@" "$release_smoke"
+    set -- "$@" docs/AROS_TESTER.md
+    [ -n "$have_release_doc" ] && set -- "$@" "$release_doc"
+    set -- "$@" README.md AROS_PORTING.md COPYING LICENSE
+    shasum -a 256 "$@" > SHA256SUMS
 )
 
 archive_base=${pkgdir%/}
