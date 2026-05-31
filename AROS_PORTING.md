@@ -120,12 +120,22 @@ with an AROS sysroot:
 make -f Makefile.aros-x86_64 bebbosshkeygen bebbosshd
 ```
 
-The currently validated x86_64 build products are:
+As of the parity work, the x86_64 wrapper builds the full toolset by default
+(`.DEFAULT_GOAL := all`), matching the i386 entry point:
 
 ```text
-aros-x86_64/bebbosshkeygen
+aros-x86_64/bebbossh
+aros-x86_64/bebboscp
 aros-x86_64/bebbosshd
+aros-x86_64/bebbosshkeygen
+aros-x86_64/testAES aros-x86_64/testChacha20 aros-x86_64/testEd25519
+aros-x86_64/testGCM aros-x86_64/testSHA512
 ```
+
+The runtime-validated x86_64 products remain `bebbosshkeygen` and `bebbosshd`
+(plus the client tools over hosted validation); building all four does not by
+itself promote x86_64 out of experimental. Release/packaging for x86_64 follows
+`docs/AROS_X86_64_RELEASE.md`, the parallel of the i386 checklist.
 
 For host-side crosstools, set `AROS_SDK_ROOT` to an AROS x86_64 SDK that
 provides `startup.o` and the static AROS libraries, and override the tool

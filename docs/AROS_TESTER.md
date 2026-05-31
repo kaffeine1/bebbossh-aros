@@ -41,11 +41,12 @@ The release gate does not start QEMU VMs. Boot the VM, start or autostart
 `bebbosshd`, expose its guest SSH port through QEMU forwarding, then pass the
 forwarded port to `scripts/aros-release-gate.sh`.
 
-For public i386 runtime kits, use `docs/AROS_I386_RELEASE.md` first. That
-checklist verifies the GitHub release assets and then, when
-`BEBBOSSH_AROS_PORT` is set, runs a focused SSH/SCP/SFTP smoke against a clean
-AROS One i386 VM. Use `scripts/aros-release-gate.sh` afterward for broader
-development and downstream automation gates.
+For public i386 runtime kits, use `docs/AROS_I386_RELEASE.md` first. For
+experimental x86_64 kits, use the parallel `docs/AROS_X86_64_RELEASE.md`. Each
+checklist verifies the GitHub release assets and then, when `BEBBOSSH_AROS_PORT`
+is set, runs a focused SSH/SCP/SFTP smoke against a clean AROS One VM (the
+x86_64 hosted/QEMU port convention is `20022`). Use `scripts/aros-release-gate.sh`
+afterward for broader development and downstream automation gates.
 
 ```sh
 BEBBOSSH_GATE_QEMU_I386_PORT=10022 \
