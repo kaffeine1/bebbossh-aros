@@ -22,6 +22,9 @@
 #include <amistdio.h>
 #include <proto/dos.h>
 #include <proto/exec.h>
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
+#include <aros_mincrt_wrappers.h>
+#endif
 #ifdef __AMIGA__
 #include <stabs.h>
 #endif

@@ -66,7 +66,7 @@ static int crypto_verify_32(const uint8_t *x, const uint8_t *y) {
 }
 
 /* return 0 on success, -1 otherwise */
-int ge25519_unpackneg_vartime(ge25519 *r, const uint8_t p[32]) {
+static int ge25519_unpackneg_vartime(ge25519 *r, const uint8_t p[32]) {
 	uint8_t par;
 	ed25519 t, chk, num, den, den2, den6;
 	setone(r->z);
@@ -136,10 +136,17 @@ int ge_verify_ed25519(uint8_t *m, unsigned mlen, uint8_t const *sm, uint8_t cons
 	{
 		uint8_t hram[64];
 		SHA512 sha512;
+#if defined(__AROS__) && defined(__x86_64__)
+		sha512.updateDirect(sm, 32);
+		sha512.updateDirect(pk, 32);
+		sha512.updateDirect(m, mlen);
+		sha512.digestDirect(hram);
+#else
 		sha512.update(sm, 32);
 		sha512.update(pk, 32);
 		sha512.update(m, mlen);
 		sha512.digest(hram);
+#endif
 
 		ed25519_from64bytes(schram, hram);
 	}
