@@ -1012,10 +1012,12 @@ int SshSession::consumeSocketData(char *indata, int len) {
 
 bool SshSession::login(uint8_t *user, uint8_t *pass) {
 #if BEBBOSSH_AMIGA_API
-#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
-	passwordCacheLoaded = false;
-	passwordCache = 0;
-#endif
+	/* Cache the passwd file ONCE per daemon lifetime on all targets. The mincrt
+	 * path previously reset the cache on every login, defeating the caching --
+	 * under zero-delay reconnect churn the per-auth Open of ENVARC:ssh/passwd
+	 * hammered the DOS handler and intermittently failed (the
+	 * BEBBOSSH_AROS_STRESS_DELAY=0 closure-gate symptom). Adding/removing a
+	 * user requires a daemon restart on both i386 and x86_64, as before. */
 	if (!loadPasswordCache())
 		return false;
 

@@ -237,12 +237,25 @@ Deliberately unchanged on x86_64 (documented divergences, not regressions):
 Remaining before x86_64 can be promoted from experimental to stable (needs real
 AROS One x86_64 hardware; see `docs/AROS_X86_64_RELEASE.md`):
 
-- Entropy review of the `mincrt` `randfill()` mixer (`src/rand.c`). Acceptance
-  criteria: confirm the mixer draws on independent, non-deterministic runtime
-  sources per call (not a fixed seed), document residual risk, and replace with
-  an AROS CSPRNG if one becomes available.
+- Entropy review of the `mincrt` `randfill()` mixer (`src/rand.c`). **Review done
+  and fix applied** (pending build + self-test confirmation): on x86_64/mincrt the
+  mixer previously had `aros_rdtsc()` stubbed to `0` and `DateStamp` gated out
+  (the wrapper did not yet exist when that code was written), so the only "entropy"
+  was caller-buffer/state/frame addresses plus a monotonic counter — not
+  cryptographically random. The fix in `src/rand.c` (a) enables the inline-asm
+  `rdtsc` on x86_64/mincrt (pure CPU instruction, safe under `-nostdlib`) for
+  per-call ns-class time variance, and (b) routes `DateStamp(&ds)` through the
+  existing mincrt-safe `bebbossh_aros_datestamp` wrapper for per-call 20 ms-class
+  tick variance. Residual risk: this remains a best-effort PRNG mixer, not a true
+  CSPRNG; replace with an AROS CSPRNG if one becomes available. Validation: a
+  build that links `testEd25519`/`testChacha20` against the new mixer must pass,
+  and an empirical check should confirm rdtsc and DateStamp values vary across
+  successive calls in the same process.
 - Reproduce and fix the intermittent zero-delay password-auth churn failure
-  (`BEBBOSSH_AROS_STRESS_DELAY=0`).
+  (`BEBBOSSH_AROS_STRESS_DELAY=0`). **Candidate fix applied** in
+  `src/sshsession.cpp::login` (the per-login passwd-cache reset that defeated
+  caching on x86_64/mincrt was removed); pending validation under churn on the
+  QEMU x86_64 VM.
 - Pass the QEMU AROS One x86_64 daemon gate (`BEBBOSSH_GATE_QEMU_X64_PORT`).
 
 ## Runtime validation summary

@@ -61,10 +61,12 @@
 // #define FAKERAND 1
 
 #if defined(__AROS__)
+#if defined(BEBBOSSH_AROS_MINCRT)
+#include "aros_mincrt_wrappers.h"
+#endif
 static uint64_t aros_rdtsc(void) {
-	#if defined(__x86_64__) && defined(BEBBOSSH_AROS_MINCRT)
-	    return 0;
-	#elif (defined(__i386__) || defined(__x86_64__)) && defined(__GNUC__)
+	#if (defined(__i386__) || defined(__x86_64__)) && defined(__GNUC__)
+	    /* Inline asm: pure CPU, safe under mincrt -nostdlib */
 	    uint32_t lo, hi;
 	    __asm__ volatile("rdtsc" : "=a"(lo), "=d"(hi));
 	    return ((uint64_t)hi << 32) | lo;
@@ -102,9 +104,12 @@ void randfill(void * _to, unsigned len) {
 
 #if defined(__x86_64__)
 	    static uint64_t counter;
-#if !defined(BEBBOSSH_AROS_MINCRT)
+	    /* DateStamp is routed through the mincrt-safe wrapper on x86_64/mincrt
+	     * (aros_mincrt_wrappers.h above remaps DateStamp -> bebbossh_aros_datestamp).
+	     * Mixing in real per-call time variance (rdtsc + ds_Tick) is essential
+	     * for randfill on mincrt: without it the only "entropy" is addresses +
+	     * a monotonic counter -- not cryptographically random. */
 	    struct DateStamp ds;
-#endif
 	    uintptr_t frame = (uintptr_t)&frame;
 	    uint64_t entropy = aros_rdtsc() ^
 	            (uint64_t)(uintptr_t)_to ^
@@ -112,12 +117,10 @@ void randfill(void * _to, unsigned len) {
 	            (uint64_t)(uintptr_t)&state ^
 	            (uint64_t)frame ^
 	            (++counter * UINT64_C(0x9e3779b97f4a7c15));
-#if !defined(BEBBOSSH_AROS_MINCRT)
 	    DateStamp(&ds);
 	    entropy ^= ((uint64_t)(uint32_t)ds.ds_Days << 33) ^
 	            ((uint64_t)(uint32_t)ds.ds_Minute << 17) ^
 	            (uint32_t)ds.ds_Tick;
-#endif
 
     if (!seeded) {
         state = entropy ^ UINT64_C(0xd1b54a32d192ed03);
