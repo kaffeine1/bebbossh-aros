@@ -42,6 +42,8 @@ void bebbossh_aros_signal(struct Task *task, ULONG signalSet);
 void bebbossh_aros_init_semaphore(struct SignalSemaphore *sigSem);
 void bebbossh_aros_obtain_semaphore(struct SignalSemaphore *sigSem);
 void bebbossh_aros_release_semaphore(struct SignalSemaphore *sigSem);
+APTR bebbossh_aros_allocvec(IPTR byteSize, ULONG requirements);
+void bebbossh_aros_freevec(APTR memoryBlock);
 struct Library *bebbossh_aros_open_library(const char *name, ULONG version);
 void bebbossh_aros_close_library(struct Library *library);
 BPTR bebbossh_aros_open(const char *name, LONG mode);
@@ -67,6 +69,7 @@ char *bebbossh_aros_fgets(BPTR file, char *buf, LONG buflen);
 LONG bebbossh_aros_name_from_lock(BPTR lock, char *buffer, LONG length);
 LONG bebbossh_aros_set_protection(const char *name, LONG mask);
 LONG bebbossh_aros_system_tag_list(CONST_STRPTR command, struct TagItem *tags);
+int bebbossh_aros_x64_flag(const char *name);
 
 #ifdef __cplusplus
 }
@@ -92,6 +95,8 @@ LONG bebbossh_aros_system_tag_list(CONST_STRPTR command, struct TagItem *tags);
 #undef InitSemaphore
 #undef ObtainSemaphore
 #undef ReleaseSemaphore
+#undef AllocVec
+#undef FreeVec
 #undef OpenLibrary
 #undef CloseLibrary
 #undef Open
@@ -138,6 +143,8 @@ LONG bebbossh_aros_system_tag_list(CONST_STRPTR command, struct TagItem *tags);
 #define InitSemaphore(sigSem) bebbossh_aros_init_semaphore((sigSem))
 #define ObtainSemaphore(sigSem) bebbossh_aros_obtain_semaphore((sigSem))
 #define ReleaseSemaphore(sigSem) bebbossh_aros_release_semaphore((sigSem))
+#define AllocVec(byteSize, requirements) bebbossh_aros_allocvec((byteSize), (requirements))
+#define FreeVec(memoryBlock) bebbossh_aros_freevec((memoryBlock))
 #define OpenLibrary(name, version) bebbossh_aros_open_library((name), (version))
 #define CloseLibrary(library) bebbossh_aros_close_library((library))
 #define Open(name, mode) bebbossh_aros_open((name), (mode))

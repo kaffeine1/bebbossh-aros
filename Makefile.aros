@@ -45,6 +45,9 @@ CFLAGS ?= $(SDK_CPPFLAGS) -Iinclude -O2 -fno-builtin -D__AROS__ -include compat_
 CXXFLAGS ?= -fno-exceptions -fno-rtti
 LDFLAGS ?= $(SDK_LDFLAGS) -L$(OUTDIR)
 LIBS = -lcryptossh $(SDK_LIBS)
+TEST_LDFLAGS ?= $(LDFLAGS)
+TEST_LIBS ?= $(LIBS)
+TEST_EXTRA_OBJECTS ?=
 LIB_EXT = a
 
 LIB_SOURCES ?= bc.cpp aes.cpp chacha20.cpp poly1305.cpp chacha20poly1305ssh.cpp \
@@ -131,8 +134,8 @@ ifneq ($(strip $(STRIP_OUTPUTS)),)
 endif
 	$(POST_LINK)
 
-$(OUTDIR)/test%: $(OUTDIR)/test%.o $(OUTDIR)/c++support-lib.o $(OUTDIR)/libcryptossh.a
-	$(CXX) $(LDFLAGS) $(STARTUP) $(CFLAGS) $(CXXFLAGS) $< $(OUTDIR)/c++support-lib.o $(LIBS) -o $@
+$(OUTDIR)/test%: $(OUTDIR)/test%.o $(OUTDIR)/c++support-lib.o $(TEST_EXTRA_OBJECTS) $(OUTDIR)/libcryptossh.a
+	$(CXX) $(TEST_LDFLAGS) $(STARTUP) $(CFLAGS) $(CXXFLAGS) $< $(OUTDIR)/c++support-lib.o $(TEST_EXTRA_OBJECTS) $(TEST_LIBS) -o $@
 ifneq ($(strip $(STRIP_OUTPUTS)),)
 	$(STRIP) $(STRIPFLAGS) $@
 endif
