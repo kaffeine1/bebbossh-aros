@@ -977,6 +977,13 @@ int SshSession::consumeSocketData(char *indata, int len) {
 			break;
 		case SSH_MSG_CHANNEL_WINDOW_ADJUST:
 			logme(L_FINE, "@%ld got SSH_MSG_CHANNEL_WINDOW_ADJUST", sockFd);
+			{
+				uint32_t toAdd = getInt32(p + 4);
+				if (0x7fffffff - windowsize < toAdd)
+					windowsize = 0x7fffffff;
+				else
+					windowsize += toAdd;
+			}
 			break;
 		case SSH_MSG_CHANNEL_DATA:
 			logme(L_FINE, "@%ld got SSH_MSG_CHANNEL_DATA", sockFd);
@@ -1271,10 +1278,8 @@ bool SshSession::handleChannelRequest(uint8_t *p) {
 bool SshSession::handleOpenChannel(uint8_t *p) {
 	uint8_t *s = sshString(p);
 	uint32_t channelNo = getInt32(p);
-//	windowsize = getInt32(p + 4);
-//	maxsize = getInt32(p + 8);
-
-	windowsize = 0x7fffffff;
+	windowsize = getInt32(p + 4);
+	maxsize = getInt32(p + 8);
 	maxsize = MAXPACKET < maxsize ? MAXPACKET : maxsize;
 
 	int reason = 4; // resource shortage
