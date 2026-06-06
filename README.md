@@ -4,7 +4,7 @@
 **Author:** s.franke@bebbosoft.de
 **Uploader:** s.franke@bebbosoft.de
 **Upstream architecture:** m68k-amigaos
-**AROS fork targets:** i386 `alt-abiv0` stable, x86_64 experimental
+**AROS fork targets:** i386 `alt-abiv0` stable, x86_64 (mincrt) stable
 **Type:** comm/net
 **Version:** 1.45
 **Required:** bsdsocket.library (e.g. AmiTCP)
@@ -26,7 +26,7 @@ point per architecture:
 | Target | Status |
 | --- | --- |
 | AROS i386 `alt-abiv0` | stable and validated |
-| AROS x86_64 (mincrt) | experimental |
+| AROS x86_64 (mincrt) | stable (v1.0.0; tested against OpenSSH-class clients) |
 
 What works: the SSH server (`bebbosshd`) and client (`bebbossh`), Ed25519
 key generation (`bebbosshkeygen`), non-interactive remote command execution,

@@ -16,8 +16,9 @@ contains:
 - AROS README and example configuration files
 - GPL and upstream license files
 
-AROS x86_64 is a separate experimental target and is not part of the i386
-release gate.
+AROS x86_64 is a separate release target with its own gate
+(`docs/AROS_X86_64_RELEASE.md`) and tag (`v1.0.0-aros-x86_64`); it is not part
+of the i386 release gate.
 
 The latest complete public i386 runtime release is published on GitHub
 Releases, next to the repository tag list:

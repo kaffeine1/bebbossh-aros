@@ -132,9 +132,9 @@ aros-x86_64/testAES aros-x86_64/testChacha20 aros-x86_64/testEd25519
 aros-x86_64/testGCM aros-x86_64/testSHA512
 ```
 
-The runtime-validated x86_64 products remain `bebbosshkeygen` and `bebbosshd`
-(plus the client tools over hosted validation); building all four does not by
-itself promote x86_64 out of experimental. Release/packaging for x86_64 follows
+All four x86_64 products (`bebbosshkeygen`, `bebbosshd`, `bebbossh`, `bebboscp`)
+are runtime-validated as of v1.0.0 on AROS One x86_64 / QEMU e1000 against
+OpenSSH-class clients. Release/packaging for x86_64 follows
 `docs/AROS_X86_64_RELEASE.md`, the parallel of the i386 checklist.
 
 For host-side crosstools, set `AROS_SDK_ROOT` to an AROS x86_64 SDK that
@@ -159,12 +159,13 @@ Packager notes for the x86_64 wrapper:
 - The wrapper uses an x86_64-safe code model and disables unwind-table and
   hot/cold partition output; the only expected relocation is `R_X86_64_64`.
 - The x86_64 binaries use the minimal AROS runtime with standard init/exit
-  symbol sets disabled, and the random fallback is still experimental (see
-  Known limits). Do not publish a stable x86_64 security release until it is
-  validated on the target VM.
+  symbol sets disabled. The PRNG mixer was reviewed and the rdtsc + DateStamp
+  per-call entropy mix is now in place (see Known limits for the residual
+  best-effort PRNG note vs a full CSPRNG).
 
-x86_64 is hosted-validated and the mincrt keygen path is also validated on
-AROS One x86_64 via ISO transfer. Detailed test status lives in
+x86_64 v1.0.0 is validated on AROS One x86_64 / QEMU e1000 against
+OpenSSH-class clients (full SSH/SFTP/SCP smoke + 1 MiB transfer stress
+20/20 with `BEBBOSSH_AROS_STRESS_DELAY=0`). Detailed test status lives in
 `docs/AROS_TESTER.md`.
 
 ## Release naming
@@ -179,7 +180,7 @@ v0.2.1-aros-i386-abiv0
 bebbossh-aros-i386-abiv0-<version>.zip
 bebbossh-aros-i386-abiv0-<version>.tar.gz
 
-v0.3.0-aros-x86_64
+v1.0.0-aros-x86_64
 bebbossh-aros-x86_64-<version>.zip
 bebbossh-aros-x86_64-<version>.tar.gz
 ```
@@ -234,42 +235,37 @@ Deliberately unchanged on x86_64 (documented divergences, not regressions):
   mincrt link set, so re-enabling them requires new `GetVar`/`SetSignal`
   wrappers and a link check on the maintainer's toolchain.
 
-Remaining before x86_64 can be promoted from experimental to stable (needs real
-AROS One x86_64 hardware; see `docs/AROS_X86_64_RELEASE.md`):
+v1.0.0 promotion to stable closed the three documented gates (validated on
+AROS One x86_64 QEMU e1000):
 
-- Entropy review of the `mincrt` `randfill()` mixer (`src/rand.c`). **Review done
-  and fix applied** (pending build + self-test confirmation): on x86_64/mincrt the
-  mixer previously had `aros_rdtsc()` stubbed to `0` and `DateStamp` gated out
-  (the wrapper did not yet exist when that code was written), so the only "entropy"
-  was caller-buffer/state/frame addresses plus a monotonic counter — not
-  cryptographically random. The fix in `src/rand.c` (a) enables the inline-asm
-  `rdtsc` on x86_64/mincrt (pure CPU instruction, safe under `-nostdlib`) for
-  per-call ns-class time variance, and (b) routes `DateStamp(&ds)` through the
-  existing mincrt-safe `bebbossh_aros_datestamp` wrapper for per-call 20 ms-class
-  tick variance. Residual risk: this remains a best-effort PRNG mixer, not a true
-  CSPRNG; replace with an AROS CSPRNG if one becomes available. Validation: a
-  build that links `testEd25519`/`testChacha20` against the new mixer must pass,
-  and an empirical check should confirm rdtsc and DateStamp values vary across
-  successive calls in the same process.
-- Reproduce and fix the intermittent zero-delay password-auth churn failure
-  (`BEBBOSSH_AROS_STRESS_DELAY=0`). **Candidate fix applied** in
-  `src/sshsession.cpp::login` (the per-login passwd-cache reset that defeated
-  caching on x86_64/mincrt was removed); pending validation under churn on the
-  QEMU x86_64 VM.
-- Pass the QEMU AROS One x86_64 daemon gate (`BEBBOSSH_GATE_QEMU_X64_PORT`).
+- **Entropy review of the `mincrt` `randfill()` mixer (`src/rand.c`):** done.
+  The previous x86_64/mincrt path had `aros_rdtsc()` stubbed to `0` and
+  `DateStamp` gated out, so per-call entropy was only addresses + a counter.
+  Current `src/rand.c` enables the inline-asm `rdtsc` (pure CPU instruction,
+  safe under `-nostdlib`) for ns-class time variance, and routes `DateStamp`
+  through the mincrt-safe `bebbossh_aros_datestamp` wrapper for 20 ms-class
+  tick variance. Residual risk: still a best-effort PRNG mixer, not a true
+  CSPRNG; if an AROS CSPRNG becomes available, prefer it.
+- **Zero-delay password-auth churn (`BEBBOSSH_AROS_STRESS_DELAY=0`):** fixed.
+  `SshSession::login` no longer resets the password cache per login on
+  x86_64/mincrt; cache loads once per daemon lifetime, same as i386. Validated
+  100/100 zero-delay password churn on the VM.
+- **QEMU AROS One x86_64 daemon gate:** passed — full SSH/SFTP/SCP smoke +
+  reduced transfer stress + 1 MiB transfer stress 20/20 +
+  post-stress banner immediate.
 
 ## Runtime validation summary
 
-x86_64 (mincrt) is hosted-validated for keygen, daemon bind/auth, non-PTY and
-PTY exec with real output and exit status, the minimal interactive shell,
-missing-command exit 127, telegram-amiga automation, and SFTP/SCP. The keygen
-path is additionally validated on AROS One x86_64 via ISO transfer. Keep x86_64
-marked experimental until the entropy path is reviewed and non-hosted AROS One
-daemon validation is closed. For SFTP/SCP, the validated operations are `ls`,
-`get`, `put`, `rm`, `rename` (including overwrite), `mkdir`, `rmdir`, and
-`chmod`. `READLINK`/`SYMLINK` remain unsupported. x86_64/mincrt does not
-preserve SFTP mtime by default; set `BEBBOSSH_AROS_X64_SFTP_MTIME=1` to enable
-the `SetFileDate` path (pending AROS One x86_64 validation).
+x86_64 (mincrt) is validated as v1.0.0 stable for keygen, daemon bind/auth,
+non-PTY and PTY exec with real output and exit status, the minimal interactive
+shell, missing-command exit 127, telegram-amiga automation, SFTP/SCP, and
+1 MiB transfer stress under `BEBBOSSH_AROS_STRESS_DELAY=0`. Hosted validation
+plus the AROS One x86_64 VM gate together close the v1.0.0 release. For
+SFTP/SCP, the validated operations are `ls`, `get`, `put`, `rm`, `rename`
+(including overwrite), `mkdir`, `rmdir`, and `chmod`. `READLINK`/`SYMLINK`
+remain unsupported. x86_64/mincrt does not preserve SFTP mtime by default;
+set `BEBBOSSH_AROS_X64_SFTP_MTIME=1` to enable the `SetFileDate` path
+(opt-in; main path validated).
 
 Hosted AROS i386 is validated for daemon bind/auth, the telegram-amiga
 automation suite, redirection and interactive-command rejection, PTY exec,
