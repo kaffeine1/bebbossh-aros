@@ -1488,7 +1488,11 @@ static bool isLocal(char *&path) {
 		return false;
 
 	while (0 != (dl = NextDosEntry(dl, LDF_ALL))) {
+#ifdef __AROS__
+		char *n = (char*) AROS_BSTR_ADDR(dl->dol_Name);
+#else
 		char *n = (char*) BADDR(dl->dol_Name) + 1;
+#endif
 		if (0 == stricmp(maybeHostname, n))
 			break;
 	}
