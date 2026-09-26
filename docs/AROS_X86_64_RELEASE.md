@@ -58,8 +58,8 @@ artifacts.
 For a future version, override the defaults:
 
 ```sh
-BEBBOSSH_RELEASE_TAG=v1.0.1-aros-x86_64 \
-BEBBOSSH_RELEASE_VERSION=v1.0.1 \
+BEBBOSSH_RELEASE_TAG=v1.0.2-aros-x86_64 \
+BEBBOSSH_RELEASE_VERSION=v1.0.2 \
 ./scripts/aros-x86_64-public-release-smoke.sh
 ```
 

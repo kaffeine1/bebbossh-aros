@@ -43,8 +43,8 @@ rejects any public package that contains `hosted` artifacts.
 For a future version, override the defaults:
 
 ```sh
-BEBBOSSH_RELEASE_TAG=v0.2.6-aros-i386-abiv0 \
-BEBBOSSH_RELEASE_VERSION=v0.2.6 \
+BEBBOSSH_RELEASE_TAG=v1.0.2-aros-i386-abiv0 \
+BEBBOSSH_RELEASE_VERSION=v1.0.2 \
 BEBBOSSH_RELEASE_ZIP_SHA256=<sha256> \
 BEBBOSSH_RELEASE_TGZ_SHA256=<sha256> \
 ./scripts/aros-i386-public-release-smoke.sh
