@@ -557,6 +557,23 @@ int bebbossh_aros_accept(struct Library *base, int s, struct sockaddr *addr, soc
 #endif
 }
 
+int bebbossh_aros_getsockname(struct Library *base, int s, struct sockaddr *name, socklen_t *namelen)
+{
+#if defined(__x86_64__)
+    APTR func = bebbossh_aros_libcall_base(base, 17);
+    APTR save;
+    int ret;
+    if (!func)
+        return -1;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12" : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((int (*)(int, struct sockaddr *, socklen_t *))func)(s, name, namelen);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return getsockname(s, name, namelen);
+#endif
+}
+
 int bebbossh_aros_connect(struct Library *base, int s, struct sockaddr *name, socklen_t namelen)
 {
 #if defined(__x86_64__)
@@ -1117,6 +1134,9 @@ int snprintf(char *buf, size_t size, const char *fmt, ...)
     return rc;
 }
 
+LONG bebbossh_aros_write(BPTR file, const void *buf, LONG len);
+BPTR bebbossh_aros_output(void);
+
 int printf(const char *fmt, ...)
 {
     char buf[512];
@@ -1126,7 +1146,7 @@ int printf(const char *fmt, ...)
     va_start(ap, fmt);
     rc = mini_vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
-    Write(Output(), buf, strlen(buf));
+    bebbossh_aros_write(bebbossh_aros_output(), buf, strlen(buf));
     return rc;
 }
 
@@ -1134,7 +1154,7 @@ int putchar(int c)
 {
     char ch = (char)c;
 
-    Write(Output(), &ch, 1);
+    bebbossh_aros_write(bebbossh_aros_output(), &ch, 1);
     return c;
 }
 
@@ -1142,8 +1162,8 @@ int puts(const char *s)
 {
     if (!s)
         s = "";
-    Write(Output(), s, strlen(s));
-    Write(Output(), "\n", 1);
+    bebbossh_aros_write(bebbossh_aros_output(), s, strlen(s));
+    bebbossh_aros_write(bebbossh_aros_output(), "\n", 1);
     return 0;
 }
 
@@ -1791,6 +1811,80 @@ LONG bebbossh_aros_set_file_date(const char *name, const struct DateStamp *date)
     return ret;
 #else
     return SetFileDate(name, date);
+#endif
+}
+
+BOOL bebbossh_aros_examine_fh(BPTR fh, struct FileInfoBlock *fib)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 65);
+    APTR save;
+    BOOL ret;
+
+    if (!fh || !fib)
+        return DOSFALSE;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((BOOL (*)(BPTR, struct FileInfoBlock *))func)(fh, fib);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return ExamineFH(fh, fib);
+#endif
+}
+
+struct DosList *bebbossh_aros_attempt_lock_dos_list(ULONG flags)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 111);
+    APTR save;
+    struct DosList *ret;
+
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((struct DosList *(*)(ULONG))func)(flags);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return AttemptLockDosList(flags);
+#endif
+}
+
+struct DosList *bebbossh_aros_next_dos_entry(struct DosList *dlist, ULONG flags)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 115);
+    APTR save;
+    struct DosList *ret;
+
+    if (!dlist)
+        return NULL;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((struct DosList *(*)(struct DosList *, ULONG))func)(dlist, flags);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return NextDosEntry(dlist, flags);
+#endif
+}
+
+void bebbossh_aros_unlock_dos_list(ULONG flags)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 110);
+    APTR save;
+
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ((void (*)(ULONG))func)(flags);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+#else
+    UnLockDosList(flags);
 #endif
 }
 
