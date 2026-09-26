@@ -17,14 +17,14 @@ contains:
 - GPL and upstream license files
 
 AROS x86_64 is a separate release target with its own gate
-(`docs/AROS_X86_64_RELEASE.md`) and tag (`v1.0.0-aros-x86_64`); it is not part
+(`docs/AROS_X86_64_RELEASE.md`) and tag (`v1.0.1-aros-x86_64`); it is not part
 of the i386 release gate.
 
 The latest complete public i386 runtime release is published on GitHub
 Releases, next to the repository tag list:
 
 ```text
-https://github.com/kaffeine1/bebbossh-aros/releases/tag/v0.2.5-aros-i386-abiv0
+https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.1-aros-i386-abiv0
 ```
 
 ## Public Asset Gate

@@ -22,7 +22,7 @@ AROS i386 `alt-abiv0` is a separate, stable target with its own gate
 Release naming (see `AROS_PORTING.md`):
 
 ```text
-v1.0.0-aros-x86_64
+v1.0.1-aros-x86_64
 bebbossh-aros-x86_64-<version>.zip
 bebbossh-aros-x86_64-<version>.tar.gz
 ```
@@ -229,6 +229,14 @@ VM pass over them:
    One they crash before `main` (also on master): the prebuilt `libautoinit.a`
    calls `OpenLibrary` without SysBase in `r12`, and the test link pulls
    posixc/stdc stubs that AROS One does not ship.
+
+Status at v1.0.1 (AROS One x86_64, QEMU `qemu64` and
+`qemu64,+aes,+pclmulqdq,+ssse3`): items 1 to 4 and 7 pass. For item 7 the
+self-tests were linked with a replacement autoinit loop that loads `r12`
+(see the note above). Items 5 and 6 need an AROS console and are still open.
+The AROS-native clients were also exercised over loopback with public-key
+login: `bebboscp` upload and download (byte-identical), `bebbossh` command
+execution and `-L` forwarding.
 
 Not covered by this list: DOS requester suppression is i386-only for now (see
 `AROS_PORTING.md`), so on x86_64 an SFTP path on an unmounted volume still
