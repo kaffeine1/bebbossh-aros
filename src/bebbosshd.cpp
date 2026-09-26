@@ -524,7 +524,7 @@ static void cleanupSessions() {
 	}
 }
 
-#if BEBBOSSH_AROS
+#if BEBBOSSH_AROS && !defined(BEBBOSSH_AROS_MINCRT)
 // The daemon has no user at the console: turn DOS requesters ("Please insert
 // volume ...") into plain errors, otherwise a request for an unmounted volume
 // blocks the whole daemon loop until someone clicks the requester away.
@@ -532,11 +532,7 @@ static struct Process *requesterProcess;
 static APTR orgWindowPtr;
 
 static void disableRequesters() {
-#if defined(BEBBOSSH_AROS_MINCRT)
-	requesterProcess = (struct Process *)bebbossh_aros_find_task(NULL);
-#else
 	requesterProcess = (struct Process *)FindTask(NULL);
-#endif
 	if (requesterProcess && requesterProcess->pr_Task.tc_Node.ln_Type == NT_PROCESS) {
 		orgWindowPtr = requesterProcess->pr_WindowPtr;
 		requesterProcess->pr_WindowPtr = (APTR)-1;
@@ -550,12 +546,15 @@ static void restoreRequesters() {
 		requesterProcess = 0;
 	}
 }
+#elif BEBBOSSH_AROS
+// x86_64/mincrt is built against SMP crosstools headers whose struct Process
+// layout (pr_WindowPtr offset) differs from the non-SMP AROS One runtime, so
+// the field cannot be written safely yet: requesters stay enabled there.
+static void disableRequesters() {}
+static void restoreRequesters() {}
 #endif
 
 void cleanup() {
-#if BEBBOSSH_AROS
-	restoreRequesters();
-#endif
 	// no more connections
 	if (acceptSock != -1) {
 		logme(L_FINE, "closing listen socket %ld", acceptSock);
@@ -629,6 +628,9 @@ void cleanup() {
 		UnLock(curDir);
 		curDir = 0;
 	}
+#endif
+#if BEBBOSSH_AROS
+	restoreRequesters();
 #endif
 }
 

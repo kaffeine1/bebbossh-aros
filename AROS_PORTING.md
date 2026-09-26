@@ -231,33 +231,41 @@ Enabled by default after the mincrt parity work (need AROS One x86_64 VM
 validation before the next release tag):
 
 - `mincrt` runtime wrappers for `GetVar`, `DupLock`, `GetDeviceProc`,
-  `FreeDeviceProc`, `ReadLink`, `MakeLink`, `SetSignal`, `DoIO` and
-  `SetWindowTitles`. The LVO numbers were checked against the AROS SDK
+  `FreeDeviceProc`, `ReadLink`, `MakeLink`, `SetFileDate`, `SetSignal`, `DoIO`,
+  `CheckIO`, `WaitIO`, `AbortIO` and `SetWindowTitles`. The LVO numbers were checked against the AROS SDK
   `clib/*_protos.h`; like the existing wrappers they set the library base in
   `r12` and call through the jump table.
 - `getenv()` reads shell/`ENV:` variables through `GetVar` (was a stub), so the
   client `USER` / `TERM` fallback works on x86_64.
 - `atexit()` handlers run on `exit()` and when `main()` returns (was a no-op).
   This restores the console mode when the x86_64 client exits and lets the
-  daemon close its listen socket, timer and `bsdsocket.library` on shutdown.
+  daemon close its listen socket, timer and `bsdsocket.library` on shutdown
+  (the timer teardown uses the `CheckIO`/`AbortIO`/`WaitIO` wrappers: the
+  inline calls crashed because `WaitIO` needs SysBase in `r12`).
 - `logme()` writes to `Output()` on `mincrt` (was a no-op, so `-v` had no
   effect on x86_64). `%ld` arguments are read as 32-bit values, matching the
   Amiga-style `LONG` call sites.
 - SFTP overwrite deletes the target before re-creating it on x86_64 too, so a
   smaller upload no longer leaves stale trailing bytes, and the volume check in
   path sanitizing uses `GetDeviceProc` instead of accepting every path.
-- The daemon sets `pr_WindowPtr` to -1 while it runs (i386 and x86_64), so an
+- i386 only for now: the daemon sets `pr_WindowPtr` to -1 while it runs, so an
   access to an unmounted volume returns an error instead of opening a DOS
-  requester that would block the daemon loop. The original value is restored
-  on exit.
-- Client: `Ctrl-C` in the password prompt (`SetSignal`), keyboard qualifiers
-  for cursor keys (`keyboard.device` through the exec wrappers), mouse
-  position and window titles (`intuition.library` opened on demand).
+  requester that would block the daemon loop; the original value is restored
+  at the end of `cleanup()`. On x86_64 this is compiled out: the build uses
+  the SMP crosstools headers (`__AROSPLATFORM_SMP__`), where `struct MsgPort`
+  and `struct Library` are larger than on the non-SMP AROS One runtime, so
+  `struct Process` fields after `pr_MsgPort` (and `struct IntuitionBase`
+  fields) are at the wrong offsets. The same reason keeps the x86_64 client
+  mouse position at 1,1 instead of reading `IntuitionBase->ActiveWindow`.
+- Client: `Ctrl-C` in the password prompt (`SetSignal`) and keyboard
+  qualifiers for cursor keys (`keyboard.device` through the exec wrappers).
 - Shell: TAB completion for explicit paths (`C:Li<TAB>`); completion in the
   current directory also needs `BEBBOSSH_AROS_X64_CD`.
 
 Deliberately unchanged on x86_64 (documented divergences, not regressions):
 
+- Ctrl-C does not stop the x86_64 daemon: the mincrt main loop clears the
+  signal mask returned by `WaitSelect`.
 - Exec stays synchronous (`SystemTagList`). The i386 async child-task backend
   (`CreateNewProcTagList`) previously hit a crash class on `mincrt` and is not
   compiled for x86_64. Porting it is future work gated on VM validation, not a
@@ -279,7 +287,7 @@ Measured on the build host with the AROS compile flags: AES-128-GCM 149 to
 1338 MB/s, ChaCha20-Poly1305 191 to 557 MB/s. Output is identical to the
 portable code (differential tests with random keys, nonces, lengths and
 chunking; RFC 8439 Poly1305 vector; AES-GCM cross-checked with PyCryptodome).
-The same change fixes the portable GHASH for AAD of 47 bytes or more, which SSH
+The same change fixes the portable GHASH for AAD of 32 bytes or more, which SSH
 never uses (its AAD is the 4-byte packet length). i386 keeps the portable code.
 
 v1.0.0 promotion to stable closed the three documented gates (validated on

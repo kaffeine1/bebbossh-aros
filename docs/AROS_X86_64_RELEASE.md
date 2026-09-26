@@ -207,20 +207,32 @@ VM pass over them:
    and byte-compare the download (the target is deleted before re-creation).
    The "delete the old file first" advice above is no longer needed once this
    passes.
-2. SFTP path to an unmounted volume (`sftp> ls NOSUCH:`) must fail quickly
-   without a requester on the AROS screen, and the daemon must keep serving.
-3. `bebbosshd -v5` prints log lines on x86_64 (it was silent before).
-4. Daemon shutdown with Ctrl-C closes the listen socket: restart it right away
-   and connect again.
+2. `bebbosshd -v5` prints log lines on x86_64 (it was silent before).
+3. Daemon teardown: when the daemon exits after a client has connected, the
+   `-v5` log shows the timer request, message ports and `bsdsocket.library`
+   being released and the process ends without a guru. Ctrl-C does not stop
+   the x86_64 daemon (the mincrt main loop clears the `WaitSelect` signal
+   mask), so use a fatal path such as a duplicate channel id to exercise it.
+4. Malformed channel requests (a second `shell` on the same channel, a
+   `subsystem` request with an unknown or short name) are answered with
+   CHANNEL_FAILURE and the daemon keeps serving.
 5. AROS-native client (`bebbossh`): after exit the shell console is back in
    cooked mode; Ctrl-C at the password prompt quits; Shift+cursor keys reach
    the remote side as modified cursor keys; `setenv USER name` is used as the
    default login name.
 6. Interactive shell: `C:Li<TAB>` completes to `C:List`.
-7. Crypto: `make -f Makefile.aros-x86_64 run-tests`, then one SCP transfer with
-   each cipher (`-c aes128-gcm@openssh.com`, `-c chacha20-poly1305@openssh.com`).
-   Repeat with a VM CPU model that exposes AES-NI/PCLMULQDQ (QEMU `-cpu host`)
-   and one that does not (QEMU default `qemu64`) to cover both GCM paths.
+7. Crypto: one SCP transfer with each cipher (`-c aes128-gcm@openssh.com`,
+   `-c chacha20-poly1305@openssh.com`), on a VM CPU model that exposes
+   AES-NI/PCLMULQDQ (QEMU `-cpu qemu64,+aes,+pclmulqdq,+ssse3` or `-cpu host`)
+   and on one that does not (QEMU `qemu64`) to cover both GCM paths.
+   `make -f Makefile.aros-x86_64 run-tests` builds the self-tests, but on AROS
+   One they crash before `main` (also on master): the prebuilt `libautoinit.a`
+   calls `OpenLibrary` without SysBase in `r12`, and the test link pulls
+   posixc/stdc stubs that AROS One does not ship.
+
+Not covered by this list: DOS requester suppression is i386-only for now (see
+`AROS_PORTING.md`), so on x86_64 an SFTP path on an unmounted volume still
+opens the "insert volume" requester and blocks the daemon until it is closed.
 
 ### Known divergence kept on purpose: synchronous exec
 

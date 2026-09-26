@@ -258,12 +258,13 @@ Known Limits
   complete. Stdin-driven programs are rejected with exit status 2.
 - Shell redirection and pipes (`>`, `<`, `|`) are not supported on AROS and are
   rejected with exit status 2.
-- SFTP readlink/symlink are not implemented, and SFTP timestamp preservation is
-  a no-op.
 - x86_64 only: some features are opt-in flags, off unless set before starting
   bebbosshd (setenv NAME 1): BEBBOSSH_AROS_X64_CD (cd/pwd in the interactive
   shell), BEBBOSSH_AROS_X64_SFTP_MTIME (keep upload timestamps),
   BEBBOSSH_AROS_X64_SFTP_LINKS (SFTP readlink/symlink).
+- x86_64: an SFTP path on an unmounted volume opens an "insert volume"
+  requester on the AROS screen and blocks the daemon until it is closed, and
+  Ctrl-C does not stop the daemon.
 - The test password in passwd.example is not safe. Change it before use, and do
   not distribute private host keys generated for local testing.
 

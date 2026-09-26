@@ -1716,6 +1716,84 @@ ULONG bebbossh_aros_set_signal(ULONG newSignals, ULONG signalSet)
 #endif
 }
 
+struct IORequest *bebbossh_aros_check_io(struct IORequest *request)
+{
+#if defined(__x86_64__)
+    APTR base = SysBase;
+    APTR func = __AROS_GETVECADDR(base, 78);
+    APTR save;
+    struct IORequest *ret;
+
+    if (!request)
+        return NULL;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((struct IORequest *(*)(struct IORequest *))func)(request);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return CheckIO(request);
+#endif
+}
+
+LONG bebbossh_aros_wait_io(struct IORequest *request)
+{
+#if defined(__x86_64__)
+    APTR base = SysBase;
+    APTR func = __AROS_GETVECADDR(base, 79);
+    APTR save;
+    LONG ret;
+
+    if (!request)
+        return -1;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((LONG (*)(struct IORequest *))func)(request);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return WaitIO(request);
+#endif
+}
+
+void bebbossh_aros_abort_io(struct IORequest *request)
+{
+#if defined(__x86_64__)
+    APTR base = SysBase;
+    APTR func = __AROS_GETVECADDR(base, 80);
+    APTR save;
+
+    if (!request)
+        return;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ((void (*)(struct IORequest *))func)(request);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+#else
+    AbortIO(request);
+#endif
+}
+
+LONG bebbossh_aros_set_file_date(const char *name, const struct DateStamp *date)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 66);
+    APTR save;
+    LONG ret;
+
+    if (!name || !date)
+        return 0;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((LONG (*)(CONST_STRPTR, const struct DateStamp *))func)(name, date);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return SetFileDate(name, date);
+#endif
+}
+
 BYTE bebbossh_aros_do_io(struct IORequest *request)
 {
 #if defined(__x86_64__)
@@ -1830,10 +1908,10 @@ int mkdir(const char *path, unsigned mode)
     BPTR lock;
 
     (void)mode;
-    lock = CreateDir(path);
+    lock = bebbossh_aros_create_dir(path);
     if (!lock)
         return -1;
-    UnLock(lock);
+    bebbossh_aros_unlock(lock);
     return 0;
 }
 

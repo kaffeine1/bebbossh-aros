@@ -402,8 +402,8 @@ void setAttrs(uint8_t * p, uint8_t * path) {
 #if BEBBOSSH_AMIGA_API
 			bool arosSetFileDate = true;
 #if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
-			// SetFileDate on the raw mincrt path is opt-in until validated on an
-			// AROS One x86_64 VM. Enable with: set BEBBOSSH_AROS_X64_SFTP_MTIME 1
+			// SetFileDate goes through the mincrt-safe wrapper; opt-in until validated on an
+			// AROS One x86_64 VM. Enable with: setenv BEBBOSSH_AROS_X64_SFTP_MTIME 1
 			arosSetFileDate = bebbossh_aros_x64_flag("BEBBOSSH_AROS_X64_SFTP_MTIME") != 0;
 #endif
 			if (arosSetFileDate) {

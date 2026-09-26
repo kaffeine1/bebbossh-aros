@@ -345,10 +345,12 @@ static uint8_t* makeMouseClick(uint8_t *c) {
 				y = atoi(sy);
 					if (!(x | y)) { // 0, 0 -> read from window
 #if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
-						// no auto-open on mincrt: open intuition on first use
-						if (!IntuitionBase)
-							IntuitionBase = (struct IntuitionBase *)bebbossh_aros_open_library("intuition.library", 36);
-#endif
+						// The SMP crosstools headers give struct Library (and so
+						// struct IntuitionBase) a different layout than the AROS One
+						// runtime: ActiveWindow cannot be read safely yet.
+						x = 1;
+						y = 1;
+#else
 						static unsigned dx = 8, dy = 8;
 						theWindow = IntuitionBase ? IntuitionBase->ActiveWindow : 0;
 						if (theWindow) {
@@ -363,6 +365,7 @@ static uint8_t* makeMouseClick(uint8_t *c) {
 							x = 1;
 							y = 1;
 						}
+#endif
 					}
 			}
 		}
@@ -834,7 +837,7 @@ static void printUsage() {
 	puts("                  listen at bind_address:port and forward to host:hostport");
 	puts("    -p <port>     connect to the host at port <port>");
 	puts("    -T            don't allocate a pseudo terminal");
-	puts("    -v <n>        set verbosity, defaults to 0 = OFF");
+	puts("    -v <n>        set verbosity, defaults to 3 = WARN");
 	puts("    --ciphers <n> use the ciphers in the given order:");
 	puts("                  1=aes128-gcm, 2=chacha20-poly1305");
 	puts("                  defaults to n=21");

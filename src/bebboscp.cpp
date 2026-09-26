@@ -593,7 +593,7 @@ int ScpChannel::processChannelData(void *data, int length) {
 			return -1;
 
 		int read = length > pendingRead ? pendingRead : length;
-		logme(L_DEBUG, "pending read %ld %ld", read);
+		logme(L_DEBUG, "pending read %ld", read);
 
 		if (Write(currentCs->localFile, data, read) != read) {
 			logme(L_ERROR, "write failed for `%s`", currentCs->dst);
@@ -1318,7 +1318,7 @@ static void printUsage() {
 	puts("    -t            allocate a pseudo terminal");
 	puts("    -u <user>     connect as <user>");
 	puts("                  or use <user>@<host>:<path>");
-	puts("    -v <n>        set verbosity, defaults to 4 = INFO");
+	puts("    -v <n>        set verbosity, defaults to 3 = WARN");
 	puts("    --ciphers <n> use the ciphers in the given order:");
 	puts("                  1=aes128-gcm, 2=chacha20-poly1305");
 	puts("                  defaults to n=21");

@@ -842,11 +842,6 @@ static void freeConsole(void) {
     if (theWindow && orgWindowTitle)
         bebbossh_aros_set_window_titles((struct Library *)IntuitionBase, theWindow, orgWindowTitle, 0);
     theWindow = 0;
-    // opened on demand by the mouse handler, not by an auto-open library set
-    if (IntuitionBase) {
-        bebbossh_aros_close_library((struct Library *)IntuitionBase);
-        IntuitionBase = 0;
-    }
 #else
     if (theWindow && orgWindowTitle) {
         SetWindowTitles(theWindow, orgWindowTitle, 0);

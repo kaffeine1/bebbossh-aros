@@ -89,6 +89,10 @@ void bebbossh_aros_delete_iorequest(APTR request);
 LONG bebbossh_aros_open_device(const char *name, IPTR unit, struct IORequest *request, ULONG flags);
 void bebbossh_aros_close_device(struct IORequest *request);
 BYTE bebbossh_aros_do_io(struct IORequest *request);
+struct IORequest *bebbossh_aros_check_io(struct IORequest *request);
+LONG bebbossh_aros_wait_io(struct IORequest *request);
+void bebbossh_aros_abort_io(struct IORequest *request);
+LONG bebbossh_aros_set_file_date(const char *name, const struct DateStamp *date);
 
 #ifdef __cplusplus
 }
@@ -146,6 +150,10 @@ BYTE bebbossh_aros_do_io(struct IORequest *request);
 #undef FreeDeviceProc
 #undef SetSignal
 #undef DoIO
+#undef CheckIO
+#undef WaitIO
+#undef AbortIO
+#undef SetFileDate
 #undef ReadLink
 #undef MakeLink
 
@@ -202,6 +210,10 @@ BYTE bebbossh_aros_do_io(struct IORequest *request);
 #define FreeDeviceProc(dp) bebbossh_aros_free_device_proc((dp))
 #define SetSignal(newSignals, signalSet) bebbossh_aros_set_signal((newSignals), (signalSet))
 #define DoIO(request) bebbossh_aros_do_io((request))
+#define CheckIO(request) bebbossh_aros_check_io((struct IORequest *)(request))
+#define WaitIO(request) bebbossh_aros_wait_io((struct IORequest *)(request))
+#define AbortIO(request) bebbossh_aros_abort_io((struct IORequest *)(request))
+#define SetFileDate(name, date) bebbossh_aros_set_file_date((const char *)(name), (date))
 #define ReadLink(port, lock, path, buffer, size) \
 	bebbossh_aros_read_link((port), (lock), (const char *)(path), (char *)(buffer), (size))
 #define MakeLink(name, dest, soft) bebbossh_aros_make_link((const char *)(name), (SIPTR)(dest), (soft))
