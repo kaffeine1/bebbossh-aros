@@ -253,10 +253,12 @@ validation before the next release tag):
   requester that would block the daemon loop; the original value is restored
   at the end of `cleanup()`. On x86_64 this is compiled out: the build uses
   the SMP crosstools headers (`__AROSPLATFORM_SMP__`), where `struct MsgPort`
-  and `struct Library` are larger than on the non-SMP AROS One runtime, so
-  `struct Process` fields after `pr_MsgPort` (and `struct IntuitionBase`
-  fields) are at the wrong offsets. The same reason keeps the x86_64 client
-  mouse position at 1,1 instead of reading `IntuitionBase->ActiveWindow`.
+  is larger than on the non-SMP AROS One runtime, so `struct Process` fields
+  after `pr_MsgPort` are at the wrong offsets. Structures without an embedded
+  `MsgPort` keep their layout: `struct Library`, `struct IntuitionBase` and
+  `struct Window` match the runtime. The x86_64 client still reports the mouse
+  position as 1,1 until reading `IntuitionBase->ActiveWindow` has been tested
+  on an AROS One VM.
 - Client: `Ctrl-C` in the password prompt (`SetSignal`) and keyboard
   qualifiers for cursor keys (`keyboard.device` through the exec wrappers).
 - Shell: TAB completion for explicit paths (`C:Li<TAB>`); completion in the

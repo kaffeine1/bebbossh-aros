@@ -345,9 +345,8 @@ static uint8_t* makeMouseClick(uint8_t *c) {
 				y = atoi(sy);
 					if (!(x | y)) { // 0, 0 -> read from window
 #if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
-						// The SMP crosstools headers give struct Library (and so
-						// struct IntuitionBase) a different layout than the AROS One
-						// runtime: ActiveWindow cannot be read safely yet.
+						// Not on x86_64 yet: intuition.library is not opened on mincrt
+						// and the ActiveWindow lookup is untested on AROS One.
 						x = 1;
 						y = 1;
 #else
