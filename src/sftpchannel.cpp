@@ -389,15 +389,12 @@ void setAttrs(uint8_t * p, uint8_t * path) {
 	}
 	struct timeval tv;
 	if (flags & SSH2_FILEXFER_ATTR_ACMODTIME) {
-		tv.tv_usec = getInt32(p);
+		// SFTP v3: atime then mtime, both uint32 seconds
+		uint32_t atime = getInt32(p);
 		p += 4;
 		tv.tv_sec = getInt32(p);
 		p += 4;
-
-	    // normalize overflow
-		unsigned long u = tv.tv_usec / 1000000; // get overflow micros
-		tv.tv_usec -= u * 1000000;
-		tv.tv_sec += u;
+		tv.tv_usec = 0;
 
 #if BEBBOSSH_AMIGA_API
 			bool arosSetFileDate = true;
@@ -406,6 +403,7 @@ void setAttrs(uint8_t * p, uint8_t * path) {
 			// AROS One x86_64 VM. Enable with: setenv BEBBOSSH_AROS_X64_SFTP_MTIME 1
 			arosSetFileDate = bebbossh_aros_x64_flag("BEBBOSSH_AROS_X64_SFTP_MTIME") != 0;
 #endif
+			(void)atime;
 			if (arosSetFileDate) {
 				struct DateStamp date;
 
@@ -422,10 +420,10 @@ void setAttrs(uint8_t * p, uint8_t * path) {
 			}
 #else
 			struct timespec times[2];
-			times[0].tv_sec  = tv.tv_sec;
-			times[0].tv_nsec = tv.tv_usec * 1000;
+			times[0].tv_sec  = atime;
+			times[0].tv_nsec = 0;
 			times[1].tv_sec  = tv.tv_sec;
-			times[1].tv_nsec = tv.tv_usec * 1000;
+			times[1].tv_nsec = 0;
 
 			utimensat(AT_FDCWD, (char *)path, times, 0);
 #endif

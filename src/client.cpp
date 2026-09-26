@@ -1595,21 +1595,24 @@ void eventLoop() {
 
 		FD_ZERO(&readfds);
 		FD_SET(sockfd, &readfds);
+		int maxFd = sockfd;
 
 		for (int i = 0; i < acceptors.getMax(); ++i) {
 			Acceptor * a = acceptors[i];
-			if (a && a->isOpen())
+			if (a && a->isOpen()) {
 				FD_SET(a->getSockFd(), &readfds);
+				if (a->getSockFd() > maxFd)
+					maxFd = a->getSockFd();
+			}
 		}
 		for (int i = 0; i < listeners.getMax(); ++i) {
 			Listener * l = listeners[i];
-			if (l && l->isOpen())
+			if (l && l->isOpen()) {
 				FD_SET(l->getSockFd(), &readfds);
+				if (l->getSockFd() > maxFd)
+					maxFd = l->getSockFd();
+			}
 		}
-
-		int maxFd = acceptors.getMax();
-		if (listeners.getMax() > maxFd)
-			maxFd = listeners.getMax();
 
 //		logme(L_DEBUG, "waitselect max=%ld listeners=%ld acceptors=%ld", maxFd, listeners.getCount(), acceptors.getCount());
 

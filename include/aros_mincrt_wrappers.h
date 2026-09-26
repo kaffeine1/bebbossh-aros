@@ -27,6 +27,7 @@ int bebbossh_aros_socket(struct Library *base, int domain, int type, int protoco
 int bebbossh_aros_bind(struct Library *base, int s, struct sockaddr *name, socklen_t namelen);
 int bebbossh_aros_listen(struct Library *base, int s, int backlog);
 int bebbossh_aros_accept(struct Library *base, int s, struct sockaddr *addr, socklen_t *addrlen);
+int bebbossh_aros_getsockname(struct Library *base, int s, struct sockaddr *name, socklen_t *namelen);
 int bebbossh_aros_connect(struct Library *base, int s, struct sockaddr *name, socklen_t namelen);
 int bebbossh_aros_send(struct Library *base, int s, const void *msg, int len, int flags);
 int bebbossh_aros_recv(struct Library *base, int s, void *buf, int len, int flags);
@@ -93,6 +94,10 @@ struct IORequest *bebbossh_aros_check_io(struct IORequest *request);
 LONG bebbossh_aros_wait_io(struct IORequest *request);
 void bebbossh_aros_abort_io(struct IORequest *request);
 LONG bebbossh_aros_set_file_date(const char *name, const struct DateStamp *date);
+BOOL bebbossh_aros_examine_fh(BPTR fh, struct FileInfoBlock *fib);
+struct DosList *bebbossh_aros_attempt_lock_dos_list(ULONG flags);
+struct DosList *bebbossh_aros_next_dos_entry(struct DosList *dlist, ULONG flags);
+void bebbossh_aros_unlock_dos_list(ULONG flags);
 
 #ifdef __cplusplus
 }
@@ -102,6 +107,7 @@ LONG bebbossh_aros_set_file_date(const char *name, const struct DateStamp *date)
 #undef bind
 #undef listen
 #undef accept
+#undef getsockname
 #undef connect
 #undef send
 #undef recv
@@ -154,6 +160,10 @@ LONG bebbossh_aros_set_file_date(const char *name, const struct DateStamp *date)
 #undef WaitIO
 #undef AbortIO
 #undef SetFileDate
+#undef ExamineFH
+#undef AttemptLockDosList
+#undef NextDosEntry
+#undef UnLockDosList
 #undef ReadLink
 #undef MakeLink
 
@@ -161,6 +171,7 @@ LONG bebbossh_aros_set_file_date(const char *name, const struct DateStamp *date)
 #define bind(s, name, namelen) bebbossh_aros_bind(SocketBase, (s), (name), (namelen))
 #define listen(s, backlog) bebbossh_aros_listen(SocketBase, (s), (backlog))
 #define accept(s, addr, addrlen) bebbossh_aros_accept(SocketBase, (s), (addr), (addrlen))
+#define getsockname(s, name, namelen) bebbossh_aros_getsockname(SocketBase, (s), (name), (namelen))
 #define connect(s, name, namelen) bebbossh_aros_connect(SocketBase, (s), (name), (namelen))
 #define send(s, msg, len, flags) bebbossh_aros_send(SocketBase, (s), (msg), (len), (flags))
 #define recv(s, buf, len, flags) bebbossh_aros_recv(SocketBase, (s), (buf), (len), (flags))
@@ -214,6 +225,10 @@ LONG bebbossh_aros_set_file_date(const char *name, const struct DateStamp *date)
 #define WaitIO(request) bebbossh_aros_wait_io((struct IORequest *)(request))
 #define AbortIO(request) bebbossh_aros_abort_io((struct IORequest *)(request))
 #define SetFileDate(name, date) bebbossh_aros_set_file_date((const char *)(name), (date))
+#define ExamineFH(fh, fib) bebbossh_aros_examine_fh((fh), (fib))
+#define AttemptLockDosList(flags) bebbossh_aros_attempt_lock_dos_list((flags))
+#define NextDosEntry(dlist, flags) bebbossh_aros_next_dos_entry((dlist), (flags))
+#define UnLockDosList(flags) bebbossh_aros_unlock_dos_list((flags))
 #define ReadLink(port, lock, path, buffer, size) \
 	bebbossh_aros_read_link((port), (lock), (const char *)(path), (char *)(buffer), (size))
 #define MakeLink(name, dest, soft) bebbossh_aros_make_link((const char *)(name), (SIPTR)(dest), (soft))
