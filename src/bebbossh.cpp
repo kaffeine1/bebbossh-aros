@@ -54,9 +54,9 @@
 #include <amistdio.h>
 #include <dos/dostags.h>
 #include <exec/execbase.h>
-#if !(defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__))
 #include <intuition/intuitionbase.h>
 #include <intuition/intuition.h>
+#if !(defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__))
 #include <workbench/startup.h>
 #endif
 
@@ -71,6 +71,10 @@
 
 #if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
 #include <aros_mincrt_wrappers.h>
+#endif
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
+// defined in client.cpp; proto/intuition.h is not used on mincrt
+extern struct IntuitionBase *IntuitionBase;
 #endif
 
 #if !defined(__AROS__)
@@ -226,13 +230,15 @@ int ConsoleChannel::processChannelData(void *data, int length) {
 			*end++ = 0;
 			length -= end - title + 4;
 #ifdef __AMIGA__
-#if !(defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__))
 			if (theWindow) {
 				free(myWindowTitle);
 				myWindowTitle = strdup(title);
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
+				bebbossh_aros_set_window_titles((struct Library *)IntuitionBase, theWindow, myWindowTitle, 0);
+#else
 				SetWindowTitles(theWindow, myWindowTitle, 0);
-			}
 #endif
+			}
 #endif
 			c = end;
 		}
@@ -339,18 +345,25 @@ static uint8_t* makeMouseClick(uint8_t *c) {
 				y = atoi(sy);
 					if (!(x | y)) { // 0, 0 -> read from window
 #if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
+						// Not on x86_64 yet: intuition.library is not opened on mincrt
+						// and the ActiveWindow lookup is untested on AROS One.
 						x = 1;
 						y = 1;
 #else
-						static unsigned dx, dy;
+						static unsigned dx = 8, dy = 8;
 						theWindow = IntuitionBase ? IntuitionBase->ActiveWindow : 0;
 						if (theWindow) {
-							struct TextFont *f = theWindow->RPort->Font;
-							dx = f->tf_XSize;
-						dy = f->tf_YSize;
+							struct TextFont *f = theWindow->RPort ? theWindow->RPort->Font : 0;
+							if (f && f->tf_XSize && f->tf_YSize) {
+								dx = f->tf_XSize;
+								dy = f->tf_YSize;
+							}
+							x = 1 + theWindow->GZZMouseX / dx;
+							y = 1 + theWindow->GZZMouseY / dy;
+						} else {
+							x = 1;
+							y = 1;
 						}
-						x = 1 + theWindow->GZZMouseX / dx;
-						y = 1 + theWindow->GZZMouseY / dy;
 #endif
 					}
 			}
@@ -823,7 +836,7 @@ static void printUsage() {
 	puts("                  listen at bind_address:port and forward to host:hostport");
 	puts("    -p <port>     connect to the host at port <port>");
 	puts("    -T            don't allocate a pseudo terminal");
-	puts("    -v <n>        set verbosity, defaults to 0 = OFF");
+	puts("    -v <n>        set verbosity, defaults to 3 = WARN");
 	puts("    --ciphers <n> use the ciphers in the given order:");
 	puts("                  1=aes128-gcm, 2=chacha20-poly1305");
 	puts("                  defaults to n=21");
@@ -831,14 +844,13 @@ static void printUsage() {
 }
 
 static void parseParams(unsigned argc, char **argv) {
-#if !(defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__))
+	// x86_64/mincrt: getenv() reads shell/ENV: variables through GetVar().
 	char *user = getenv("USER");
 	if (user)
 		username = user;
 	char *term = getenv("TERM");
 	if (term)
 		TERM = term;
-#endif
 
 #if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
 	escape = IsInteractive(Input());

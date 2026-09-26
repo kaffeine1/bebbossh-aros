@@ -220,6 +220,9 @@ const uint8_t GCM::R[256][2] = {
  */
 GCM::GCM(BlockCipher *_bc) :
 		bc(_bc), _m(0), dataLen(0), aadLen(0) {
+#ifdef BSSH_GCM_X86
+	xRounds = 0;
+#endif
 }
 
 GCM::~GCM() {
@@ -228,6 +231,10 @@ GCM::~GCM() {
 	struct ExecBase * SysBase = *(struct ExecBase **)4;
 #endif
 	if (_m) { memset(_m, 0, sizeof(gcm_m_array)); BSSH_GCM_FREE(_m); }
+#ifdef BSSH_GCM_X86
+	memset(xKeys, 0, sizeof(xKeys));
+	memset(xH, 0, sizeof(xH));
+#endif
 }
 
 bool GCM::initM() {
@@ -345,6 +352,287 @@ void mulHInplace(uint8_t *z, gcm_m_array & m) {
 	memcpy16(z, tmp);
 }
 
+#ifdef BSSH_GCM_X86
+/*
+ * x86_64 AES-NI + PCLMULQDQ path, selected at runtime via CPUID. The rest of
+ * the file is compiled for the baseline ISA; only these functions use the
+ * extensions (legacy SSE encoding, no AVX state involved).
+ * GHASH uses the byte-reflected carry-less multiplication from Intel's
+ * "Carry-Less Multiplication and Its Usage for Computing the GCM Mode".
+ */
+#include <cpuid.h>
+#include <emmintrin.h>
+#include <tmmintrin.h>
+#include <wmmintrin.h>
+
+#define BSSH_X86_TARGET __attribute__((target("sse2,ssse3,aes,pclmul")))
+
+static int x86AesClmul = -1;
+
+static bool haveAesClmul() {
+	if (x86AesClmul < 0) {
+		unsigned a, b, c, d;
+		x86AesClmul = 0;
+		if (__get_cpuid(1, &a, &b, &c, &d))
+			x86AesClmul = (c & bit_AES) && (c & bit_PCLMUL) && (c & bit_SSSE3);
+	}
+	return x86AesClmul;
+}
+
+BSSH_X86_TARGET static inline __m128i bswap128(__m128i x) {
+	return _mm_shuffle_epi8(x, _mm_set_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15));
+}
+
+BSSH_X86_TARGET static inline __m128i gfmul(__m128i a, __m128i b) {
+	__m128i t2, t3, t4, t5, t6, t7, t8, t9;
+	t3 = _mm_clmulepi64_si128(a, b, 0x00);
+	t4 = _mm_clmulepi64_si128(a, b, 0x10);
+	t5 = _mm_clmulepi64_si128(a, b, 0x01);
+	t6 = _mm_clmulepi64_si128(a, b, 0x11);
+
+	t4 = _mm_xor_si128(t4, t5);
+	t5 = _mm_slli_si128(t4, 8);
+	t4 = _mm_srli_si128(t4, 8);
+	t3 = _mm_xor_si128(t3, t5);
+	t6 = _mm_xor_si128(t6, t4);
+
+	// shift the 256-bit product left by one (bit-reflected operands)
+	t7 = _mm_srli_epi32(t3, 31);
+	t8 = _mm_srli_epi32(t6, 31);
+	t3 = _mm_slli_epi32(t3, 1);
+	t6 = _mm_slli_epi32(t6, 1);
+	t9 = _mm_srli_si128(t7, 12);
+	t8 = _mm_slli_si128(t8, 4);
+	t7 = _mm_slli_si128(t7, 4);
+	t3 = _mm_or_si128(t3, t7);
+	t6 = _mm_or_si128(t6, t8);
+	t6 = _mm_or_si128(t6, t9);
+
+	// reduce modulo x^128 + x^7 + x^2 + x + 1
+	t7 = _mm_slli_epi32(t3, 31);
+	t8 = _mm_slli_epi32(t3, 30);
+	t9 = _mm_slli_epi32(t3, 25);
+	t7 = _mm_xor_si128(t7, t8);
+	t7 = _mm_xor_si128(t7, t9);
+	t8 = _mm_srli_si128(t7, 4);
+	t7 = _mm_slli_si128(t7, 12);
+	t3 = _mm_xor_si128(t3, t7);
+
+	t2 = _mm_srli_epi32(t3, 1);
+	t4 = _mm_srli_epi32(t3, 2);
+	t5 = _mm_srli_epi32(t3, 7);
+	t2 = _mm_xor_si128(t2, t4);
+	t2 = _mm_xor_si128(t2, t5);
+	t2 = _mm_xor_si128(t2, t8);
+	t3 = _mm_xor_si128(t3, t2);
+	return _mm_xor_si128(t6, t3);
+}
+
+// one AES key expansion step (FIPS-197 w[i] = w[i-Nk] ^ temp for four words)
+BSSH_X86_TARGET static inline __m128i keyStep(__m128i k, __m128i assist) {
+	k = _mm_xor_si128(k, _mm_slli_si128(k, 4));
+	k = _mm_xor_si128(k, _mm_slli_si128(k, 4));
+	k = _mm_xor_si128(k, _mm_slli_si128(k, 4));
+	return _mm_xor_si128(k, assist);
+}
+
+#define BSSH_KEY128(k, rcon) keyStep((k), _mm_shuffle_epi32(_mm_aeskeygenassist_si128((k), (rcon)), 0xff))
+#define BSSH_KEY256A(a, b, rcon) keyStep((a), _mm_shuffle_epi32(_mm_aeskeygenassist_si128((b), (rcon)), 0xff))
+#define BSSH_KEY256B(a, b) keyStep((b), _mm_shuffle_epi32(_mm_aeskeygenassist_si128((a), 0x00), 0xaa))
+
+BSSH_X86_TARGET bool GCM::xSetKey(void const *key, unsigned keylen) {
+	__m128i *rk = (__m128i *)xKeys;
+	if (keylen == 16) {
+		__m128i k = _mm_loadu_si128((__m128i const *)key);
+		_mm_storeu_si128(rk + 0, k);
+		k = BSSH_KEY128(k, 0x01); _mm_storeu_si128(rk + 1, k);
+		k = BSSH_KEY128(k, 0x02); _mm_storeu_si128(rk + 2, k);
+		k = BSSH_KEY128(k, 0x04); _mm_storeu_si128(rk + 3, k);
+		k = BSSH_KEY128(k, 0x08); _mm_storeu_si128(rk + 4, k);
+		k = BSSH_KEY128(k, 0x10); _mm_storeu_si128(rk + 5, k);
+		k = BSSH_KEY128(k, 0x20); _mm_storeu_si128(rk + 6, k);
+		k = BSSH_KEY128(k, 0x40); _mm_storeu_si128(rk + 7, k);
+		k = BSSH_KEY128(k, 0x80); _mm_storeu_si128(rk + 8, k);
+		k = BSSH_KEY128(k, 0x1b); _mm_storeu_si128(rk + 9, k);
+		k = BSSH_KEY128(k, 0x36); _mm_storeu_si128(rk + 10, k);
+		xRounds = 10;
+	} else if (keylen == 32) {
+		__m128i a = _mm_loadu_si128((__m128i const *)key);
+		__m128i b = _mm_loadu_si128((__m128i const *)key + 1);
+		_mm_storeu_si128(rk + 0, a);
+		_mm_storeu_si128(rk + 1, b);
+		a = BSSH_KEY256A(a, b, 0x01); _mm_storeu_si128(rk + 2, a);
+		b = BSSH_KEY256B(a, b);       _mm_storeu_si128(rk + 3, b);
+		a = BSSH_KEY256A(a, b, 0x02); _mm_storeu_si128(rk + 4, a);
+		b = BSSH_KEY256B(a, b);       _mm_storeu_si128(rk + 5, b);
+		a = BSSH_KEY256A(a, b, 0x04); _mm_storeu_si128(rk + 6, a);
+		b = BSSH_KEY256B(a, b);       _mm_storeu_si128(rk + 7, b);
+		a = BSSH_KEY256A(a, b, 0x08); _mm_storeu_si128(rk + 8, a);
+		b = BSSH_KEY256B(a, b);       _mm_storeu_si128(rk + 9, b);
+		a = BSSH_KEY256A(a, b, 0x10); _mm_storeu_si128(rk + 10, a);
+		b = BSSH_KEY256B(a, b);       _mm_storeu_si128(rk + 11, b);
+		a = BSSH_KEY256A(a, b, 0x20); _mm_storeu_si128(rk + 12, a);
+		b = BSSH_KEY256B(a, b);       _mm_storeu_si128(rk + 13, b);
+		a = BSSH_KEY256A(a, b, 0x40); _mm_storeu_si128(rk + 14, a);
+		xRounds = 14;
+	} else {
+		// AES-192 is not negotiated by SSH here: keep the portable path
+		xRounds = 0;
+		return false;
+	}
+
+	uint8_t zero[16] = {0};
+	uint8_t h[16];
+	xEncryptBlock(h, zero);
+	_mm_storeu_si128((__m128i *)xH, bswap128(_mm_loadu_si128((__m128i const *)h)));
+	memset(h, 0, sizeof(h));
+	return true;
+}
+
+BSSH_X86_TARGET static inline __m128i aesEncrypt(uint8_t const (*rk)[16], int rounds, __m128i s) {
+	s = _mm_xor_si128(s, _mm_loadu_si128((__m128i const *)rk[0]));
+	for (int i = 1; i < rounds; ++i)
+		s = _mm_aesenc_si128(s, _mm_loadu_si128((__m128i const *)rk[i]));
+	return _mm_aesenclast_si128(s, _mm_loadu_si128((__m128i const *)rk[rounds]));
+}
+
+BSSH_X86_TARGET void GCM::xEncryptBlock(void *to, void const *from) {
+	_mm_storeu_si128((__m128i *)to, aesEncrypt(xKeys, xRounds, _mm_loadu_si128((__m128i const *)from)));
+}
+
+/** The counter block for counter value ctr: bytes 12..15 hold ctr big-endian. */
+BSSH_X86_TARGET static inline __m128i counterBlock(__m128i iv, uint32_t ctr) {
+	uint32_t be = __builtin_bswap32(ctr);
+	iv = _mm_insert_epi16(iv, (int)(be & 0xffff), 6);
+	return _mm_insert_epi16(iv, (int)(be >> 16), 7);
+}
+
+/**
+ * Process the full 16-byte blocks the portable loop handles before its final
+ * (possibly partial) block, i.e. all blocks while more than 16 bytes remain.
+ * Advances to/from/len and keeps nonceCounter and hash in sync.
+ */
+BSSH_X86_TARGET void GCM::xCrypt(uint8_t *&to, uint8_t const *&from, int &len, bool encrypting) {
+	__m128i const bswap = _mm_set_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+	__m128i const h = _mm_loadu_si128((__m128i const *)xH);
+	__m128i const iv = _mm_loadu_si128((__m128i const *)nonceCounter);
+	__m128i x = _mm_shuffle_epi8(_mm_loadu_si128((__m128i const *)hash), bswap);
+	uint32_t ctr = ((uint32_t)nonceCounter[12] << 24) | ((uint32_t)nonceCounter[13] << 16)
+			| ((uint32_t)nonceCounter[14] << 8) | nonceCounter[15];
+
+	while (len > 4 * 16) {
+		__m128i c0 = counterBlock(iv, ctr + 1);
+		__m128i c1 = counterBlock(iv, ctr + 2);
+		__m128i c2 = counterBlock(iv, ctr + 3);
+		__m128i c3 = counterBlock(iv, ctr + 4);
+		ctr += 4;
+
+		__m128i k = _mm_loadu_si128((__m128i const *)xKeys[0]);
+		c0 = _mm_xor_si128(c0, k);
+		c1 = _mm_xor_si128(c1, k);
+		c2 = _mm_xor_si128(c2, k);
+		c3 = _mm_xor_si128(c3, k);
+		for (int i = 1; i < xRounds; ++i) {
+			k = _mm_loadu_si128((__m128i const *)xKeys[i]);
+			c0 = _mm_aesenc_si128(c0, k);
+			c1 = _mm_aesenc_si128(c1, k);
+			c2 = _mm_aesenc_si128(c2, k);
+			c3 = _mm_aesenc_si128(c3, k);
+		}
+		k = _mm_loadu_si128((__m128i const *)xKeys[xRounds]);
+		c0 = _mm_aesenclast_si128(c0, k);
+		c1 = _mm_aesenclast_si128(c1, k);
+		c2 = _mm_aesenclast_si128(c2, k);
+		c3 = _mm_aesenclast_si128(c3, k);
+
+		__m128i d0 = _mm_loadu_si128((__m128i const *)from);
+		__m128i d1 = _mm_loadu_si128((__m128i const *)from + 1);
+		__m128i d2 = _mm_loadu_si128((__m128i const *)from + 2);
+		__m128i d3 = _mm_loadu_si128((__m128i const *)from + 3);
+		c0 = _mm_xor_si128(c0, d0);
+		c1 = _mm_xor_si128(c1, d1);
+		c2 = _mm_xor_si128(c2, d2);
+		c3 = _mm_xor_si128(c3, d3);
+		_mm_storeu_si128((__m128i *)to, c0);
+		_mm_storeu_si128((__m128i *)to + 1, c1);
+		_mm_storeu_si128((__m128i *)to + 2, c2);
+		_mm_storeu_si128((__m128i *)to + 3, c3);
+
+		// GHASH always runs over the ciphertext
+		if (!encrypting) {
+			c0 = d0;
+			c1 = d1;
+			c2 = d2;
+			c3 = d3;
+		}
+		x = gfmul(_mm_xor_si128(x, _mm_shuffle_epi8(c0, bswap)), h);
+		x = gfmul(_mm_xor_si128(x, _mm_shuffle_epi8(c1, bswap)), h);
+		x = gfmul(_mm_xor_si128(x, _mm_shuffle_epi8(c2, bswap)), h);
+		x = gfmul(_mm_xor_si128(x, _mm_shuffle_epi8(c3, bswap)), h);
+
+		to += 64;
+		from += 64;
+		len -= 64;
+	}
+
+	while (len > 16) {
+		__m128i c = aesEncrypt(xKeys, xRounds, counterBlock(iv, ++ctr));
+		__m128i d = _mm_loadu_si128((__m128i const *)from);
+		c = _mm_xor_si128(c, d);
+		_mm_storeu_si128((__m128i *)to, c);
+		x = gfmul(_mm_xor_si128(x, _mm_shuffle_epi8(encrypting ? c : d, bswap)), h);
+		to += 16;
+		from += 16;
+		len -= 16;
+	}
+
+	nonceCounter[12] = ctr >> 24;
+	nonceCounter[13] = ctr >> 16;
+	nonceCounter[14] = ctr >> 8;
+	nonceCounter[15] = ctr;
+	_mm_storeu_si128((__m128i *)hash, _mm_shuffle_epi8(x, bswap));
+}
+
+/** GHASH all full blocks of data; advances data/len. */
+BSSH_X86_TARGET void GCM::xHashBlocks(uint8_t const *&data, int &len) {
+	__m128i const bswap = _mm_set_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+	__m128i const h = _mm_loadu_si128((__m128i const *)xH);
+	__m128i x = _mm_shuffle_epi8(_mm_loadu_si128((__m128i const *)hash), bswap);
+	while (len >= 16) {
+		x = gfmul(_mm_xor_si128(x, _mm_shuffle_epi8(_mm_loadu_si128((__m128i const *)data), bswap)), h);
+		data += 16;
+		len -= 16;
+	}
+	_mm_storeu_si128((__m128i *)hash, _mm_shuffle_epi8(x, bswap));
+}
+
+BSSH_X86_TARGET static void xMulHash(uint8_t *hash, uint8_t const *xH) {
+	__m128i x = bswap128(_mm_loadu_si128((__m128i const *)hash));
+	x = gfmul(x, _mm_loadu_si128((__m128i const *)xH));
+	_mm_storeu_si128((__m128i *)hash, bswap128(x));
+}
+#endif // BSSH_GCM_X86
+
+void GCM::mulH() {
+#ifdef BSSH_GCM_X86
+	if (xRounds) {
+		xMulHash(hash, xH);
+		return;
+	}
+#endif
+	mulHInplace(hash, *_m);
+}
+
+void GCM::encryptCounter(void *to, void const *counter) {
+#ifdef BSSH_GCM_X86
+	if (xRounds) {
+		xEncryptBlock(to, counter);
+		return;
+	}
+#endif
+	bc->encrypt(to, counter);
+}
+
 /**
  * Encrypt the given clearText starting at clearOffset into the cipherText buffer at cipherOffset for the given
  * length. This method also updates the hash value. Note that <code>init(byte [])</code> must have been called.
@@ -360,8 +648,19 @@ void GCM::encrypt(void *cipherText_, void const *clearText_, int length) {
 	uint8_t tmp[16];
 	uint8_t *cipherText = (uint8_t *)cipherText_;
 	uint8_t *clearText = (uint8_t *)clearText_;
+	int done = 0;
 
-	for (int len = length;; cipherText += 16, clearText += 16) {
+#ifdef BSSH_GCM_X86
+	if (xRounds) {
+		uint8_t const *from = clearText;
+		int rest = length;
+		xCrypt(cipherText, from, rest, true);
+		done = length - rest;
+		clearText += done;
+	}
+#endif
+
+	for (int len = length - done;; cipherText += 16, clearText += 16) {
 		// next counter
 #if (BYTE_ORDER == BIG_ENDIAN)
 		++ *(uint32_t*)&nonceCounter[12];
@@ -371,7 +670,7 @@ void GCM::encrypt(void *cipherText_, void const *clearText_, int length) {
 				if (++nonceCounter[13] == 0)
 					++nonceCounter[12];
 #endif
-		bc->encrypt(tmp, nonceCounter);
+		encryptCounter(tmp, nonceCounter);
 		// encrypt data
 		if ((len -= 16) <= 0) {
 			// handle partial data
@@ -383,7 +682,7 @@ void GCM::encrypt(void *cipherText_, void const *clearText_, int length) {
 				xorInplace16(hash, tmp);
 				// copy data
 				memcpy16(cipherText, tmp);
-				mulHInplace(hash, *_m);
+				mulH();
 				break;
 			}
 
@@ -392,7 +691,7 @@ void GCM::encrypt(void *cipherText_, void const *clearText_, int length) {
 			xorInplace(hash, tmp, len);
 			// copy data
 			memcpy(cipherText, tmp, len);
-			mulHInplace(hash, *_m);
+			mulH();
 
 			break;
 		}
@@ -404,7 +703,7 @@ void GCM::encrypt(void *cipherText_, void const *clearText_, int length) {
 		// copy data
 		memcpy16(cipherText, tmp);
 
-		mulHInplace(hash, *_m);
+		mulH();
 	}
 
 	dataLen += length;
@@ -425,8 +724,19 @@ void GCM::decrypt(void *clearText_, void const *cipherText_, int length) {
 	uint8_t tmp[16];
 	uint8_t *cipherText = (uint8_t *)cipherText_;
 	uint8_t *clearText = (uint8_t *)clearText_;
+	int done = 0;
 
-	for (int i = 0;; cipherText += 16, clearText += 16) {
+#ifdef BSSH_GCM_X86
+	if (xRounds) {
+		uint8_t const *from = cipherText;
+		int rest = length;
+		xCrypt(clearText, from, rest, false);
+		done = length - rest;
+		cipherText += done;
+	}
+#endif
+
+	for (int i = done;; cipherText += 16, clearText += 16) {
 		// next counter
 #if (BYTE_ORDER == BIG_ENDIAN)
 		++ *(uint32_t*)&nonceCounter[12];
@@ -436,7 +746,7 @@ void GCM::decrypt(void *clearText_, void const *cipherText_, int length) {
 				if (++nonceCounter[13] == 0)
 					++nonceCounter[12];
 #endif
-		bc->encrypt(tmp, nonceCounter);
+		encryptCounter(tmp, nonceCounter);
 
 		// decrypt data
 		int t = i + 16;
@@ -449,7 +759,7 @@ void GCM::decrypt(void *clearText_, void const *cipherText_, int length) {
 				xorInplace16(hash, cipherText);
 				// copy data
 				memcpy16(clearText, tmp);
-				mulHInplace(hash, *_m);
+				mulH();
 				break;
 			}
 
@@ -458,7 +768,7 @@ void GCM::decrypt(void *clearText_, void const *cipherText_, int length) {
 			xorInplace(hash, cipherText, len);
 			// copy data
 			memcpy(clearText, tmp, len);
-			mulHInplace(hash, *_m);
+			mulH();
 			break;
 		}
 		i = t;
@@ -470,7 +780,7 @@ void GCM::decrypt(void *clearText_, void const *cipherText_, int length) {
 		// copy data
 		memcpy16(clearText, tmp);
 
-		mulHInplace(hash, *_m);
+		mulH();
 	}
 	dataLen += length;
 }
@@ -510,7 +820,7 @@ _dump("hash2", nonceCounter, 16);
 		memclr16(hash);
 	}
 	memclr16(hash);
-	bc->encrypt(cryptedNonceCounter1, nonceCounter);
+	encryptCounter(cryptedNonceCounter1, nonceCounter);
 }
 
 /**
@@ -524,17 +834,21 @@ _dump("hash2", nonceCounter, 16);
 void GCM::updateHash(void const *_aad, int len) {
 	uint8_t const *aad = (uint8_t const *)_aad;
 	aadLen += len;
-	for (int i = 0; i < len / 16; ++i) {
+#ifdef BSSH_GCM_X86
+	if (xRounds)
+		xHashBlocks(aad, len);
+#endif
+	while (len >= 16) {
 		len -= 16;
 		xorInplace16(hash, aad);
-		mulHInplace(hash, *_m);
+		mulH();
 		aad += 16;
 	}
 	// add partial
 	len &= 15;
 	if (len > 0) {
 		xorInplace(hash, aad, len);
-		mulHInplace(hash, *_m);
+		mulH();
 	}
 }
 
@@ -590,13 +904,18 @@ void GCM::haschisch() {
 	tmp[15] = lo >>  0;
 #endif
 	xorInplace16(hash, tmp);
-	mulHInplace(hash, *_m);
+	mulH();
 }
 
 int GCM::setKey(void const *key, unsigned keylen) {
 	if (!bc->setKey(key, keylen))
 		return false;
 
+#ifdef BSSH_GCM_X86
+	if (haveAesClmul() && xSetKey(key, keylen))
+		return true;
+	xRounds = 0;
+#endif
 	return initM();
 }
 

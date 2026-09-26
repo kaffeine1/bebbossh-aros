@@ -34,6 +34,9 @@
 #if defined(__AROS__)
 #include <clib/alib_protos.h>
 #include <proto/dos.h>
+#if defined(BEBBOSSH_AROS_MINCRT)
+#include <aros_mincrt_wrappers.h>
+#endif
 #elif defined(__AMIGA__)
 #include <proto/dos.h>
 #include <amistdio.h>
@@ -55,13 +58,37 @@ static char const * LEVELNAMES[] = {"", "FATAL", "ERROR", "WARN ", "INFO ", "DEB
 enum DebugLevel DEBUG_LEVEL__data = L_WARN;
 enum DebugLevel * DEBUG_LEVEL = &DEBUG_LEVEL__data;
 
-void logme(enum DebugLevel lvl, char const *fmt, ...) {
 #if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
-	(void)lvl;
-	(void)fmt;
-	return;
+/* mincrt: format with the runtime formatter and write through the mincrt-safe
+ * DOS wrappers; VFPrintf/Printf are not callable from the minimal runtime. */
+int snprintf(char *buf, size_t size, const char *fmt, ...);
+int bebbossh_aros_log_vsnprintf(char *buf, size_t size, const char *fmt, va_list ap);
+
+static void logmeMincrt(enum DebugLevel lvl, char const *fmt, va_list args) {
+	char line[512];
+	struct DateStamp ds;
+	int len;
+
+	DateStamp(&ds);
+	len = snprintf(line, sizeof(line), "[aros:%ld.%02ld.%03ld] [%s] ", (long)ds.ds_Days, (long)ds.ds_Minute,
+			(long)((ds.ds_Tick % TICKS_PER_SECOND) * 20), LEVELNAMES[lvl]);
+	if (len < 0 || len >= (int)sizeof(line) - 2)
+		len = strlen(line);
+	bebbossh_aros_log_vsnprintf(line + len, sizeof(line) - len - 1, fmt, args);
+	len = strlen(line);
+	line[len++] = '\n';
+	Write(Output(), line, len);
+}
 #endif
+
+void logme(enum DebugLevel lvl, char const *fmt, ...) {
 	if (lvl <= *DEBUG_LEVEL) {
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
+		va_list margs;
+		va_start(margs, fmt);
+		logmeMincrt(lvl, fmt, margs);
+		va_end(margs);
+#else
 		va_list args;
 		va_start(args, fmt);
 		time_t ti = 0;
@@ -136,6 +163,7 @@ void logme(enum DebugLevel lvl, char const *fmt, ...) {
 		va_end(args);
 		fflush(stderr);
 #endif
+#endif /* BEBBOSSH_AROS_MINCRT */
 	}
 }
 
@@ -163,7 +191,14 @@ void parseLogLevel(char const * l) {
 void setLogLevel(enum DebugLevel lvl) {
 	*DEBUG_LEVEL = lvl;
 	if (isLogLevel(L_INFO))
-#if defined(__AROS__)
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
+	{
+		char line[32];
+		int len = snprintf(line, sizeof(line), "loglevel %ld\n", (long)lvl);
+		if (len > 0 && len < (int)sizeof(line))
+			Write(Output(), line, len);
+	}
+#elif defined(__AROS__)
 		Printf("loglevel %ld\n", (LONG)lvl);
 #else
 		printf("loglevel %ld\n", lvl);

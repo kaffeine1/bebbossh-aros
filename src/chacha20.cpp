@@ -143,6 +143,64 @@ void ChaCha20::nextBlock() {
     pos = 0;
 }
 
+#if defined(__x86_64__)
+/*
+ * x86_64: SSE2 is part of the base ISA, so four blocks are computed in
+ * parallel with one state word per vector (lane n = block n) and transposed
+ * back to the regular keystream layout.
+ */
+#include <emmintrin.h>
+
+#define BSSH_CHACHA_SSE2 1
+#define VROTL(v, n) _mm_or_si128(_mm_slli_epi32((v), (n)), _mm_srli_epi32((v), 32 - (n)))
+#define VQR(a, b, c, d) \
+    a = _mm_add_epi32(a, b); d = VROTL(_mm_xor_si128(d, a), 16); \
+    c = _mm_add_epi32(c, d); b = VROTL(_mm_xor_si128(b, c), 12); \
+    a = _mm_add_epi32(a, b); d = VROTL(_mm_xor_si128(d, a), 8); \
+    c = _mm_add_epi32(c, d); b = VROTL(_mm_xor_si128(b, c), 7);
+
+/** XOR the next four keystream blocks (256 bytes) into out; advances the counter. */
+static void chacha4(uint32_t* state, uint8_t* out, uint8_t const* in) {
+    __m128i x[16];
+    for (int i = 0; i < 16; ++i)
+        x[i] = _mm_set1_epi32(state[i]);
+    // same as four nextBlock() calls: counters +1 .. +4
+    x[12] = _mm_add_epi32(x[12], _mm_set_epi32(4, 3, 2, 1));
+    __m128i const ctr = x[12];
+    state[12] += 4;
+
+    for (int i = 0; i < 10; ++i) {
+        VQR(x[0], x[4], x[8], x[12]);
+        VQR(x[1], x[5], x[9], x[13]);
+        VQR(x[2], x[6], x[10], x[14]);
+        VQR(x[3], x[7], x[11], x[15]);
+        VQR(x[0], x[5], x[10], x[15]);
+        VQR(x[1], x[6], x[11], x[12]);
+        VQR(x[2], x[7], x[8], x[13]);
+        VQR(x[3], x[4], x[9], x[14]);
+    }
+
+    for (int i = 0; i < 16; ++i)
+        x[i] = _mm_add_epi32(x[i], i == 12 ? ctr : _mm_set1_epi32(state[i]));
+
+    for (int j = 0; j < 16; j += 4) {
+        __m128i t0 = _mm_unpacklo_epi32(x[j], x[j + 1]);
+        __m128i t1 = _mm_unpacklo_epi32(x[j + 2], x[j + 3]);
+        __m128i t2 = _mm_unpackhi_epi32(x[j], x[j + 1]);
+        __m128i t3 = _mm_unpackhi_epi32(x[j + 2], x[j + 3]);
+        __m128i b[4];
+        b[0] = _mm_unpacklo_epi64(t0, t1);
+        b[1] = _mm_unpackhi_epi64(t0, t1);
+        b[2] = _mm_unpacklo_epi64(t2, t3);
+        b[3] = _mm_unpackhi_epi64(t2, t3);
+        for (int k = 0; k < 4; ++k) {
+            __m128i const* src = (__m128i const*)(in + k * 64 + j * 4);
+            _mm_storeu_si128((__m128i*)(out + k * 64 + j * 4), _mm_xor_si128(_mm_loadu_si128(src), b[k]));
+        }
+    }
+}
+#endif
+
 union IB {
     uint8_t* b;
     uint32_t* i;
@@ -183,6 +241,13 @@ void ChaCha20::chacha(void* out, void const* in, int length) {
 
     // --- Full blocks ---
     int fullBlocks = length / 64;
+#ifdef BSSH_CHACHA_SSE2
+    for (; fullBlocks >= 4; fullBlocks -= 4) {
+        chacha4(state, to.b, from.b);
+        to.b += 256;
+        from.b += 256;
+    }
+#endif
     for (int block = 0; block < fullBlocks; ++block) {
         nextBlock(); // always start fresh block
         IB s; s.b = this->stream;

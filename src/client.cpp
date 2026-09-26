@@ -838,7 +838,11 @@ static void freeConsole(void) {
         stdinBptr = 0;
     }
 
-#if !(defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__))
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
+    if (theWindow && orgWindowTitle)
+        bebbossh_aros_set_window_titles((struct Library *)IntuitionBase, theWindow, orgWindowTitle, 0);
+    theWindow = 0;
+#else
     if (theWindow && orgWindowTitle) {
         SetWindowTitles(theWindow, orgWindowTitle, 0);
         theWindow = 0;
@@ -1022,10 +1026,9 @@ static bool loginPass() {
 		for(;;) {
 #ifdef __AMIGA__
 			signed l = Read(stdinBptr, p, 100);
-#if !(defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__))
+				// x86_64/mincrt: SetSignal maps to the mincrt-safe exec wrapper.
 				if(SetSignal(0L,SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
 					exit(0);
-#endif
 #else
 			signed l = Read(stdinBptr, p, 1);
 			if (l <= 0)

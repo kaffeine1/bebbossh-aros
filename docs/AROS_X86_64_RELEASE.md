@@ -183,16 +183,56 @@ the release's tag/version/SHA256 and cut the next `v1.0.x-aros-x86_64` tag.
 
 The x86_64/`mincrt` build keeps several i386 behaviors behind opt-in runtime
 flags so they can be A/B tested on the VM without rebuilding. All default OFF;
-enable them in the daemon's environment before launch:
+set them before launching the daemon, globally with `setenv NAME 1` or as a
+local variable of the starting shell with `set NAME 1`:
 
-- `BEBBOSSH_AROS_X64_SFTP_MTIME=1` — preserve SFTP modification times via
+- `BEBBOSSH_AROS_X64_SFTP_MTIME=1`: preserve SFTP modification times via
   `SetFileDate`.
-- `BEBBOSSH_AROS_X64_CD=1` — enable the interactive-shell `cd` / `pwd` / dynamic
+- `BEBBOSSH_AROS_X64_CD=1`: enable the interactive-shell `cd` / `pwd` / dynamic
   prompt path. The shell acquires a real current-directory Lock through the
   mincrt-safe DOS wrappers; raw `CurrentDir` could previously block the daemon,
   so validate under `dir`/`cd` churn before relying on it.
+- `BEBBOSSH_AROS_X64_SFTP_LINKS=1`: SFTP `READLINK` / `SYMLINK` via the
+  `ReadLink` / `MakeLink` wrappers.
 
 When a flag is unset, the current safe default behavior is unchanged.
+
+## Parity changes to validate before the next tag
+
+These are on by default since the mincrt parity work and have only been
+compile- and link-checked against the AROS SDK, so the next release needs one
+VM pass over them:
+
+1. SFTP overwrite: upload a large file, then a smaller one to the same name,
+   and byte-compare the download (the target is deleted before re-creation).
+   The "delete the old file first" advice above is no longer needed once this
+   passes.
+2. `bebbosshd -v5` prints log lines on x86_64 (it was silent before).
+3. Daemon teardown: when the daemon exits after a client has connected, the
+   `-v5` log shows the timer request, message ports and `bsdsocket.library`
+   being released and the process ends without a guru. Ctrl-C does not stop
+   the x86_64 daemon (the mincrt main loop clears the `WaitSelect` signal
+   mask), so use a fatal path such as a duplicate channel id to exercise it.
+4. Malformed channel requests (a second `shell` on the same channel, a
+   `subsystem` request with an unknown or short name) are answered with
+   CHANNEL_FAILURE and the daemon keeps serving.
+5. AROS-native client (`bebbossh`): after exit the shell console is back in
+   cooked mode; Ctrl-C at the password prompt quits; Shift+cursor keys reach
+   the remote side as modified cursor keys; `setenv USER name` is used as the
+   default login name.
+6. Interactive shell: `C:Li<TAB>` completes to `C:List`.
+7. Crypto: one SCP transfer with each cipher (`-c aes128-gcm@openssh.com`,
+   `-c chacha20-poly1305@openssh.com`), on a VM CPU model that exposes
+   AES-NI/PCLMULQDQ (QEMU `-cpu qemu64,+aes,+pclmulqdq,+ssse3` or `-cpu host`)
+   and on one that does not (QEMU `qemu64`) to cover both GCM paths.
+   `make -f Makefile.aros-x86_64 run-tests` builds the self-tests, but on AROS
+   One they crash before `main` (also on master): the prebuilt `libautoinit.a`
+   calls `OpenLibrary` without SysBase in `r12`, and the test link pulls
+   posixc/stdc stubs that AROS One does not ship.
+
+Not covered by this list: DOS requester suppression is i386-only for now (see
+`AROS_PORTING.md`), so on x86_64 an SFTP path on an unmounted volume still
+opens the "insert volume" requester and blocks the daemon until it is closed.
 
 ### Known divergence kept on purpose: synchronous exec
 

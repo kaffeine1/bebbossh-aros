@@ -49,6 +49,136 @@
 
 // ---------------- Poly1305 ----------------
 
+#ifdef BSSH_POLY1305_64
+/*
+ * 64-bit limb variant for x86_64 (radix 2^44, after poly1305-donna-64 by
+ * Andrew Moon, public domain). Same results as the 32-bit code below: every
+ * update() call processes its partial tail as the final, 0x01-padded block.
+ */
+// __builtin_memcpy stays inline under -fno-builtin
+static inline uint64_t le64(uint8_t const* p) {
+    uint64_t v;
+    __builtin_memcpy(&v, p, 8);
+    return v;
+}
+
+static const uint64_t M44 = 0xfffffffffffull;
+static const uint64_t M42 = 0x3ffffffffffull;
+
+int Poly1305::setKey(void const* k, int klen) {
+    if (klen != 32)
+        return false;
+    uint8_t const* b = (uint8_t const*) k;
+    uint64_t t0 = le64(b);
+    uint64_t t1 = le64(b + 8);
+
+    // clamp r
+    r[0] = t0 & 0xffc0fffffffull;
+    r[1] = ((t0 >> 44) | (t1 << 20)) & 0xfffffc0ffffull;
+    r[2] = (t1 >> 24) & 0x00ffffffc0full;
+
+    s[0] = le64(b + 16);
+    s[1] = le64(b + 24);
+
+    h[0] = h[1] = h[2] = 0;
+    return true;
+}
+
+void Poly1305::blocks(uint8_t const* m, int len, uint64_t hibit) {
+    typedef unsigned __int128 u128;
+    uint64_t const r0 = r[0], r1 = r[1], r2 = r[2];
+    uint64_t const s1 = r1 * (5 << 2);
+    uint64_t const s2 = r2 * (5 << 2);
+    uint64_t h0 = h[0], h1 = h[1], h2 = h[2];
+
+    while (len >= 16) {
+        uint64_t t0 = le64(m);
+        uint64_t t1 = le64(m + 8);
+
+        h0 += t0 & M44;
+        h1 += ((t0 >> 44) | (t1 << 20)) & M44;
+        h2 += ((t1 >> 24) & M42) | hibit;
+
+        u128 d0 = (u128)h0 * r0 + (u128)h1 * s2 + (u128)h2 * s1;
+        u128 d1 = (u128)h0 * r1 + (u128)h1 * r0 + (u128)h2 * s2;
+        u128 d2 = (u128)h0 * r2 + (u128)h1 * r1 + (u128)h2 * r0;
+
+        uint64_t c = (uint64_t)(d0 >> 44);
+        h0 = (uint64_t)d0 & M44;
+        d1 += c;
+        c = (uint64_t)(d1 >> 44);
+        h1 = (uint64_t)d1 & M44;
+        d2 += c;
+        c = (uint64_t)(d2 >> 42);
+        h2 = (uint64_t)d2 & M42;
+        h0 += c * 5;
+        c = h0 >> 44;
+        h0 &= M44;
+        h1 += c;
+
+        m += 16;
+        len -= 16;
+    }
+    h[0] = h0;
+    h[1] = h1;
+    h[2] = h2;
+}
+
+void Poly1305::update(void const* d, int len) {
+    uint8_t const* b = (uint8_t const*) d;
+#ifdef DEBUG
+    _dump("poly update", d, len);
+#endif
+    int full = len & ~15;
+    blocks(b, full, (uint64_t)1 << 40);
+    len &= 15;
+    if (len > 0) {
+        uint8_t last[16];
+        memcpy(last, b + full, len);
+        last[len] = 1;
+        memset(last + len + 1, 0, 15 - len);
+        blocks(last, 16, 0);
+    }
+}
+
+void Poly1305::digest(void* to) {
+    uint64_t h0 = h[0], h1 = h[1], h2 = h[2];
+    uint64_t c;
+
+    // fully carry h
+    c = h1 >> 44; h1 &= M44;
+    h2 += c; c = h2 >> 42; h2 &= M42;
+    h0 += c * 5; c = h0 >> 44; h0 &= M44;
+    h1 += c; c = h1 >> 44; h1 &= M44;
+    h2 += c; c = h2 >> 42; h2 &= M42;
+    h0 += c * 5; c = h0 >> 44; h0 &= M44;
+    h1 += c;
+
+    // compute h + -p and select it if h >= p, in constant time
+    uint64_t g0 = h0 + 5; c = g0 >> 44; g0 &= M44;
+    uint64_t g1 = h1 + c; c = g1 >> 44; g1 &= M44;
+    uint64_t g2 = h2 + c - ((uint64_t)1 << 42);
+    c = (g2 >> 63) - 1;
+    g0 &= c; g1 &= c; g2 &= c;
+    c = ~c;
+    h0 = (h0 & c) | g0;
+    h1 = (h1 & c) | g1;
+    h2 = (h2 & c) | g2;
+
+    // h = (h + s) mod 2^128
+    uint64_t t0 = s[0], t1 = s[1];
+    h0 += t0 & M44; c = h0 >> 44; h0 &= M44;
+    h1 += (((t0 >> 44) | (t1 << 20)) & M44) + c; c = h1 >> 44; h1 &= M44;
+    h2 += ((t1 >> 24) & M42) + c; h2 &= M42;
+
+    h0 = h0 | (h1 << 44);
+    h1 = (h1 >> 20) | (h2 << 24);
+    __builtin_memcpy(to, &h0, 8);
+    __builtin_memcpy((uint8_t*) to + 8, &h1, 8);
+}
+
+#else // !BSSH_POLY1305_64
+
 int Poly1305::setKey(void const* k, int klen) {
     if (klen != 32)
         return false;
@@ -206,3 +336,5 @@ void Poly1305::digest(void* to) {
         p[j + 3] = t >> 24;
     }
 }
+
+#endif // BSSH_POLY1305_64

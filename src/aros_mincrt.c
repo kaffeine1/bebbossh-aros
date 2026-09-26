@@ -8,6 +8,7 @@
 #include <sys/socket.h>
 
 #include <dos/dos.h>
+#include <dos/var.h>
 #include <exec/io.h>
 #include <exec/libraries.h>
 #include <exec/memory.h>
@@ -33,6 +34,7 @@ int __nocommandline = 1;
 static char arg_storage[512];
 static char *arg_vector[32];
 void ___startup_entries_next(struct ExecBase *SysBase);
+static void run_atexit_handlers(void);
 
 static void parse_commandline(struct ExecBase *sysBase)
 {
@@ -73,6 +75,8 @@ static void parse_commandline(struct ExecBase *sysBase)
     __argc = argc;
     __argv = arg_vector;
     ___startup_entries_next(sysBase);
+    /* main() returned: run the atexit() handlers like a regular C runtime */
+    run_atexit_handlers();
 }
 
 ADD2SET(parse_commandline, PROGRAM_ENTRIES, -125)
@@ -904,10 +908,48 @@ long atol(const char *s)
     return (long)atoi(s);
 }
 
+LONG bebbossh_aros_get_var(const char *name, char *buffer, LONG size, LONG flags)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = base ? __AROS_GETVECADDR(base, 151) : 0;
+    APTR save;
+    LONG ret;
+
+    if (!func || !name || !buffer || size <= 0)
+        return -1;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((LONG (*)(CONST_STRPTR, STRPTR, LONG, LONG))func)(name, buffer, size, flags);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return GetVar(name, buffer, size, flags);
+#endif
+}
+
+/*
+ * getenv() through DOS GetVar (local shell variables first, then ENV:).
+ * The returned string is heap allocated and intentionally kept for the
+ * lifetime of the process, because callers store the pointer.
+ */
 char *getenv(const char *name)
 {
-    (void)name;
-    return NULL;
+    char buf[256];
+    LONG len = bebbossh_aros_get_var(name, buf, sizeof(buf), 0);
+
+    if (len < 0)
+        return NULL;
+    if (len >= (LONG)sizeof(buf))
+        len = sizeof(buf) - 1;
+    buf[len] = 0;
+    return strdup(buf);
+}
+
+/* Newer AROS SDK headers bind getenv() to the posixc symbol name. */
+char *__posixc_getenv(const char *name)
+{
+    return getenv(name);
 }
 
 char *stpcpy(char *dst, const char *src)
@@ -945,29 +987,39 @@ static void append_string(char **out, size_t *left, int *total, const char *s)
         append_char(out, left, total, *s++);
 }
 
-static void append_number(char **out, size_t *left, int *total, unsigned long value, int neg, unsigned base, int width)
+static void append_number(char **out, size_t *left, int *total, unsigned long value, int neg, unsigned base, int width,
+                          int zeropad, int upper)
 {
     char tmp[32];
     int pos = 0;
     int len;
+    char alpha = upper ? 'A' : 'a';
 
     do {
         unsigned digit = (unsigned)(value % base);
-        tmp[pos++] = (char)(digit < 10 ? '0' + digit : 'a' + digit - 10);
+        tmp[pos++] = (char)(digit < 10 ? '0' + digit : alpha + digit - 10);
         value /= base;
     } while (value && pos < (int)sizeof(tmp));
     len = pos + (neg ? 1 : 0);
+    if (neg && zeropad)
+        append_char(out, left, total, '-');
     while (width > len) {
-        append_char(out, left, total, ' ');
+        append_char(out, left, total, zeropad ? '0' : ' ');
         --width;
     }
-    if (neg)
+    if (neg && !zeropad)
         append_char(out, left, total, '-');
     while (pos)
         append_char(out, left, total, tmp[--pos]);
 }
 
-static int mini_vsnprintf(char *buf, size_t size, const char *fmt, va_list ap)
+/*
+ * longIs32: treat the 'l' length modifier as 32 bit. Amiga-derived log calls
+ * pass LONG/int values for %ld; reading them as 64-bit longs on x86_64 would
+ * pick up undefined upper halves, while reading a real long as int only
+ * truncates the printed value.
+ */
+static int mini_vformat(char *buf, size_t size, const char *fmt, va_list ap, int longIs32)
 {
     char *out = buf;
     size_t left = size;
@@ -976,6 +1028,8 @@ static int mini_vsnprintf(char *buf, size_t size, const char *fmt, va_list ap)
     while (*fmt) {
         int width = 0;
         int longarg = 0;
+        int zeropad = 0;
+        char conv;
 
         if (*fmt != '%') {
             append_char(&out, &left, &total, *fmt++);
@@ -986,15 +1040,20 @@ static int mini_vsnprintf(char *buf, size_t size, const char *fmt, va_list ap)
             append_char(&out, &left, &total, *fmt++);
             continue;
         }
+        if (*fmt == '0') {
+            zeropad = 1;
+            ++fmt;
+        }
         while (*fmt >= '0' && *fmt <= '9') {
             width = width * 10 + (*fmt - '0');
             ++fmt;
         }
         if (*fmt == 'l') {
-            longarg = 1;
+            longarg = !longIs32;
             ++fmt;
         }
-        switch (*fmt++) {
+        conv = *fmt++;
+        switch (conv) {
         case 's':
             append_string(&out, &left, &total, va_arg(ap, const char *));
             break;
@@ -1004,19 +1063,19 @@ static int mini_vsnprintf(char *buf, size_t size, const char *fmt, va_list ap)
         case 'd':
         case 'i': {
             long value = longarg ? va_arg(ap, long) : va_arg(ap, int);
-            append_number(&out, &left, &total, value < 0 ? (unsigned long)-value : (unsigned long)value, value < 0, 10, width);
+            append_number(&out, &left, &total, value < 0 ? (unsigned long)-value : (unsigned long)value, value < 0, 10, width, zeropad, 0);
             break;
         }
         case 'u':
-            append_number(&out, &left, &total, longarg ? va_arg(ap, unsigned long) : va_arg(ap, unsigned int), 0, 10, width);
+            append_number(&out, &left, &total, longarg ? va_arg(ap, unsigned long) : va_arg(ap, unsigned int), 0, 10, width, zeropad, 0);
             break;
         case 'x':
         case 'X':
-            append_number(&out, &left, &total, longarg ? va_arg(ap, unsigned long) : va_arg(ap, unsigned int), 0, 16, width);
+            append_number(&out, &left, &total, longarg ? va_arg(ap, unsigned long) : va_arg(ap, unsigned int), 0, 16, width, zeropad, conv == 'X');
             break;
         case 'p':
             append_string(&out, &left, &total, "0x");
-            append_number(&out, &left, &total, (unsigned long)va_arg(ap, void *), 0, 16, width);
+            append_number(&out, &left, &total, (unsigned long)va_arg(ap, void *), 0, 16, width, zeropad, 0);
             break;
         default:
             append_char(&out, &left, &total, '?');
@@ -1030,6 +1089,21 @@ static int mini_vsnprintf(char *buf, size_t size, const char *fmt, va_list ap)
             buf[size - 1] = 0;
     }
     return total;
+}
+
+static int mini_vsnprintf(char *buf, size_t size, const char *fmt, va_list ap)
+{
+    return mini_vformat(buf, size, fmt, ap, 0);
+}
+
+int vsnprintf(char *buf, size_t size, const char *fmt, va_list ap)
+{
+    return mini_vformat(buf, size, fmt, ap, 0);
+}
+
+int bebbossh_aros_log_vsnprintf(char *buf, size_t size, const char *fmt, va_list ap)
+{
+    return mini_vformat(buf, size, fmt, ap, 1);
 }
 
 int snprintf(char *buf, size_t size, const char *fmt, ...)
@@ -1505,16 +1579,268 @@ LONG bebbossh_aros_system_tag_list(CONST_STRPTR command, struct TagItem *tags)
 #endif
 }
 
+BPTR bebbossh_aros_dup_lock(BPTR lock)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 16);
+    APTR save;
+    BPTR ret;
+
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((BPTR (*)(BPTR))func)(lock);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return DupLock(lock);
+#endif
+}
+
+struct DevProc *bebbossh_aros_get_device_proc(const char *name, struct DevProc *dp)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 107);
+    APTR save;
+    struct DevProc *ret;
+
+    if (!name)
+        return NULL;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((struct DevProc *(*)(CONST_STRPTR, struct DevProc *))func)(name, dp);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return GetDeviceProc(name, dp);
+#endif
+}
+
+void bebbossh_aros_free_device_proc(struct DevProc *dp)
+{
+#if defined(__x86_64__)
+    if (dp) {
+        APTR base = DOSBase;
+        APTR func = __AROS_GETVECADDR(base, 108);
+        APTR save;
+
+        __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                             : "=&rm"(save) : "rm"(base) : "r12");
+        ((void (*)(struct DevProc *))func)(dp);
+        __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    }
+#else
+    if (dp)
+        FreeDeviceProc(dp);
+#endif
+}
+
+LONG bebbossh_aros_read_link(struct MsgPort *port, BPTR lock, const char *path, char *buffer, ULONG size)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 73);
+    APTR save;
+    LONG ret;
+
+    if (!path || !buffer || !size)
+        return -1;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((LONG (*)(struct MsgPort *, BPTR, CONST_STRPTR, STRPTR, ULONG))func)(port, lock, path, buffer, size);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return ReadLink(port, lock, path, buffer, size);
+#endif
+}
+
+LONG bebbossh_aros_make_link(const char *name, SIPTR dest, LONG soft)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 74);
+    APTR save;
+    LONG ret;
+
+    if (!name)
+        return 0;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((LONG (*)(CONST_STRPTR, SIPTR, LONG))func)(name, dest, soft);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return MakeLink(name, dest, soft);
+#endif
+}
+
+void bebbossh_aros_set_window_titles(struct Library *intuitionBase, APTR window,
+                                     CONST_STRPTR windowTitle, CONST_STRPTR screenTitle)
+{
+#if defined(__x86_64__)
+    APTR base = intuitionBase;
+    APTR func = base ? __AROS_GETVECADDR(base, 46) : 0;
+    APTR save;
+
+    if (!func || !window)
+        return;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ((void (*)(APTR, CONST_STRPTR, CONST_STRPTR))func)(window, windowTitle, screenTitle);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+#else
+    (void)intuitionBase;
+    (void)window;
+    (void)windowTitle;
+    (void)screenTitle;
+#endif
+}
+
+ULONG bebbossh_aros_set_signal(ULONG newSignals, ULONG signalSet)
+{
+#if defined(__x86_64__)
+    APTR base = SysBase;
+    APTR func = __AROS_GETVECADDR(base, 51);
+    APTR save;
+    ULONG ret;
+
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((ULONG (*)(ULONG, ULONG))func)(newSignals, signalSet);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return SetSignal(newSignals, signalSet);
+#endif
+}
+
+struct IORequest *bebbossh_aros_check_io(struct IORequest *request)
+{
+#if defined(__x86_64__)
+    APTR base = SysBase;
+    APTR func = __AROS_GETVECADDR(base, 78);
+    APTR save;
+    struct IORequest *ret;
+
+    if (!request)
+        return NULL;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((struct IORequest *(*)(struct IORequest *))func)(request);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return CheckIO(request);
+#endif
+}
+
+LONG bebbossh_aros_wait_io(struct IORequest *request)
+{
+#if defined(__x86_64__)
+    APTR base = SysBase;
+    APTR func = __AROS_GETVECADDR(base, 79);
+    APTR save;
+    LONG ret;
+
+    if (!request)
+        return -1;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((LONG (*)(struct IORequest *))func)(request);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return WaitIO(request);
+#endif
+}
+
+void bebbossh_aros_abort_io(struct IORequest *request)
+{
+#if defined(__x86_64__)
+    APTR base = SysBase;
+    APTR func = __AROS_GETVECADDR(base, 80);
+    APTR save;
+
+    if (!request)
+        return;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ((void (*)(struct IORequest *))func)(request);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+#else
+    AbortIO(request);
+#endif
+}
+
+LONG bebbossh_aros_set_file_date(const char *name, const struct DateStamp *date)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 66);
+    APTR save;
+    LONG ret;
+
+    if (!name || !date)
+        return 0;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((LONG (*)(CONST_STRPTR, const struct DateStamp *))func)(name, date);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return SetFileDate(name, date);
+#endif
+}
+
+BYTE bebbossh_aros_do_io(struct IORequest *request)
+{
+#if defined(__x86_64__)
+    APTR base = SysBase;
+    APTR func = __AROS_GETVECADDR(base, 76);
+    APTR save;
+    BYTE ret;
+
+    if (!request)
+        return -1;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((BYTE (*)(struct IORequest *))func)(request);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return DoIO(request);
+#endif
+}
+
 int fflush(void *stream)
 {
     (void)stream;
     return 0;
 }
 
+#define BEBBOSSH_ATEXIT_MAX 16
+static void (*atexit_handlers[BEBBOSSH_ATEXIT_MAX])(void);
+static int atexit_count;
+
 int atexit(void (*fn)(void))
 {
-    (void)fn;
+    if (!fn || atexit_count >= BEBBOSSH_ATEXIT_MAX)
+        return -1;
+    atexit_handlers[atexit_count++] = fn;
     return 0;
+}
+
+/* LIFO; each handler is removed before it runs, so a handler calling exit()
+ * cannot run itself twice. */
+static void run_atexit_handlers(void)
+{
+    while (atexit_count > 0) {
+        void (*fn)(void) = atexit_handlers[--atexit_count];
+        atexit_handlers[atexit_count] = 0;
+        fn();
+    }
 }
 
 time_t time(time_t *out)
@@ -1582,15 +1908,16 @@ int mkdir(const char *path, unsigned mode)
     BPTR lock;
 
     (void)mode;
-    lock = CreateDir(path);
+    lock = bebbossh_aros_create_dir(path);
     if (!lock)
         return -1;
-    UnLock(lock);
+    bebbossh_aros_unlock(lock);
     return 0;
 }
 
 void exit(int status)
 {
+    run_atexit_handlers();
 #if defined(__x86_64__)
     APTR base = DOSBase;
     APTR func = base ? __AROS_GETVECADDR(base, 24) : 0;
@@ -1611,10 +1938,11 @@ void exit(int status)
 
 /*
  * Read an opt-in runtime flag used to gate experimental x86_64/mincrt parity
- * features without rebuilding. The mincrt getenv() above is a stub that always
- * returns NULL, so this reads the AROS environment variable directly: ENV: vars
- * are files, so it opens "ENV:<name>" via the functional DOS file wrappers.
- * Enable a flag from an AROS shell with e.g.:  set BEBBOSSH_AROS_X64_CD 1
+ * features without rebuilding. Global variables are read directly from the
+ * "ENV:<name>" file via the DOS file wrappers; if there is none, local shell
+ * variables are checked through GetVar().
+ * Enable a flag from an AROS shell with e.g.:  setenv BEBBOSSH_AROS_X64_CD 1
+ * (or "set" for the current shell only).
  * Returns 1 when the variable exists and its first byte is a "true" value, 0
  * otherwise -- every gated feature therefore defaults OFF and cannot regress
  * current behavior.
@@ -1633,13 +1961,17 @@ int bebbossh_aros_x64_flag(const char *name)
         path[i++] = name[j];
     path[i] = 0;
 
-    BPTR f = bebbossh_aros_open(path, 1005 /* MODE_OLDFILE */);
-    if (!f)
-        return 0;
-
     char c = 0;
-    LONG n = bebbossh_aros_read(f, &c, 1);
-    bebbossh_aros_close(f);
+    LONG n;
+    BPTR f = bebbossh_aros_open(path, 1005 /* MODE_OLDFILE */);
+    if (f) {
+        n = bebbossh_aros_read(f, &c, 1);
+        bebbossh_aros_close(f);
+    } else {
+        char value[8];
+        n = bebbossh_aros_get_var(name, value, sizeof(value), GVF_LOCAL_ONLY);
+        c = value[0];
+    }
     if (n <= 0)
         return 0;
     if (c == '0' || c == 'n' || c == 'N' || c == 'f' || c == 'F')

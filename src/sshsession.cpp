@@ -1202,7 +1202,7 @@ bool SshSession::handleChannelRequest(uint8_t *p) {
 			}
 			ShellChannel *sc = (ShellChannel*) c;
 			if (sc->hasShell() || sc->hasExec()) {
-				logme(L_ERROR, "@%ld %s requested but already has a shell/exec", sockFd);
+				logme(L_ERROR, "@%ld %s requested but already has a shell/exec", sockFd, s);
 				goto Error;
 			}
 
@@ -1228,8 +1228,10 @@ bool SshSession::handleChannelRequest(uint8_t *p) {
 		if (0 == strcmp((char*) s, "subsystem")) {
 			++p;
 			uint8_t *sub = sshString(p);
-			if (0 != strncmp((char*) s, "sftp", p - sub - 4)) {
-				logme(L_ERROR, "@%ld %s unsupported subsystem %s", sockFd, sub);
+			bool isSftp = p - sub == 4 && 0 == strncmp((char*) sub, "sftp", 4);
+			*p = 0;
+			if (!isSftp) {
+				logme(L_ERROR, "@%ld %s unsupported subsystem %s", sockFd, s, sub);
 				goto Error;
 			}
 
@@ -1239,7 +1241,7 @@ bool SshSession::handleChannelRequest(uint8_t *p) {
 			}
 			ShellChannel *sc = (ShellChannel*) c;
 			if (sc->hasShell() || sc->hasExec()) {
-				logme(L_ERROR, "@%ld %s requested but already has a shell/exec", sockFd);
+				logme(L_ERROR, "@%ld %s requested but already has a shell/exec", sockFd, s);
 				goto Error;
 			}
 
