@@ -54,6 +54,25 @@
 
 #include "keyboard.h"
 
+#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
+// x86_64/mincrt: the local CreatePort()/DeletePort() below call exec directly,
+// so the port and request go through the mincrt-safe exec wrappers instead.
+#include <aros_mincrt_wrappers.h>
+#define KBD_CREATE_PORT() bebbossh_aros_create_msgport()
+#define KBD_DELETE_PORT(p) bebbossh_aros_delete_msgport(p)
+#define KBD_CREATE_IO(p, s) bebbossh_aros_create_iorequest((p), (s))
+#define KBD_DELETE_IO(r) bebbossh_aros_delete_iorequest(r)
+#define KBD_OPEN_DEVICE(n, u, r, f) bebbossh_aros_open_device((n), (u), (r), (f))
+#define KBD_CLOSE_DEVICE(r) bebbossh_aros_close_device(r)
+#else
+#define KBD_CREATE_PORT() CreatePort(0, 0)
+#define KBD_DELETE_PORT(p) DeletePort(p)
+#define KBD_CREATE_IO(p, s) CreateExtIO((p), (s))
+#define KBD_DELETE_IO(r) ((void)(r))
+#define KBD_OPEN_DEVICE(n, u, r, f) OpenDevice((n), (u), (r), (f))
+#define KBD_CLOSE_DEVICE(r) CloseDevice(r)
+#endif
+
 static bool init;
 static struct MsgPort *kmp;
 static struct IOStdReq *kio;
@@ -64,17 +83,14 @@ static void closeKeyboardSupport() {
 	if (matrix)
 		free(matrix);
 	if (kdev)
-		CloseDevice((struct IORequest* )kio);
-//	if (kio)
-//		DeleteExtIO((struct IORequest*) kio);
+		KBD_CLOSE_DEVICE((struct IORequest* )kio);
+	if (kio)
+		KBD_DELETE_IO(kio);
 	if (kmp)
-		DeletePort(kmp);
+		KBD_DELETE_PORT(kmp);
 }
 
 uint32_t getKeyboardQualifiers() {
-#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
-	return 0;
-#else
 	if (!init) {
 		// init once
 		init = true;
@@ -82,14 +98,14 @@ uint32_t getKeyboardQualifiers() {
 		// cleanup at exit
 		atexit(closeKeyboardSupport);
 	
-		kmp = CreatePort(0, 0);
+		kmp = KBD_CREATE_PORT();
 		if (!kmp)
 			return 0;
-		kio = (struct IOStdReq*) CreateExtIO(kmp, sizeof(struct IOStdReq));
+		kio = (struct IOStdReq*) KBD_CREATE_IO(kmp, sizeof(struct IOStdReq));
 		if (!kio)
 			return 0;
 
-		kdev = !OpenDevice("keyboard.device", 0, (struct IORequest* )kio, 0);
+		kdev = !KBD_OPEN_DEVICE("keyboard.device", 0, (struct IORequest* )kio, 0);
 		if (!kdev)
 			return 0;
 
@@ -111,7 +127,6 @@ uint32_t getKeyboardQualifiers() {
 		 | ((matrix[12] & (1<<4)) ? ALT : 0)
 		 | ((matrix[12] & (1<<6)) ? LAMIGA : 0)
 		 | ((matrix[12] & (1<<7)) ? RAMIGA : 0);
-#endif
 }
 
 #define NEWLIST(l) ((l)->lh_Head = (struct Node *)&(l)->lh_Tail, \

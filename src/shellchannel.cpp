@@ -336,11 +336,6 @@ static void nqsort(char * p, int length, int ml) {
 void ShellChannel::autocomplete() {
 	if (!hasPty())
 		return;
-#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
-	// dir==0 and DupLock/NameFromLock are unwrapped on x64/mincrt: disable completion
-	return;
-#endif
-
 	// find start of argument
 	char * p = xpos;
 	while (p > line && p[-1] > ' ')
@@ -366,6 +361,10 @@ void ShellChannel::autocomplete() {
 		colSlash[1] = y;
 		p = colSlash + 1;
 	} else {
+		// x86_64/mincrt holds no current-directory lock unless the opt-in cd
+		// path is enabled; only complete explicit paths then.
+		if (!dir)
+			return;
 		lock = DupLock(dir);
 	}
 

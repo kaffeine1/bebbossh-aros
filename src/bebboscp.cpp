@@ -1325,11 +1325,10 @@ static void printUsage() {
 }
 
 static void parseParams(unsigned argc, char **argv) {
-#if !(defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__))
+	// x86_64/mincrt: getenv() reads shell/ENV: variables through GetVar().
 	char *user = getenv("USER");
 	if (user)
 		username = user;
-#endif
 
 	unsigned normal = 0;
 	char *arg = 0;

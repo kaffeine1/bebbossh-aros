@@ -256,10 +256,9 @@ bool sanitize(char * path) {
 
 	if (colon && colon > path) {
 #if BEBBOSSH_AMIGA_API
-#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
-		return true;
-#else
 #if BEBBOSSH_AROS
+		// x86_64/mincrt resolves GetDeviceProc/FreeDeviceProc through the
+		// mincrt-safe DOS wrappers.
 		struct DevProc *dp = GetDeviceProc((CONST_STRPTR)path, NULL);
 		if (dp) {
 			FreeDeviceProc(dp);
@@ -282,7 +281,6 @@ bool sanitize(char * path) {
 		UnLockDosList(LDF_ALL | LDF_READ);
 		*colon = x;
 		if (!dl)
-#endif
 #endif
 #endif
 			return false;
@@ -666,11 +664,17 @@ int SftpChannel::handleData(char *data, unsigned outerLen) {
 		}
 
 #if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
+		// ReadLink/MakeLink go through the mincrt-safe DOS wrappers but stay
+		// opt-in until validated on an AROS One x86_64 VM.
+		// Enable with: set BEBBOSSH_AROS_X64_SFTP_LINKS 1
 		switch (k) {
 		case SSH_FXP_READLINK:
 		case SSH_FXP_SYMLINK:
-			result = SSH_FX_OP_UNSUPPORTED;
-			goto Status;
+			if (!bebbossh_aros_x64_flag("BEBBOSSH_AROS_X64_SFTP_LINKS")) {
+				result = SSH_FX_OP_UNSUPPORTED;
+				goto Status;
+			}
+			break;
 		default:
 			break;
 		}
@@ -712,13 +716,13 @@ int SftpChannel::handleData(char *data, unsigned outerLen) {
 			logme(L_DEBUG, "@%ld:%ld sftp SSH_FXP_OPEN for %s flags=%ld->mode=%ld", server->getSockFd(), channel, path, flags, mode);
 
 #if BEBBOSSH_AROS
-#if !(defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__))
+			// Delete before re-creating so an overwrite never keeps stale trailing
+			// bytes (x86_64/mincrt uses the DeleteFile wrapper validated by rm).
 			if ((flags & SSH2_FXF_WRITE) && (flags & SSH2_FXF_CREAT) &&
 					!(flags & SSH2_FXF_EXCL) && !(flags & SSH2_FXF_APPEND)) {
 				DeleteFile((char *)path);
 				mode = MODE_NEWFILE;
 			}
-#endif
 #endif
 
 			BPTR file = Open((char* )path, mode);
@@ -726,9 +730,7 @@ int SftpChannel::handleData(char *data, unsigned outerLen) {
 			if (file && mode == MODE_NEWFILE) { // reopen shared
 				Close(file);
 #if BEBBOSSH_AROS
-#if !(defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__))
 				SetProtection((char* )path, 0);
-#endif
 #endif
 				file = Open((char* )path, MODE_READWRITE);
 			}

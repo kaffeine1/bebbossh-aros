@@ -7,7 +7,10 @@
 #include <exec/libraries.h>
 #include <exec/semaphores.h>
 #include <exec/tasks.h>
+#include <exec/io.h>
+#include <exec/ports.h>
 #include <dos/dos.h>
+#include <dos/dosextens.h>
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -70,6 +73,22 @@ LONG bebbossh_aros_name_from_lock(BPTR lock, char *buffer, LONG length);
 LONG bebbossh_aros_set_protection(const char *name, LONG mask);
 LONG bebbossh_aros_system_tag_list(CONST_STRPTR command, struct TagItem *tags);
 int bebbossh_aros_x64_flag(const char *name);
+LONG bebbossh_aros_get_var(const char *name, char *buffer, LONG size, LONG flags);
+BPTR bebbossh_aros_dup_lock(BPTR lock);
+struct DevProc *bebbossh_aros_get_device_proc(const char *name, struct DevProc *dp);
+void bebbossh_aros_free_device_proc(struct DevProc *dp);
+ULONG bebbossh_aros_set_signal(ULONG newSignals, ULONG signalSet);
+LONG bebbossh_aros_read_link(struct MsgPort *port, BPTR lock, const char *path, char *buffer, ULONG size);
+LONG bebbossh_aros_make_link(const char *name, SIPTR dest, LONG soft);
+void bebbossh_aros_set_window_titles(struct Library *intuitionBase, APTR window,
+                                     CONST_STRPTR windowTitle, CONST_STRPTR screenTitle);
+struct MsgPort *bebbossh_aros_create_msgport(void);
+void bebbossh_aros_delete_msgport(struct MsgPort *port);
+APTR bebbossh_aros_create_iorequest(struct MsgPort *replyPort, ULONG size);
+void bebbossh_aros_delete_iorequest(APTR request);
+LONG bebbossh_aros_open_device(const char *name, IPTR unit, struct IORequest *request, ULONG flags);
+void bebbossh_aros_close_device(struct IORequest *request);
+BYTE bebbossh_aros_do_io(struct IORequest *request);
 
 #ifdef __cplusplus
 }
@@ -121,6 +140,14 @@ int bebbossh_aros_x64_flag(const char *name);
 #undef FGets
 #undef NameFromLock
 #undef SetProtection
+#undef GetVar
+#undef DupLock
+#undef GetDeviceProc
+#undef FreeDeviceProc
+#undef SetSignal
+#undef DoIO
+#undef ReadLink
+#undef MakeLink
 
 #define socket(domain, type, protocol) bebbossh_aros_socket(SocketBase, (domain), (type), (protocol))
 #define bind(s, name, namelen) bebbossh_aros_bind(SocketBase, (s), (name), (namelen))
@@ -169,6 +196,15 @@ int bebbossh_aros_x64_flag(const char *name);
 #define FGets(file, buf, buflen) bebbossh_aros_fgets((file), (buf), (buflen))
 #define NameFromLock(lock, buffer, length) bebbossh_aros_name_from_lock((lock), (buffer), (length))
 #define SetProtection(name, mask) bebbossh_aros_set_protection((name), (mask))
+#define GetVar(name, buffer, size, flags) bebbossh_aros_get_var((name), (buffer), (size), (flags))
+#define DupLock(lock) bebbossh_aros_dup_lock((lock))
+#define GetDeviceProc(name, dp) bebbossh_aros_get_device_proc((name), (dp))
+#define FreeDeviceProc(dp) bebbossh_aros_free_device_proc((dp))
+#define SetSignal(newSignals, signalSet) bebbossh_aros_set_signal((newSignals), (signalSet))
+#define DoIO(request) bebbossh_aros_do_io((request))
+#define ReadLink(port, lock, path, buffer, size) \
+	bebbossh_aros_read_link((port), (lock), (const char *)(path), (char *)(buffer), (size))
+#define MakeLink(name, dest, soft) bebbossh_aros_make_link((const char *)(name), (SIPTR)(dest), (soft))
 
 #endif
 

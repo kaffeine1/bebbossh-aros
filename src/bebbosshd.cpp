@@ -524,7 +524,38 @@ static void cleanupSessions() {
 	}
 }
 
+#if BEBBOSSH_AROS
+// The daemon has no user at the console: turn DOS requesters ("Please insert
+// volume ...") into plain errors, otherwise a request for an unmounted volume
+// blocks the whole daemon loop until someone clicks the requester away.
+static struct Process *requesterProcess;
+static APTR orgWindowPtr;
+
+static void disableRequesters() {
+#if defined(BEBBOSSH_AROS_MINCRT)
+	requesterProcess = (struct Process *)bebbossh_aros_find_task(NULL);
+#else
+	requesterProcess = (struct Process *)FindTask(NULL);
+#endif
+	if (requesterProcess && requesterProcess->pr_Task.tc_Node.ln_Type == NT_PROCESS) {
+		orgWindowPtr = requesterProcess->pr_WindowPtr;
+		requesterProcess->pr_WindowPtr = (APTR)-1;
+	} else
+		requesterProcess = 0;
+}
+
+static void restoreRequesters() {
+	if (requesterProcess) {
+		requesterProcess->pr_WindowPtr = orgWindowPtr;
+		requesterProcess = 0;
+	}
+}
+#endif
+
 void cleanup() {
+#if BEBBOSSH_AROS
+	restoreRequesters();
+#endif
 	// no more connections
 	if (acceptSock != -1) {
 		logme(L_FINE, "closing listen socket %ld", acceptSock);
@@ -962,6 +993,9 @@ __stdargs int main(int argc, char *argv[]) {
 	clientsPtr = new Stack<SshSession>();
 	atexit(cleanup);
 	InitSemaphore(&theLock);
+#if BEBBOSSH_AROS
+	disableRequesters();
+#endif
 
 	#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
 	hostKeyName = "PROGDIR:HOSTKEY";
