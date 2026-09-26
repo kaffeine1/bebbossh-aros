@@ -64,6 +64,26 @@ class GCM : public AeadBlockCipher {
     /** Length of Additional Authenticated Data (AAD). */
     uint64_t aadLen;
 
+#if defined(__x86_64__) && defined(__GNUC__) && !defined(BSSH_GCM_NO_X86)
+#define BSSH_GCM_X86 1
+    /** AES-NI/PCLMULQDQ path: expanded AES round keys, byte-reflected H and
+        the AES round count; xRounds == 0 selects the portable table code. */
+    uint8_t xKeys[15][16];
+    uint8_t xH[16];
+    int xRounds;
+
+    bool xSetKey(void const* key, unsigned keylen);
+    void xEncryptBlock(void* to, void const* from);
+    void xCrypt(uint8_t*& to, uint8_t const*& from, int& len, bool encrypting);
+    void xHashBlocks(uint8_t const*& data, int& len);
+#endif
+
+    /// Multiply the running hash with H
+    void mulH();
+
+    /// Encrypt one counter block with the underlying cipher
+    void encryptCounter(void* to, void const* counter);
+
     /// Initialize multiplication table M
     bool initM();
 

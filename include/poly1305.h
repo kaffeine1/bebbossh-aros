@@ -43,10 +43,21 @@
  * Provides authentication over ciphertext and AAD
  * using a one-time key derived from ChaCha20.
  */
+#if defined(__x86_64__) && defined(__SIZEOF_INT128__)
+#define BSSH_POLY1305_64 1
+#endif
+
 class Poly1305 {
+#ifdef BSSH_POLY1305_64
+    uint64_t r[3]; ///< Key parameter r, 44/44/42 bit limbs
+    uint64_t s[2]; ///< Key parameter s
+    uint64_t h[3]; ///< Accumulator, 44/44/42 bit limbs
+    void blocks(uint8_t const* m, int len, uint64_t hibit);
+#else
     uint32_t r[5]; ///< Key parameter r
     uint32_t s[4]; ///< Key parameter s
     uint32_t a[10];///< Accumulator
+#endif
 public:
     /// Set Poly1305 key
     int setKey(void const* k, int klen);
