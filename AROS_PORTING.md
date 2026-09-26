@@ -212,15 +212,49 @@ tests) builds by default, packaging is architecture-aware, and there is a
 parallel release smoke script (`scripts/aros-x86_64-public-release-smoke.sh`)
 and checklist (`docs/AROS_X86_64_RELEASE.md`).
 
-Selected i386 runtime behaviors that were disabled on `mincrt` are now available
-as opt-in runtime flags (AROS `ENV:` variables, all default OFF, read via
-`bebbossh_aros_x64_flag()` in `src/aros_mincrt.c`):
+Selected i386 runtime behaviors that were disabled on `mincrt` are available
+as opt-in runtime flags (all default OFF, read via `bebbossh_aros_x64_flag()` in
+`src/aros_mincrt.c`). A flag is on when the global variable exists
+(`setenv NAME 1`, stored in `ENV:`) or, failing that, a local shell variable
+(`set NAME 1`) of the shell that starts the daemon:
 
-- `BEBBOSSH_AROS_X64_SFTP_MTIME` — preserve SFTP modification times
+- `BEBBOSSH_AROS_X64_SFTP_MTIME`: preserve SFTP modification times
   (`SetFileDate`) on uploads. Off by default keeps the validated behavior.
-- `BEBBOSSH_AROS_X64_CD` — interactive-shell `cd` / `pwd` / dynamic prompt. When
+- `BEBBOSSH_AROS_X64_CD`: interactive-shell `cd` / `pwd` / dynamic prompt. When
   set, the shell holds a real current-directory Lock through the mincrt-safe DOS
   wrappers; when unset, the shell keeps the static prompt and rejects `cd`.
+- `BEBBOSSH_AROS_X64_SFTP_LINKS`: SFTP `READLINK` / `SYMLINK` through the
+  mincrt-safe `ReadLink` / `MakeLink` wrappers. Unset, both answer
+  `SSH_FX_OP_UNSUPPORTED` as before.
+
+Enabled by default after the mincrt parity work (need AROS One x86_64 VM
+validation before the next release tag):
+
+- `mincrt` runtime wrappers for `GetVar`, `DupLock`, `GetDeviceProc`,
+  `FreeDeviceProc`, `ReadLink`, `MakeLink`, `SetSignal`, `DoIO` and
+  `SetWindowTitles`. The LVO numbers were checked against the AROS SDK
+  `clib/*_protos.h`; like the existing wrappers they set the library base in
+  `r12` and call through the jump table.
+- `getenv()` reads shell/`ENV:` variables through `GetVar` (was a stub), so the
+  client `USER` / `TERM` fallback works on x86_64.
+- `atexit()` handlers run on `exit()` and when `main()` returns (was a no-op).
+  This restores the console mode when the x86_64 client exits and lets the
+  daemon close its listen socket, timer and `bsdsocket.library` on shutdown.
+- `logme()` writes to `Output()` on `mincrt` (was a no-op, so `-v` had no
+  effect on x86_64). `%ld` arguments are read as 32-bit values, matching the
+  Amiga-style `LONG` call sites.
+- SFTP overwrite deletes the target before re-creating it on x86_64 too, so a
+  smaller upload no longer leaves stale trailing bytes, and the volume check in
+  path sanitizing uses `GetDeviceProc` instead of accepting every path.
+- The daemon sets `pr_WindowPtr` to -1 while it runs (i386 and x86_64), so an
+  access to an unmounted volume returns an error instead of opening a DOS
+  requester that would block the daemon loop. The original value is restored
+  on exit.
+- Client: `Ctrl-C` in the password prompt (`SetSignal`), keyboard qualifiers
+  for cursor keys (`keyboard.device` through the exec wrappers), mouse
+  position and window titles (`intuition.library` opened on demand).
+- Shell: TAB completion for explicit paths (`C:Li<TAB>`); completion in the
+  current directory also needs `BEBBOSSH_AROS_X64_CD`.
 
 Deliberately unchanged on x86_64 (documented divergences, not regressions):
 
@@ -228,12 +262,25 @@ Deliberately unchanged on x86_64 (documented divergences, not regressions):
   (`CreateNewProcTagList`) previously hit a crash class on `mincrt` and is not
   compiled for x86_64. Porting it is future work gated on VM validation, not a
   runtime flag.
-- Tab autocomplete stays off (needs a `DupLock` wrapper not yet in the mincrt
-  runtime).
-- Client `USER`/`TERM` fallback and `SetSignal(CTRL_C)` stay off on the x86_64
-  client: `getenv()` is a stub under `mincrt` and `SetSignal` is outside the
-  mincrt link set, so re-enabling them requires new `GetVar`/`SetSignal`
-  wrappers and a link check on the maintainer's toolchain.
+
+### x86_64 crypto fast paths
+
+x86_64 builds use CPU features the 68k code cannot:
+
+- AES-GCM: AES-NI + PCLMULQDQ, selected at runtime through `CPUID` (the VM must
+  expose the CPU flags, for example QEMU `-cpu host`; otherwise the portable
+  table code runs). Only legacy SSE encodings are emitted, no AVX state is
+  needed. Besides the speed-up this avoids the cache-timing exposure of the
+  table-based AES and GHASH.
+- ChaCha20: four blocks in parallel with SSE2 (part of the x86_64 base ISA).
+- Poly1305: 64-bit limbs with 128-bit products.
+
+Measured on the build host with the AROS compile flags: AES-128-GCM 149 to
+1338 MB/s, ChaCha20-Poly1305 191 to 557 MB/s. Output is identical to the
+portable code (differential tests with random keys, nonces, lengths and
+chunking; RFC 8439 Poly1305 vector; AES-GCM cross-checked with PyCryptodome).
+The same change fixes the portable GHASH for AAD of 47 bytes or more, which SSH
+never uses (its AAD is the 4-byte packet length). i386 keeps the portable code.
 
 v1.0.0 promotion to stable closed the three documented gates (validated on
 AROS One x86_64 QEMU e1000):
@@ -263,7 +310,8 @@ shell, missing-command exit 127, telegram-amiga automation, SFTP/SCP, and
 plus the AROS One x86_64 VM gate together close the v1.0.0 release. For
 SFTP/SCP, the validated operations are `ls`, `get`, `put`, `rm`, `rename`
 (including overwrite), `mkdir`, `rmdir`, and `chmod`. `READLINK`/`SYMLINK`
-remain unsupported. x86_64/mincrt does not preserve SFTP mtime by default;
+are unsupported unless `BEBBOSSH_AROS_X64_SFTP_LINKS=1` is set (opt-in, not yet
+VM validated). x86_64/mincrt does not preserve SFTP mtime by default;
 set `BEBBOSSH_AROS_X64_SFTP_MTIME=1` to enable the `SetFileDate` path
 (opt-in; main path validated).
 

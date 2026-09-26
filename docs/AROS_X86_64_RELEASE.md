@@ -183,16 +183,44 @@ the release's tag/version/SHA256 and cut the next `v1.0.x-aros-x86_64` tag.
 
 The x86_64/`mincrt` build keeps several i386 behaviors behind opt-in runtime
 flags so they can be A/B tested on the VM without rebuilding. All default OFF;
-enable them in the daemon's environment before launch:
+set them before launching the daemon, globally with `setenv NAME 1` or as a
+local variable of the starting shell with `set NAME 1`:
 
-- `BEBBOSSH_AROS_X64_SFTP_MTIME=1` — preserve SFTP modification times via
+- `BEBBOSSH_AROS_X64_SFTP_MTIME=1`: preserve SFTP modification times via
   `SetFileDate`.
-- `BEBBOSSH_AROS_X64_CD=1` — enable the interactive-shell `cd` / `pwd` / dynamic
+- `BEBBOSSH_AROS_X64_CD=1`: enable the interactive-shell `cd` / `pwd` / dynamic
   prompt path. The shell acquires a real current-directory Lock through the
   mincrt-safe DOS wrappers; raw `CurrentDir` could previously block the daemon,
   so validate under `dir`/`cd` churn before relying on it.
+- `BEBBOSSH_AROS_X64_SFTP_LINKS=1`: SFTP `READLINK` / `SYMLINK` via the
+  `ReadLink` / `MakeLink` wrappers.
 
 When a flag is unset, the current safe default behavior is unchanged.
+
+## Parity changes to validate before the next tag
+
+These are on by default since the mincrt parity work and have only been
+compile- and link-checked against the AROS SDK, so the next release needs one
+VM pass over them:
+
+1. SFTP overwrite: upload a large file, then a smaller one to the same name,
+   and byte-compare the download (the target is deleted before re-creation).
+   The "delete the old file first" advice above is no longer needed once this
+   passes.
+2. SFTP path to an unmounted volume (`sftp> ls NOSUCH:`) must fail quickly
+   without a requester on the AROS screen, and the daemon must keep serving.
+3. `bebbosshd -v5` prints log lines on x86_64 (it was silent before).
+4. Daemon shutdown with Ctrl-C closes the listen socket: restart it right away
+   and connect again.
+5. AROS-native client (`bebbossh`): after exit the shell console is back in
+   cooked mode; Ctrl-C at the password prompt quits; Shift+cursor keys reach
+   the remote side as modified cursor keys; `setenv USER name` is used as the
+   default login name.
+6. Interactive shell: `C:Li<TAB>` completes to `C:List`.
+7. Crypto: `make -f Makefile.aros-x86_64 run-tests`, then one SCP transfer with
+   each cipher (`-c aes128-gcm@openssh.com`, `-c chacha20-poly1305@openssh.com`).
+   Repeat with a VM CPU model that exposes AES-NI/PCLMULQDQ (QEMU `-cpu host`)
+   and one that does not (QEMU default `qemu64`) to cover both GCM paths.
 
 ### Known divergence kept on purpose: synchronous exec
 

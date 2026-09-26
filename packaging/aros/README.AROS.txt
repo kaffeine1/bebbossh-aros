@@ -241,7 +241,9 @@ Current Runtime Status
 - i386 (AROS One / VMware i386, the i386-abiv0 kit): stable and validated.
   SSH exec, SCP/SFTP transfers, and a clean install with host-key generation
   all work from a real AROS shell.
-- x86_64: experimental and not yet release-ready. Prefer i386 for now.
+- x86_64 (AROS One / VMware 64 bit, the x86_64 kit): stable since v1.0.0.
+  SSH commands run synchronously, so keep them short. AES-GCM uses AES-NI and
+  PCLMULQDQ when the CPU (or the VM CPU model) provides them.
 
 A clean-VM i386 release checklist is kept in the source repository under
 docs/AROS_I386_RELEASE.md.
@@ -258,6 +260,10 @@ Known Limits
   rejected with exit status 2.
 - SFTP readlink/symlink are not implemented, and SFTP timestamp preservation is
   a no-op.
+- x86_64 only: some features are opt-in flags, off unless set before starting
+  bebbosshd (setenv NAME 1): BEBBOSSH_AROS_X64_CD (cd/pwd in the interactive
+  shell), BEBBOSSH_AROS_X64_SFTP_MTIME (keep upload timestamps),
+  BEBBOSSH_AROS_X64_SFTP_LINKS (SFTP readlink/symlink).
 - The test password in passwd.example is not safe. Change it before use, and do
   not distribute private host keys generated for local testing.
 
