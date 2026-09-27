@@ -1795,6 +1795,44 @@ void bebbossh_aros_abort_io(struct IORequest *request)
 #endif
 }
 
+void bebbossh_aros_send_io(struct IORequest *request)
+{
+#if defined(__x86_64__)
+    APTR base = SysBase;
+    APTR func = __AROS_GETVECADDR(base, 77);
+    APTR save;
+
+    if (!request)
+        return;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ((void (*)(struct IORequest *))func)(request);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+#else
+    SendIO(request);
+#endif
+}
+
+struct Message *bebbossh_aros_get_msg(struct MsgPort *port)
+{
+#if defined(__x86_64__)
+    APTR base = SysBase;
+    APTR func = __AROS_GETVECADDR(base, 62);
+    APTR save;
+    struct Message *ret;
+
+    if (!port)
+        return NULL;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((struct Message *(*)(struct MsgPort *))func)(port);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return GetMsg(port);
+#endif
+}
+
 LONG bebbossh_aros_set_file_date(const char *name, const struct DateStamp *date)
 {
 #if defined(__x86_64__)

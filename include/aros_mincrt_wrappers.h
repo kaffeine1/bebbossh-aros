@@ -94,6 +94,9 @@ BYTE bebbossh_aros_do_io(struct IORequest *request);
 struct IORequest *bebbossh_aros_check_io(struct IORequest *request);
 LONG bebbossh_aros_wait_io(struct IORequest *request);
 void bebbossh_aros_abort_io(struct IORequest *request);
+void bebbossh_aros_send_io(struct IORequest *request);
+struct Message *bebbossh_aros_get_msg(struct MsgPort *port);
+struct Task *bebbossh_aros_find_task(const char *name);
 LONG bebbossh_aros_set_file_date(const char *name, const struct DateStamp *date);
 BOOL bebbossh_aros_examine_fh(BPTR fh, struct FileInfoBlock *fib);
 struct DosList *bebbossh_aros_attempt_lock_dos_list(ULONG flags);
@@ -161,6 +164,9 @@ void bebbossh_aros_get_sys_time(struct Device *timerBase, void *tv);
 #undef CheckIO
 #undef WaitIO
 #undef AbortIO
+#undef SendIO
+#undef GetMsg
+#undef FindTask
 #undef SetFileDate
 #undef ExamineFH
 #undef AttemptLockDosList
@@ -227,6 +233,9 @@ void bebbossh_aros_get_sys_time(struct Device *timerBase, void *tv);
 #define CheckIO(request) bebbossh_aros_check_io((struct IORequest *)(request))
 #define WaitIO(request) bebbossh_aros_wait_io((struct IORequest *)(request))
 #define AbortIO(request) bebbossh_aros_abort_io((struct IORequest *)(request))
+#define SendIO(request) bebbossh_aros_send_io((struct IORequest *)(request))
+#define GetMsg(port) bebbossh_aros_get_msg((port))
+#define FindTask(name) bebbossh_aros_find_task((name))
 #define SetFileDate(name, date) bebbossh_aros_set_file_date((const char *)(name), (date))
 #define ExamineFH(fh, fib) bebbossh_aros_examine_fh((fh), (fib))
 #define AttemptLockDosList(flags) bebbossh_aros_attempt_lock_dos_list((flags))
