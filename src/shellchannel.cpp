@@ -115,12 +115,30 @@ ShellChannel::ShellChannel(SshSession * server, uint32_t channel, ChannelType ty
 }
 #endif
 
+#if BEBBOSSH_AMIGA_API && BEBBOSSH_AROS
+// Output files of commands whose connection closed while they still ran.
+// The command keeps its file open, so it is deleted when the next command
+// starts instead.
+static char arosExecOrphans[4][96];
+
+static void arosExecDeleteOutFile(const char *name) {
+	if (DeleteFile(name) || IoErr() == ERROR_OBJECT_NOT_FOUND)
+		return;
+	for (int i = 0; i < 4; ++i) {
+		if (!arosExecOrphans[i][0]) {
+			strncpy(arosExecOrphans[i], name, sizeof(arosExecOrphans[i]) - 1);
+			return;
+		}
+	}
+}
+#endif
+
 ShellChannel::~ShellChannel() {
 #if BEBBOSSH_AMIGA_API
 	free(inBuffer);
 #if BEBBOSSH_AROS
 	if (arosExecOutName[0])
-		DeleteFile(arosExecOutName);
+		arosExecDeleteOutFile(arosExecOutName);
 #endif
 	#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
 	// dir is non-zero only when the opt-in cd path acquired it (x86_64); release
@@ -1082,6 +1100,20 @@ static bool arosCommandExists(const char *cmd, int keywordLen) {
 	return true;
 }
 
+// Temporary file for the output of a command. The name must not repeat
+// while an earlier command may still hold its file: daemons on the same
+// system share T:, and on i386 a command can outlive its connection while
+// a new connection gets the same socket and channel numbers.
+static void arosExecOutFileName(char *name, size_t size) {
+	static ULONG seq;
+	for (int i = 0; i < 4; ++i) {
+		if (arosExecOrphans[i][0] && (DeleteFile(arosExecOrphans[i]) || IoErr() == ERROR_OBJECT_NOT_FOUND))
+			arosExecOrphans[i][0] = 0;
+	}
+	snprintf(name, size, "T:bebbosshd-%lx-%lx.out",
+			(unsigned long)(IPTR)FindTask(NULL), (unsigned long)++seq);
+}
+
 bool ShellChannel::finishArosExecImmediate(uint32_t exitStatus) {
 	arosExecFileMode = true;
 	arosExecTimedOut = false;
@@ -1126,7 +1158,7 @@ bool ShellChannel::startArosLoadedExecFile(bool closeAfterCommand) {
 	arosExecFileMode = true;
 	arosExecTimedOut = false;
 	arosExecRc = 255;
-	snprintf(arosExecOutName, sizeof(arosExecOutName), "T:bebbosshd-%lx-%lx.out", (ULONG)server->getSockFd(), (ULONG)channel);
+	arosExecOutFileName(arosExecOutName, sizeof(arosExecOutName));
 	DeleteFile(arosExecOutName);
 	GetSysTime(&arosExecStarted);
 
@@ -1200,8 +1232,7 @@ bool ShellChannel::startArosExecFile(bool closeAfterCommand) {
 	(void)closeAfterCommand;
 	arosExecTimedOut = false;
 	arosExecRc = 255;
-	snprintf(arosExecOutName, sizeof(arosExecOutName), "T:bebbosshd-%lx-%lx.out",
-			(ULONG)server->getSockFd(), (ULONG)channel);
+	arosExecOutFileName(arosExecOutName, sizeof(arosExecOutName));
 	DeleteFile(arosExecOutName);
 	GetSysTime(&arosExecStarted);
 
@@ -1225,8 +1256,7 @@ bool ShellChannel::runArosExec(bool closeAfterCommand) {
 	return runArosExecMincrtX64(closeAfterCommand);
 #endif
 	char outName[96];
-	snprintf(outName, sizeof(outName), "T:bebbosshd-%lx-%lx.out",
-			(ULONG)server->getSockFd(), (ULONG)channel);
+	arosExecOutFileName(outName, sizeof(outName));
 
 	BPTR input = Open("NIL:", MODE_OLDFILE);
 	BPTR output = Open(outName, MODE_NEWFILE);
@@ -1288,8 +1318,7 @@ bool ShellChannel::runArosExec(bool closeAfterCommand) {
 #if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
 bool ShellChannel::runArosExecMincrtX64(bool closeAfterCommand) {
 	char outName[96];
-	snprintf(outName, sizeof(outName), "T:bebbosshd-%lx-%lx.out",
-			(ULONG)server->getSockFd(), (ULONG)channel);
+	arosExecOutFileName(outName, sizeof(outName));
 
 	DeleteFile(outName);
 	BPTR input = Open("NIL:", MODE_OLDFILE);
