@@ -358,8 +358,12 @@ void putFib(uint8_t * & q, struct FileInfoBlock * fib) {
 	nowtime.tv_usec = fib->st.st_mtim.tv_nsec / 1000;    // convert nanoseconds -> microseconds
 #endif
 #endif
-	// modtime
-	putInt32AndInc(q, nowtime.tv_usec);
+	// SFTP v3: atime, then mtime, both in seconds
+#if BEBBOSSH_AMIGA_API
+	putInt32AndInc(q, nowtime.tv_sec); // AmigaDOS keeps no access time
+#else
+	putInt32AndInc(q, fib->st.st_atime);
+#endif
 	putInt32AndInc(q, nowtime.tv_sec);
 }
 
