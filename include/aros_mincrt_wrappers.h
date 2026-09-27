@@ -18,6 +18,7 @@
 
 extern struct Library *SocketBase;
 struct hostent;
+struct Device;
 
 #ifdef __cplusplus
 extern "C" {
@@ -98,6 +99,7 @@ BOOL bebbossh_aros_examine_fh(BPTR fh, struct FileInfoBlock *fib);
 struct DosList *bebbossh_aros_attempt_lock_dos_list(ULONG flags);
 struct DosList *bebbossh_aros_next_dos_entry(struct DosList *dlist, ULONG flags);
 void bebbossh_aros_unlock_dos_list(ULONG flags);
+void bebbossh_aros_get_sys_time(struct Device *timerBase, void *tv);
 
 #ifdef __cplusplus
 }
@@ -164,6 +166,7 @@ void bebbossh_aros_unlock_dos_list(ULONG flags);
 #undef AttemptLockDosList
 #undef NextDosEntry
 #undef UnLockDosList
+#undef GetSysTime
 #undef ReadLink
 #undef MakeLink
 
@@ -229,6 +232,8 @@ void bebbossh_aros_unlock_dos_list(ULONG flags);
 #define AttemptLockDosList(flags) bebbossh_aros_attempt_lock_dos_list((flags))
 #define NextDosEntry(dlist, flags) bebbossh_aros_next_dos_entry((dlist), (flags))
 #define UnLockDosList(flags) bebbossh_aros_unlock_dos_list((flags))
+/* timer.device LVO 11; needs TimerBase in scope, like the inline version */
+#define GetSysTime(tv) bebbossh_aros_get_sys_time(TimerBase, (tv))
 #define ReadLink(port, lock, path, buffer, size) \
 	bebbossh_aros_read_link((port), (lock), (const char *)(path), (char *)(buffer), (size))
 #define MakeLink(name, dest, soft) bebbossh_aros_make_link((const char *)(name), (SIPTR)(dest), (soft))

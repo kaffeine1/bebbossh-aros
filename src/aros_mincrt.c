@@ -20,6 +20,7 @@
 #include <aros/symbolsets.h>
 #include <proto/dos.h>
 #include <proto/exec.h>
+#include <proto/timer.h>
 #include <utility/tagitem.h>
 
 struct hostent;
@@ -1885,6 +1886,25 @@ void bebbossh_aros_unlock_dos_list(ULONG flags)
     __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
 #else
     UnLockDosList(flags);
+#endif
+}
+
+void bebbossh_aros_get_sys_time(struct Device *timerBase, void *tv)
+{
+#if defined(__x86_64__)
+    APTR base = timerBase;
+    APTR func = base ? __AROS_GETVECADDR(base, 11) : 0;
+    APTR save;
+
+    if (!func || !tv)
+        return;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ((void (*)(void *))func)(tv);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+#else
+    struct Device *TimerBase = timerBase;
+    GetSysTime((struct timeval *)tv);
 #endif
 }
 

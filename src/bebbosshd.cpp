@@ -51,8 +51,9 @@
 #include <proto/dos.h>
 #include <proto/exec.h>
 #include <proto/socket.h>
-#include <aros_mincrt_wrappers.h>
 #include <proto/timer.h>
+// after proto/timer.h, so the GetSysTime wrapper macro wins
+#include <aros_mincrt_wrappers.h>
 #if BEBBOSSH_AROS
 #include <bsdsocket/socketbasetags.h>
 #endif
