@@ -180,6 +180,8 @@ unless you have a reason to centralize configuration under ENVARC:ssh:
 
   copy sshd_config.example sshd_config
 
+On x86_64 the daemon does not read this file yet; see Known Limits.
+
 The most important directives are:
 
   Port 22
@@ -258,6 +260,9 @@ Known Limits
   complete. Stdin-driven programs are rejected with exit status 2.
 - Shell redirection and pipes (`>`, `<`, `|`) are not supported on AROS and are
   rejected with exit status 2.
+- x86_64: bebbosshd does not read sshd_config yet. It listens on port 22, uses
+  PROGDIR:passwd and PROGDIR:ssh_host_ed25519_key, and starts sessions in
+  AROS:. Change them with -p, -A, -K and -H, for example: bebbosshd -p 2222
 - x86_64 only: some features are opt-in flags, off unless set before starting
   bebbosshd (setenv NAME 1): BEBBOSSH_AROS_X64_CD (cd/pwd in the interactive
   shell), BEBBOSSH_AROS_X64_SFTP_MTIME (keep upload timestamps),
