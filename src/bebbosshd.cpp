@@ -1038,7 +1038,9 @@ __stdargs int main(int argc, char *argv[]) {
 
 #if BEBBOSSH_AMIGA_API
 #if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
-		thisTask = 0;
+		// finishArosExecImmediate() signals this task. FindTask goes through the
+		// mincrt wrapper; no Process fields here, their layout differs at runtime.
+		thisTask = FindTask(NULL);
 #else
 		thisTask = FindTask(NULL);
 		logme(L_TRACE, "self %08lX mp %08lX", thisTask, &((struct Process *)thisTask)->pr_MsgPort);
