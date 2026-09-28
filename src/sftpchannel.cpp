@@ -860,6 +860,11 @@ printf("locked dir %s = %08lx\n", path, dir);
 			uint32_t delta = (uint32_t)end - offset;
 			if (delta < len)
 				len = delta;
+			// the reply goes into outdata behind any combined replies: never
+			// read more than fits, whatever length the client asked for
+			uint32_t room = (uint8_t *)server->outdata + sizeof(server->outdata) - (q + 4);
+			if (room < len)
+				len = room;
 
 			uint32_t read = Read(handle->file, q + 4, len);
 			// handle EOF
