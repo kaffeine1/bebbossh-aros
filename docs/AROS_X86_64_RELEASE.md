@@ -179,6 +179,26 @@ All three documented gates closed for v1.0.0; re-run them for every release.
 After re-validation: refresh `scripts/aros-x86_64-public-release-smoke.sh` with
 the release's tag/version/SHA256 and cut the next `v1.0.x-aros-x86_64` tag.
 
+### Network card for the stress gates
+
+The AROS `e1000.device` allocates and frees a buffer per transmitted packet in
+interrupt context, while the exec memory functions are protected by
+`Forbid()` only. Under heavy load the guest can halt, reboot by itself, or
+send a corrupted packet. This is an AROS driver problem, not a BebboSSH one:
+with four daemons and the zero-delay stress, e1000 failed in 3 of 12 fresh
+boots, rtl8139 in 0 of 24 and pcnet in 0 of 6.
+
+Run the stress and multi-daemon gates with `-device rtl8139` or
+`-device pcnet`, and set the matching driver in
+`ENVARC:AROSTCP/db/interfaces`:
+
+```text
+net0 DEV=DEVS:networks/rtl8139.device UNIT=0  IP=DHCP NETMASK=255.255.255.0 UP
+```
+
+A halt or reboot in an e1000 run is not by itself a BebboSSH regression;
+repeat the run with another card before investigating the daemon.
+
 ## Optional functional-parity flags (experimental)
 
 The x86_64/`mincrt` build keeps several i386 behaviors behind opt-in runtime
