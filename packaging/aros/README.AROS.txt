@@ -210,6 +210,11 @@ The most important directives are:
       Normal package logging. For diagnostics, use DebugLevel debug or start
       bebbosshd with -v5.
 
+  Ciphers aes128-gcm@openssh.com,chacha20-poly1305@openssh.com
+      Ciphers offered by the daemon. On i386 the default is aes128-gcm only,
+      so a client that insists on chacha20-poly1305 is disconnected; add this
+      line to offer both. The x86_64 daemon always offers both.
+
 Command-line overrides are available for quick tests:
 
   bebbosshd -p 10022 -A PROGDIR:passwd -K PROGDIR:ssh_host_ed25519_key -H DH0:
