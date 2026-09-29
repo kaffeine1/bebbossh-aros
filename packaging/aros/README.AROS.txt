@@ -180,6 +180,8 @@ unless you have a reason to centralize configuration under ENVARC:ssh:
 
   copy sshd_config.example sshd_config
 
+On x86_64 the daemon does not read this file yet; see Known Limits.
+
 The most important directives are:
 
   Port 22
@@ -207,6 +209,11 @@ The most important directives are:
   DebugLevel 1
       Normal package logging. For diagnostics, use DebugLevel debug or start
       bebbosshd with -v5.
+
+  Ciphers aes128-gcm@openssh.com,chacha20-poly1305@openssh.com
+      Ciphers offered by the daemon. On i386 the default is aes128-gcm only,
+      so a client that insists on chacha20-poly1305 is disconnected; add this
+      line to offer both. The x86_64 daemon always offers both.
 
 Command-line overrides are available for quick tests:
 
@@ -258,6 +265,9 @@ Known Limits
   complete. Stdin-driven programs are rejected with exit status 2.
 - Shell redirection and pipes (`>`, `<`, `|`) are not supported on AROS and are
   rejected with exit status 2.
+- x86_64: bebbosshd does not read sshd_config yet. It listens on port 22, uses
+  PROGDIR:passwd and PROGDIR:ssh_host_ed25519_key, and starts sessions in
+  AROS:. Change them with -p, -A, -K and -H, for example: bebbosshd -p 2222
 - x86_64 only: some features are opt-in flags, off unless set before starting
   bebbosshd (setenv NAME 1): BEBBOSSH_AROS_X64_CD (cd/pwd in the interactive
   shell), BEBBOSSH_AROS_X64_SFTP_MTIME (keep upload timestamps),
@@ -265,6 +275,12 @@ Known Limits
 - x86_64: an SFTP path on an unmounted volume opens an "insert volume"
   requester on the AROS screen and blocks the daemon until it is closed, and
   Ctrl-C does not stop the daemon.
+- AROS One x86_64 with an Intel e1000 network card (e1000.device): under heavy
+  network load the system can halt or reboot by itself. The cause is in the
+  AROS e1000 driver, not in BebboSSH; in testing it happened only with two or
+  more daemons running. Use an rtl8139 or pcnet ("vlance") card instead and
+  select its driver in the AROS network preferences
+  (DEVS:networks/rtl8139.device or DEVS:networks/pcnet32.device).
 - The test password in passwd.example is not safe. Change it before use, and do
   not distribute private host keys generated for local testing.
 
