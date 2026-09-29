@@ -230,9 +230,10 @@ VM pass over them:
 2. `bebbosshd -v5` prints log lines on x86_64 (it was silent before).
 3. Daemon teardown: when the daemon exits after a client has connected, the
    `-v5` log shows the timer request, message ports and `bsdsocket.library`
-   being released and the process ends without a guru. Ctrl-C does not stop
-   the x86_64 daemon (the mincrt main loop clears the `WaitSelect` signal
-   mask), so use a fatal path such as a duplicate channel id to exercise it.
+   being released and the process ends without a guru. Check both exits: a
+   fatal path such as a duplicate channel id, and `Break <process>` (Ctrl-C)
+   with and without a connected client; restart the daemon right away and
+   connect again.
 4. Malformed channel requests (a second `shell` on the same channel, a
    `subsystem` request with an unknown or short name) are answered with
    CHANNEL_FAILURE and the daemon keeps serving.

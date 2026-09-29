@@ -1156,7 +1156,12 @@ __stdargs int main(int argc, char *argv[]) {
 				waitTimeout.tv_sec = 1;
 				waitTimeout.tv_usec = 0;
 				WaitSelect(selectMax + 1, &readfds, NULL, NULL, &waitTimeout, &signales);
-				signales = 0;
+				// Ctrl-C (Break) stops the daemon; the timer branch collects the
+				// timer reply through the GetMsg/GetSysTime/SendIO wrappers, so
+				// timerOn clears and the stop can complete. The packet port stays
+				// masked: nothing sends to it on x86_64 and handleMsg() still makes
+				// inline DOS calls.
+				signales &= SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | timerMask;
 				checkFinished();
 				pruneDeadClients();
 #else
