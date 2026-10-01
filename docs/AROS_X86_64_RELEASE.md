@@ -271,13 +271,13 @@ VM pass over them:
    applies instead of its 1 MiB default, so run the runtime smoke with the
    example file in place.
 
-Status at v1.0.1 (AROS One x86_64, QEMU `qemu64` and
-`qemu64,+aes,+pclmulqdq,+ssse3`): items 1 to 4 and 7 pass. For item 7 the
-self-tests were linked with a replacement autoinit loop that loads `r12`
-(see the note above). Items 5 and 6 need an AROS console and are still open.
-The AROS-native clients were also exercised over loopback with public-key
-login: `bebboscp` upload and download (byte-identical), `bebbossh` command
-execution and `-L` forwarding.
+Status at v1.0.3 (AROS One x86_64, QEMU `qemu64` and
+`qemu64,+aes,+pclmulqdq,+ssse3`, rtl8139 card): items 1 to 4, 7 and 8 pass;
+for item 3 also `Break` with and without a connected client, each followed
+by an immediate restart. Items 5 and 6 need an AROS console and are still
+open. The AROS-native clients were also exercised over loopback with
+public-key login: `bebboscp` upload and download (byte-identical) and
+`bebbossh` command execution.
 
 Not covered by this list: DOS requester suppression is i386-only for now (see
 `AROS_PORTING.md`), so on x86_64 an SFTP path on an unmounted volume still
