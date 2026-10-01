@@ -130,6 +130,7 @@ static void arosExecDeleteOutFile(const char *name) {
 			return;
 		}
 	}
+	logme(L_WARN, "no slot to retry deleting %s, leaving it in T:", name);
 }
 #endif
 
@@ -1106,6 +1107,13 @@ static bool arosCommandExists(const char *cmd, int keywordLen) {
 // a new connection gets the same socket and channel numbers.
 static void arosExecOutFileName(char *name, size_t size) {
 	static ULONG seq;
+	if (!seq) {
+		// start from the clock, so a restarted daemon that gets the same task
+		// address does not reuse the names of its predecessor's files
+		struct DateStamp ds;
+		DateStamp(&ds);
+		seq = ((ULONG)ds.ds_Days * 1440 + ds.ds_Minute) * TICKS_PER_SECOND * 60 + ds.ds_Tick;
+	}
 	for (int i = 0; i < 4; ++i) {
 		if (arosExecOrphans[i][0] && (DeleteFile(arosExecOrphans[i]) || IoErr() == ERROR_OBJECT_NOT_FOUND))
 			arosExecOrphans[i][0] = 0;

@@ -273,8 +273,7 @@ Known Limits
   shell), BEBBOSSH_AROS_X64_SFTP_MTIME (keep upload timestamps),
   BEBBOSSH_AROS_X64_SFTP_LINKS (SFTP readlink/symlink).
 - x86_64: an SFTP path on an unmounted volume opens an "insert volume"
-  requester on the AROS screen and blocks the daemon until it is closed, and
-  Ctrl-C does not stop the daemon.
+  requester on the AROS screen and blocks the daemon until it is closed.
 - AROS One x86_64 with an Intel e1000 network card (e1000.device): under heavy
   network load the system can halt or reboot by itself. The cause is in the
   AROS e1000 driver, not in BebboSSH; in testing it happened only with two or

@@ -102,6 +102,9 @@ static inline long delta_ms(const struct DateStamp &now,
 
 #define NAMEWIDTH 24
 
+/** Largest SSH_FXP_READ reply payload; also advertised in limits@openssh.com. */
+static const uint32_t SFTP_MAX_READ = MAXPACKET - 32;
+
 #if BEBBOSSH_AMIGA_API
 static inline int flags2mode(int flags) {
 	if (flags & SSH2_FXF_CREAT)
@@ -860,6 +863,10 @@ printf("locked dir %s = %08lx\n", path, dir);
 			uint32_t delta = (uint32_t)end - offset;
 			if (delta < len)
 				len = delta;
+			// never more than advertised in limits@openssh.com: a longer reply
+			// is split by sendPacket() and the rest could exceed MAXPACKET
+			if (len > SFTP_MAX_READ)
+				len = SFTP_MAX_READ;
 			// the reply goes into outdata behind any combined replies: never
 			// read more than fits, whatever length the client asked for
 			uint32_t room = (uint8_t *)server->outdata + sizeof(server->outdata) - (q + 4);
@@ -1164,7 +1171,7 @@ printf("locked dir %s = %08lx\n", path, dir);
 				putInt32AndInc(q, 34006); // max packet
 
 				putInt32AndInc(q, 0);
-				putInt32AndInc(q, 32768 - 32); // max read
+				putInt32AndInc(q, SFTP_MAX_READ); // max read
 				putInt32AndInc(q, 0);
 				putInt32AndInc(q, 32768 - 32); // max write
 				putInt32AndInc(q, 0);

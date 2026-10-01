@@ -264,10 +264,14 @@ validation before the next release tag):
 - Shell: TAB completion for explicit paths (`C:Li<TAB>`); completion in the
   current directory also needs `BEBBOSSH_AROS_X64_CD`.
 
+- The x86_64 main loop now honours Ctrl-C (`Break`) and the timer signal
+  from `WaitSelect`; it used to clear the whole signal mask, so the daemon
+  could not be stopped and `timerOn` never cleared. The packet port signal
+  stays masked (unused on x86_64, `handleMsg()` still calls DOS inline).
+  Needs AROS One x86_64 VM validation.
+
 Deliberately unchanged on x86_64 (documented divergences, not regressions):
 
-- Ctrl-C does not stop the x86_64 daemon: the mincrt main loop clears the
-  signal mask returned by `WaitSelect`.
 - Exec stays synchronous (`SystemTagList`). The i386 async child-task backend
   (`CreateNewProcTagList`) previously hit a crash class on `mincrt` and is not
   compiled for x86_64. Porting it is future work gated on VM validation, not a
