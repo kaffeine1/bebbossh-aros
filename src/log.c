@@ -184,6 +184,8 @@ void parseLogLevel(char const * l) {
 		setLogLevel(L_TRACE);
 	else if (0 == strcasecmp("ultra", l))
 		setLogLevel(L_ULTRA);
+	else if (l[0] >= '0' && l[0] <= '0' + L_ULTRA && !l[1])
+		setLogLevel((enum DebugLevel)(l[0] - '0')); // same numbers as -v
 	else
 		logme(L_ERROR, "invalid logme level %s", l);
 }

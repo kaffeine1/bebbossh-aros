@@ -212,7 +212,8 @@ The most important directives are:
 
   DebugLevel 1
       Normal package logging. For diagnostics, use DebugLevel debug or start
-      bebbosshd with -v5.
+      bebbosshd with -v5. Levels are names or the numbers used by -v: 0 none,
+      1 fatal, 2 error, 3 warn, 4 info, 5 debug, 6 fine, 7 trace, 8 ultra.
 
   Ciphers aes128-gcm@openssh.com,chacha20-poly1305@openssh.com
       Ciphers offered by the daemon. On i386 the default is aes128-gcm only,
