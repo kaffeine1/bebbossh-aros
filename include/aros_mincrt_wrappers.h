@@ -26,6 +26,7 @@ extern "C" {
 
 int bebbossh_aros_socket(struct Library *base, int domain, int type, int protocol);
 int bebbossh_aros_bind(struct Library *base, int s, struct sockaddr *name, socklen_t namelen);
+int bebbossh_aros_setsockopt(struct Library *base, int s, int level, int optname, const void *optval, socklen_t optlen);
 int bebbossh_aros_listen(struct Library *base, int s, int backlog);
 int bebbossh_aros_accept(struct Library *base, int s, struct sockaddr *addr, socklen_t *addrlen);
 int bebbossh_aros_getsockname(struct Library *base, int s, struct sockaddr *name, socklen_t *namelen);
@@ -110,6 +111,7 @@ void bebbossh_aros_get_sys_time(struct Device *timerBase, void *tv);
 
 #undef socket
 #undef bind
+#undef setsockopt
 #undef listen
 #undef accept
 #undef getsockname
@@ -178,6 +180,7 @@ void bebbossh_aros_get_sys_time(struct Device *timerBase, void *tv);
 
 #define socket(domain, type, protocol) bebbossh_aros_socket(SocketBase, (domain), (type), (protocol))
 #define bind(s, name, namelen) bebbossh_aros_bind(SocketBase, (s), (name), (namelen))
+#define setsockopt(s, level, optname, optval, optlen) bebbossh_aros_setsockopt(SocketBase, (s), (level), (optname), (optval), (optlen))
 #define listen(s, backlog) bebbossh_aros_listen(SocketBase, (s), (backlog))
 #define accept(s, addr, addrlen) bebbossh_aros_accept(SocketBase, (s), (addr), (addrlen))
 #define getsockname(s, name, namelen) bebbossh_aros_getsockname(SocketBase, (s), (name), (namelen))

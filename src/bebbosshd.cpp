@@ -738,7 +738,8 @@ static bool init() {
 	}
 	logme(L_FINE, "create listen socket %ld", acceptSock);
 
-#if BEBBOSSH_LINUX
+#if BEBBOSSH_LINUX || BEBBOSSH_AROS
+	// a restarted daemon can bind again while its old connections are in TIME_WAIT
 	int yes = 1;
 	setsockopt(acceptSock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
 #endif

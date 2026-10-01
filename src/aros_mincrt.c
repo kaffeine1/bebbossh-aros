@@ -728,6 +728,23 @@ int bebbossh_aros_close_socket(struct Library *base, int s)
 #endif
 }
 
+int bebbossh_aros_setsockopt(struct Library *base, int s, int level, int optname, const void *optval, socklen_t optlen)
+{
+#if defined(__x86_64__)
+    APTR func = bebbossh_aros_libcall_base(base, 15);
+    APTR save;
+    int ret;
+    if (!func)
+        return -1;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12" : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((int (*)(int, int, int, const void *, socklen_t))func)(s, level, optname, optval, optlen);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return setsockopt(s, level, optname, optval, optlen);
+#endif
+}
+
 int bebbossh_aros_wait_select(struct Library *base, int nfds, fd_set *readfds, fd_set *writefds,
                               fd_set *exceptfds, struct timeval *timeout, ULONG *sigmask)
 {
