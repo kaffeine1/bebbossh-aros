@@ -190,6 +190,8 @@ public:
 	bool startArosLoadedExecFile(bool closeAfterCommand);
 	bool finishArosExecImmediate(uint32_t exitStatus);
 	bool runArosExec(bool closeAfterCommand);
+	// a file-mode exec child uses this channel until it sets done
+	bool isArosExecRunning() const { return arosExecFileMode && running && !done; }
 #if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
 	bool runArosExecMincrtX64(bool closeAfterCommand);
 #endif

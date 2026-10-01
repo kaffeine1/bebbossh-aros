@@ -463,6 +463,24 @@ int cancelRunning() {
 	return running;
 }
 
+#if BEBBOSSH_AROS
+// Sessions whose connection is gone while their AROS exec child still uses a
+// channel, displaced from clients[] by a new connection on the same socket.
+static SshSession * parkedSessions[8];
+
+static void parkSession(SshSession * cs) {
+	for (int i = 0; i < 8; ++i) {
+		if (!parkedSessions[i]) {
+			logme(L_DEBUG, "parking server %s until its command ends", cs->name);
+			parkedSessions[i] = cs;
+			return;
+		}
+	}
+	// keeping it allocated is safer than freeing memory the command still uses
+	logme(L_WARN, "no slot to park server %s, leaving it allocated", cs->name);
+}
+#endif
+
 // prune dead clients
 void pruneDeadClients() {
 	// needs synchronization with the runnning commands
@@ -484,6 +502,16 @@ void pruneDeadClients() {
 
 		delete cs;
 	}
+#if BEBBOSSH_AROS
+	for (int i = 0; i < 8; ++i) {
+		SshSession * cs = parkedSessions[i];
+		if (cs && !cs->isAlive()) {
+			logme(L_DEBUG, "pruning parked server %s", cs->name);
+			parkedSessions[i] = 0;
+			delete cs;
+		}
+	}
+#endif
 	ReleaseSemaphore(&theLock);
 }
 
@@ -1306,6 +1334,11 @@ __stdargs int main(int argc, char *argv[]) {
 							auto c1 = listeners.remove(clientFds);
 							auto c2 = clients.remove(clientFds);
 							logme(L_INFO, "removing client connection for old socket %ld", clientFds);
+#if BEBBOSSH_AROS
+							if (c2 && c2->isAlive())
+								parkSession(c2); // its AROS command still runs
+							else
+#endif
 							delete (c1 ? c1 : c2);
 						}
 
