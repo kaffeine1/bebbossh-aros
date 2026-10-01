@@ -1060,7 +1060,7 @@ __stdargs int main(int argc, char *argv[]) {
 			server.sin_len = sizeof(server);
 #endif
 			server.sin_family = AF_INET;
-			server.sin_addr.s_addr = serverAddress;
+			server.sin_addr.s_addr = htonl(serverAddress);
 			server.sin_port = htons(serverPort);
 #if BEBBOSSH_AROS
 		logme(L_DEBUG, "bebbosshd/AROS: binding port %ld backlog %ld accept burst %ld",
@@ -1070,10 +1070,10 @@ __stdargs int main(int argc, char *argv[]) {
 		//Bind
 			if ( bind(acceptSock,(struct sockaddr *)&server , sizeof(server)) < 0) {
 				logme(L_ERROR, "can't bind on %ld.%ld.%ld.%ld:%ld",
-					(0xff & (server.sin_addr.s_addr >> 24)),
-					(0xff & (server.sin_addr.s_addr >> 16)),
-					(0xff & (server.sin_addr.s_addr >> 8)),
-					(0xff & server.sin_addr.s_addr), htons(server.sin_port));
+					(0xff & (serverAddress >> 24)),
+					(0xff & (serverAddress >> 16)),
+					(0xff & (serverAddress >> 8)),
+					(0xff & serverAddress), htons(server.sin_port));
 				error = ERR_BIND;
 				break;
 			}
@@ -1096,10 +1096,10 @@ __stdargs int main(int argc, char *argv[]) {
 
 			//Accept and incoming connection
 			logme(L_INFO, "waiting for incoming connections on %ld.%ld.%ld.%ld:%ld",
-				(0xff & (server.sin_addr.s_addr >> 24)),
-				(0xff & (server.sin_addr.s_addr >> 16)),
-				(0xff & (server.sin_addr.s_addr >> 8)),
-				(0xff & server.sin_addr.s_addr), htons(server.sin_port));
+				(0xff & (serverAddress >> 24)),
+				(0xff & (serverAddress >> 16)),
+				(0xff & (serverAddress >> 8)),
+				(0xff & serverAddress), htons(server.sin_port));
 
 		for(;;) {
 			if (stopped) {
