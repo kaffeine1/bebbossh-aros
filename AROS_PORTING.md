@@ -263,6 +263,12 @@ validation before the next release tag):
   qualifiers for cursor keys (`keyboard.device` through the exec wrappers).
 - Shell: TAB completion for explicit paths (`C:Li<TAB>`); completion in the
   current directory also needs `BEBBOSSH_AROS_X64_CD`.
+- `bebbosshd` reads `sshd_config` like i386: `ENVARC:ssh/sshd_config`, then
+  `PROGDIR:sshd_config`. `readIni()` needs only `Open`, `FGets` and `Close`,
+  which already map to the mincrt wrappers. The old hardcoded x86_64 values
+  are now the defaults for a missing file or directive: port 22, host key
+  `PROGDIR:HOSTKEY` then `PROGDIR:ssh_host_ed25519_key`, `PROGDIR:passwd`,
+  home `AROS:`, logging off. Command-line options still override the file.
 
 - The x86_64 main loop now honours Ctrl-C (`Break`) and the timer signal
   from `WaitSelect`; it used to clear the whole signal mask, so the daemon
@@ -272,6 +278,8 @@ validation before the next release tag):
 
 Deliberately unchanged on x86_64 (documented divergences, not regressions):
 
+- `HomeDir` is only used when `BEBBOSSH_AROS_X64_CD` is set, because the
+  x86_64 daemon does not change its own current directory.
 - Exec stays synchronous (`SystemTagList`). The i386 async child-task backend
   (`CreateNewProcTagList`) previously hit a crash class on `mincrt` and is not
   compiled for x86_64. Porting it is future work gated on VM validation, not a

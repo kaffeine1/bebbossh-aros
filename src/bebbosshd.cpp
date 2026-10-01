@@ -1002,13 +1002,14 @@ __stdargs int main(int argc, char *argv[]) {
 #endif
 
 	#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
+	// x86_64 defaults, kept when sshd_config is missing or does not set them.
+	// readIni() only uses Open/FGets/Close, which map to the mincrt wrappers.
 	hostKeyName = "PROGDIR:HOSTKEY";
 	passwords = "PROGDIR:PASSWD";
 	homeDir = "AROS:";
 	setLogLevel(L_NONE);
-	#else
-	readIni();
 	#endif
+	readIni();
 	#if BEBBOSSH_AROS
 	logme(L_DEBUG, "bebbosshd/AROS: config read");
 	#endif
