@@ -22,7 +22,7 @@ AROS i386 `alt-abiv0` is a separate, stable target with its own gate
 Release naming (see `AROS_PORTING.md`):
 
 ```text
-v1.0.2-aros-x86_64
+v1.0.3-aros-x86_64
 bebbossh-aros-x86_64-<version>.zip
 bebbossh-aros-x86_64-<version>.tar.gz
 ```
@@ -58,8 +58,8 @@ artifacts.
 For a future version, override the defaults:
 
 ```sh
-BEBBOSSH_RELEASE_TAG=v1.0.3-aros-x86_64 \
-BEBBOSSH_RELEASE_VERSION=v1.0.3 \
+BEBBOSSH_RELEASE_TAG=v1.0.4-aros-x86_64 \
+BEBBOSSH_RELEASE_VERSION=v1.0.4 \
 ./scripts/aros-x86_64-public-release-smoke.sh
 ```
 
@@ -250,14 +250,34 @@ VM pass over them:
    One they crash before `main` (also on master): the prebuilt `libautoinit.a`
    calls `OpenLibrary` without SysBase in `r12`, and the test link pulls
    posixc/stdc stubs that AROS One does not ship.
+8. `sshd_config`: the x86_64 daemon now reads it (releases up to v1.0.2
+   ignored it). In the Clean VM Install Gate layout, change `Port 22` to
+   `Port 2222` in `AROS:BSSHPKG/sshd_config` (QEMU forwards host port 20222
+   to guest port 2222). `ENVARC:ssh/sshd_config`, if present, is read instead,
+   so remove it first. Stop the daemon with `Break <process>` and start it
+   again, then check from the host:
 
-Status at v1.0.1 (AROS One x86_64, QEMU `qemu64` and
-`qemu64,+aes,+pclmulqdq,+ssse3`): items 1 to 4 and 7 pass. For item 7 the
-self-tests were linked with a replacement autoinit loop that loads `r12`
-(see the note above). Items 5 and 6 need an AROS console and are still open.
-The AROS-native clients were also exercised over loopback with public-key
-login: `bebboscp` upload and download (byte-identical), `bebbossh` command
-execution and `-L` forwarding.
+   ```sh
+   sshpass -p test ssh -o StrictHostKeyChecking=no \
+     -o UserKnownHostsFile=/tmp/bebbossh_known_hosts \
+     -o PreferredAuthentications=password -o PubkeyAuthentication=no \
+     -p 20222 test@127.0.0.1 version
+   ```
+
+   It must print the AROS version, and the same command with `-p 20022` must
+   fail. Then rename `sshd_config` to `sshd_config.off`, restart the daemon,
+   and check that `-p 20022` answers again with the `test` login from
+   `PROGDIR:passwd`. The example file sets `Stack 262144`, which x86_64 now
+   applies instead of its 1 MiB default, so run the runtime smoke with the
+   example file in place.
+
+Status at v1.0.3 (AROS One x86_64, QEMU `qemu64` and
+`qemu64,+aes,+pclmulqdq,+ssse3`, rtl8139 card): items 1 to 4, 7 and 8 pass;
+for item 3 also `Break` with and without a connected client, each followed
+by an immediate restart. Items 5 and 6 need an AROS console and are still
+open. The AROS-native clients were also exercised over loopback with
+public-key login: `bebboscp` upload and download (byte-identical) and
+`bebbossh` command execution.
 
 Not covered by this list: DOS requester suppression is i386-only for now (see
 `AROS_PORTING.md`), so on x86_64 an SFTP path on an unmounted volume still

@@ -463,6 +463,24 @@ int cancelRunning() {
 	return running;
 }
 
+#if BEBBOSSH_AROS
+// Sessions whose connection is gone while their AROS exec child still uses a
+// channel, displaced from clients[] by a new connection on the same socket.
+static SshSession * parkedSessions[8];
+
+static void parkSession(SshSession * cs) {
+	for (int i = 0; i < 8; ++i) {
+		if (!parkedSessions[i]) {
+			logme(L_DEBUG, "parking server %s until its command ends", cs->name);
+			parkedSessions[i] = cs;
+			return;
+		}
+	}
+	// keeping it allocated is safer than freeing memory the command still uses
+	logme(L_WARN, "no slot to park server %s, leaving it allocated", cs->name);
+}
+#endif
+
 // prune dead clients
 void pruneDeadClients() {
 	// needs synchronization with the runnning commands
@@ -484,6 +502,16 @@ void pruneDeadClients() {
 
 		delete cs;
 	}
+#if BEBBOSSH_AROS
+	for (int i = 0; i < 8; ++i) {
+		SshSession * cs = parkedSessions[i];
+		if (cs && !cs->isAlive()) {
+			logme(L_DEBUG, "pruning parked server %s", cs->name);
+			parkedSessions[i] = 0;
+			delete cs;
+		}
+	}
+#endif
 	ReleaseSemaphore(&theLock);
 }
 
@@ -738,7 +766,8 @@ static bool init() {
 	}
 	logme(L_FINE, "create listen socket %ld", acceptSock);
 
-#if BEBBOSSH_LINUX
+#if BEBBOSSH_LINUX || BEBBOSSH_AROS
+	// a restarted daemon can bind again while its old connections are in TIME_WAIT
 	int yes = 1;
 	setsockopt(acceptSock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
 #endif
@@ -1001,13 +1030,14 @@ __stdargs int main(int argc, char *argv[]) {
 #endif
 
 	#if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
+	// x86_64 defaults, kept when sshd_config is missing or does not set them.
+	// readIni() only uses Open/FGets/Close, which map to the mincrt wrappers.
 	hostKeyName = "PROGDIR:HOSTKEY";
 	passwords = "PROGDIR:PASSWD";
 	homeDir = "AROS:";
 	setLogLevel(L_NONE);
-	#else
-	readIni();
 	#endif
+	readIni();
 	#if BEBBOSSH_AROS
 	logme(L_DEBUG, "bebbosshd/AROS: config read");
 	#endif
@@ -1058,7 +1088,7 @@ __stdargs int main(int argc, char *argv[]) {
 			server.sin_len = sizeof(server);
 #endif
 			server.sin_family = AF_INET;
-			server.sin_addr.s_addr = serverAddress;
+			server.sin_addr.s_addr = htonl(serverAddress);
 			server.sin_port = htons(serverPort);
 #if BEBBOSSH_AROS
 		logme(L_DEBUG, "bebbosshd/AROS: binding port %ld backlog %ld accept burst %ld",
@@ -1068,10 +1098,10 @@ __stdargs int main(int argc, char *argv[]) {
 		//Bind
 			if ( bind(acceptSock,(struct sockaddr *)&server , sizeof(server)) < 0) {
 				logme(L_ERROR, "can't bind on %ld.%ld.%ld.%ld:%ld",
-					(0xff & (server.sin_addr.s_addr >> 24)),
-					(0xff & (server.sin_addr.s_addr >> 16)),
-					(0xff & (server.sin_addr.s_addr >> 8)),
-					(0xff & server.sin_addr.s_addr), htons(server.sin_port));
+					(0xff & (serverAddress >> 24)),
+					(0xff & (serverAddress >> 16)),
+					(0xff & (serverAddress >> 8)),
+					(0xff & serverAddress), htons(server.sin_port));
 				error = ERR_BIND;
 				break;
 			}
@@ -1094,10 +1124,10 @@ __stdargs int main(int argc, char *argv[]) {
 
 			//Accept and incoming connection
 			logme(L_INFO, "waiting for incoming connections on %ld.%ld.%ld.%ld:%ld",
-				(0xff & (server.sin_addr.s_addr >> 24)),
-				(0xff & (server.sin_addr.s_addr >> 16)),
-				(0xff & (server.sin_addr.s_addr >> 8)),
-				(0xff & server.sin_addr.s_addr), htons(server.sin_port));
+				(0xff & (serverAddress >> 24)),
+				(0xff & (serverAddress >> 16)),
+				(0xff & (serverAddress >> 8)),
+				(0xff & serverAddress), htons(server.sin_port));
 
 		for(;;) {
 			if (stopped) {
@@ -1304,6 +1334,11 @@ __stdargs int main(int argc, char *argv[]) {
 							auto c1 = listeners.remove(clientFds);
 							auto c2 = clients.remove(clientFds);
 							logme(L_INFO, "removing client connection for old socket %ld", clientFds);
+#if BEBBOSSH_AROS
+							if (c2 && c2->isAlive())
+								parkSession(c2); // its AROS command still runs
+							else
+#endif
 							delete (c1 ? c1 : c2);
 						}
 

@@ -176,11 +176,11 @@ with `hosted` in the name; hosted describes a validation environment, not a
 runtime target.
 
 ```text
-v1.0.2-aros-i386-abiv0
+v1.0.3-aros-i386-abiv0
 bebbossh-aros-i386-abiv0-<version>.zip
 bebbossh-aros-i386-abiv0-<version>.tar.gz
 
-v1.0.2-aros-x86_64
+v1.0.3-aros-x86_64
 bebbossh-aros-x86_64-<version>.zip
 bebbossh-aros-x86_64-<version>.tar.gz
 ```
@@ -263,15 +263,24 @@ validation before the next release tag):
   qualifiers for cursor keys (`keyboard.device` through the exec wrappers).
 - Shell: TAB completion for explicit paths (`C:Li<TAB>`); completion in the
   current directory also needs `BEBBOSSH_AROS_X64_CD`.
+- `bebbosshd` reads `sshd_config` like i386: `ENVARC:ssh/sshd_config`, then
+  `PROGDIR:sshd_config`. `readIni()` needs only `Open`, `FGets` and `Close`,
+  which already map to the mincrt wrappers. The old hardcoded x86_64 values
+  are now the defaults for a missing file or directive: port 22, host key
+  `PROGDIR:HOSTKEY` then `PROGDIR:ssh_host_ed25519_key`, `PROGDIR:passwd`,
+  home `AROS:`, logging off. Command-line options still override the file.
 
 - The x86_64 main loop now honours Ctrl-C (`Break`) and the timer signal
   from `WaitSelect`; it used to clear the whole signal mask, so the daemon
   could not be stopped and `timerOn` never cleared. The packet port signal
   stays masked (unused on x86_64, `handleMsg()` still calls DOS inline).
-  Needs AROS One x86_64 VM validation.
+  Validated on AROS One x86_64 with and without a connected client; the
+  listening socket uses `SO_REUSEADDR`, so the daemon can start again at once.
 
 Deliberately unchanged on x86_64 (documented divergences, not regressions):
 
+- `HomeDir` is only used when `BEBBOSSH_AROS_X64_CD` is set, because the
+  x86_64 daemon does not change its own current directory.
 - Exec stays synchronous (`SystemTagList`). The i386 async child-task backend
   (`CreateNewProcTagList`) previously hit a crash class on `mincrt` and is not
   compiled for x86_64. Porting it is future work gated on VM validation, not a

@@ -180,7 +180,10 @@ unless you have a reason to centralize configuration under ENVARC:ssh:
 
   copy sshd_config.example sshd_config
 
-On x86_64 the daemon does not read this file yet; see Known Limits.
+The i386 and x86_64 daemons both read this file (x86_64 releases up to
+v1.0.2 ignored it). Without it, the x86_64 daemon listens on port 22, uses
+PROGDIR:passwd and PROGDIR:ssh_host_ed25519_key, and logs nothing unless
+started with -v.
 
 The most important directives are:
 
@@ -205,15 +208,18 @@ The most important directives are:
 
   Stack 262144
       Stack used by command/shell tasks. Keep this conservative on i386.
+      Without a Stack line the daemon uses 1048576 (1 MiB).
 
   DebugLevel 1
       Normal package logging. For diagnostics, use DebugLevel debug or start
-      bebbosshd with -v5.
+      bebbosshd with -v5. Levels are names or the numbers used by -v: 0 none,
+      1 fatal, 2 error, 3 warn, 4 info, 5 debug, 6 fine, 7 trace, 8 ultra.
 
   Ciphers aes128-gcm@openssh.com,chacha20-poly1305@openssh.com
       Ciphers offered by the daemon. On i386 the default is aes128-gcm only,
       so a client that insists on chacha20-poly1305 is disconnected; add this
-      line to offer both. The x86_64 daemon always offers both.
+      line to offer both. Without a Ciphers line the x86_64 daemon offers
+      both.
 
 Command-line overrides are available for quick tests:
 
@@ -265,9 +271,8 @@ Known Limits
   complete. Stdin-driven programs are rejected with exit status 2.
 - Shell redirection and pipes (`>`, `<`, `|`) are not supported on AROS and are
   rejected with exit status 2.
-- x86_64: bebbosshd does not read sshd_config yet. It listens on port 22, uses
-  PROGDIR:passwd and PROGDIR:ssh_host_ed25519_key, and starts sessions in
-  AROS:. Change them with -p, -A, -K and -H, for example: bebbosshd -p 2222
+- x86_64: HomeDir is only used when BEBBOSSH_AROS_X64_CD is set (see the next
+  item).
 - x86_64 only: some features are opt-in flags, off unless set before starting
   bebbosshd (setenv NAME 1): BEBBOSSH_AROS_X64_CD (cd/pwd in the interactive
   shell), BEBBOSSH_AROS_X64_SFTP_MTIME (keep upload timestamps),

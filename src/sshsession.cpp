@@ -370,6 +370,15 @@ void SshSession::sendBreak() const {
 }
 
 bool SshSession::isAlive() const {
+#if BEBBOSSH_AROS
+	// a file-mode AROS exec child still uses its ShellChannel: keep the
+	// session, even when the connection is gone, until the command has ended
+	for (int i = 0; i < channels.getMax(); ++i) {
+		Channel *c = channels[i];
+		if (c && c->isSession() && ((ShellChannel*) c)->isArosExecRunning())
+			return true;
+	}
+#endif
 	if (dead)
 		return false;
 	logme(L_DEBUG, "server has %ld channels", channels.getCount());

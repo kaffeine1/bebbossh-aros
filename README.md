@@ -25,8 +25,8 @@ point per architecture:
 
 | Target | Status |
 | --- | --- |
-| AROS i386 `alt-abiv0` | stable (v1.0.2) |
-| AROS x86_64 (mincrt) | stable (v1.0.2; tested against OpenSSH-class clients) |
+| AROS i386 `alt-abiv0` | stable (v1.0.3) |
+| AROS x86_64 (mincrt) | stable (v1.0.3; tested against OpenSSH-class clients) |
 
 What works: the SSH server (`bebbosshd`) and client (`bebbossh`), Ed25519
 key generation (`bebbosshkeygen`), non-interactive remote command execution,
@@ -38,8 +38,19 @@ remote shell redirection or pipes (`>`, `<`, `|`).
 
 Latest public runtime releases:
 
-- i386 `alt-abiv0`: https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.2-aros-i386-abiv0
-- x86_64 `mincrt`: https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.2-aros-x86_64
+- i386 `alt-abiv0`: https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.3-aros-i386-abiv0
+- x86_64 `mincrt`: https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.3-aros-x86_64
+
+### Roadmap
+
+- i386 interactive shell: if the connection drops while the shell is
+  running, the session can be released while the shell still uses it.
+  1.0.3 keeps the session for a running command; the shell needs the same,
+  plus an end-of-file for its reads once the connection is gone.
+- SFTP: apply the times from `FSETSTAT` after `CLOSE` (OpenSSH `put -p`),
+  following the next upstream BebboSSH release.
+- x86_64: suppress the DOS requester for a missing volume, and test the
+  native client on an AROS console.
 
 Build/packaging: see `AROS_PORTING.md` · Installation/use: see
 `packaging/aros/README.AROS.txt` · Testing: see `docs/AROS_TESTER.md`.
