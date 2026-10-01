@@ -176,11 +176,11 @@ with `hosted` in the name; hosted describes a validation environment, not a
 runtime target.
 
 ```text
-v1.0.2-aros-i386-abiv0
+v1.0.3-aros-i386-abiv0
 bebbossh-aros-i386-abiv0-<version>.zip
 bebbossh-aros-i386-abiv0-<version>.tar.gz
 
-v1.0.2-aros-x86_64
+v1.0.3-aros-x86_64
 bebbossh-aros-x86_64-<version>.zip
 bebbossh-aros-x86_64-<version>.tar.gz
 ```
@@ -274,7 +274,8 @@ validation before the next release tag):
   from `WaitSelect`; it used to clear the whole signal mask, so the daemon
   could not be stopped and `timerOn` never cleared. The packet port signal
   stays masked (unused on x86_64, `handleMsg()` still calls DOS inline).
-  Needs AROS One x86_64 VM validation.
+  Validated on AROS One x86_64 with and without a connected client; the
+  listening socket uses `SO_REUSEADDR`, so the daemon can start again at once.
 
 Deliberately unchanged on x86_64 (documented divergences, not regressions):
 

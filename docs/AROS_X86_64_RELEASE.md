@@ -22,7 +22,7 @@ AROS i386 `alt-abiv0` is a separate, stable target with its own gate
 Release naming (see `AROS_PORTING.md`):
 
 ```text
-v1.0.2-aros-x86_64
+v1.0.3-aros-x86_64
 bebbossh-aros-x86_64-<version>.zip
 bebbossh-aros-x86_64-<version>.tar.gz
 ```
@@ -58,8 +58,8 @@ artifacts.
 For a future version, override the defaults:
 
 ```sh
-BEBBOSSH_RELEASE_TAG=v1.0.3-aros-x86_64 \
-BEBBOSSH_RELEASE_VERSION=v1.0.3 \
+BEBBOSSH_RELEASE_TAG=v1.0.4-aros-x86_64 \
+BEBBOSSH_RELEASE_VERSION=v1.0.4 \
 ./scripts/aros-x86_64-public-release-smoke.sh
 ```
 
