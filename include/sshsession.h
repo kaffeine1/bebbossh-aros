@@ -127,6 +127,10 @@ struct SshSession : public Listener {
 	void sendBreak() const;
 	void checkFinished();
 	bool isAlive() const;
+#if BEBBOSSH_AROS
+	/// true while an AROS file-mode exec child still uses one of the channels
+	bool hasRunningCommand() const;
+#endif
 	ShellChannel * findShellChannelByBreakPort(struct MsgPort * mp) const;
 	int channelWrite(uint32_t channel, void const * data, int len);
 	void closeChannel(Channel * channel, uint32_t exitStatus = 0);
