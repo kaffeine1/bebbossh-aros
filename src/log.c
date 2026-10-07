@@ -70,7 +70,8 @@ static void logmeMincrt(enum DebugLevel lvl, char const *fmt, va_list args) {
 	int len;
 
 	DateStamp(&ds);
-	len = snprintf(line, sizeof(line), "[aros:%ld.%02ld.%03ld] [%s] ", (long)ds.ds_Days, (long)ds.ds_Minute,
+	len = snprintf(line, sizeof(line), "[aros:%ld.%02ld:%02ld:%02ld.%03ld] [%s] ", (long)ds.ds_Days,
+			(long)(ds.ds_Minute / 60), (long)(ds.ds_Minute % 60), (long)(ds.ds_Tick / TICKS_PER_SECOND),
 			(long)((ds.ds_Tick % TICKS_PER_SECOND) * 20), LEVELNAMES[lvl]);
 	if (len < 0 || len >= (int)sizeof(line) - 2)
 		len = strlen(line);
@@ -97,7 +98,8 @@ void logme(enum DebugLevel lvl, char const *fmt, ...) {
 		struct DateStamp ds;
 		DateStamp(&ds);
 		ms = (ds.ds_Tick % TICKS_PER_SECOND) * 20;
-		Printf("[aros:%ld.%02ld.%03ld] [%s] ", ds.ds_Days, ds.ds_Minute, (LONG)ms, LEVELNAMES[lvl]);
+		Printf("[aros:%ld.%02ld:%02ld:%02ld.%03ld] [%s] ", ds.ds_Days, ds.ds_Minute / 60, ds.ds_Minute % 60,
+				ds.ds_Tick / TICKS_PER_SECOND, (LONG)ms, LEVELNAMES[lvl]);
 #ifdef AROS_SLOWSTACKFORMAT
 		RAWARG data = 0;
 		ULONG datasize = 0;
