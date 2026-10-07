@@ -167,3 +167,18 @@ BEBBOSSH_AROS_PORT=10022 ./scripts/aros-i386-public-release-smoke.sh
 
 If it fails, first confirm that the VM is actually running the public release
 binary and not an older lab `bebbosshd` left in `DH0:BSSHPKG`.
+
+## Daemon Stop Gate
+
+Start `bebbosshd -v5`, then check that `Break <process>` (Ctrl-C) frees nothing
+a command still uses:
+
+1. Idle daemon, and with an idle connected client: the daemon exits within a
+   second or two and can be started again at once.
+2. A running command (`ssh ... Wait 20`): the command still runs to its end,
+   since the Break cannot reach a command whose output goes to a file. Until
+   then the log shows "waiting for N busy sessions to end their commands",
+   then "exiting main loop"; no guru.
+3. The same with the connection dropped while `Wait 20` runs and a new
+   connection opened on the same socket (a parked session): the daemon waits
+   for the parked command too.

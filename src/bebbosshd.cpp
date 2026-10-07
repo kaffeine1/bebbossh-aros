@@ -441,6 +441,12 @@ void timeoutWaitForChar() {
 }
 #endif
 
+#if BEBBOSSH_AROS
+// Sessions whose connection is gone while their AROS exec child still uses a
+// channel, displaced from clients[] by a new connection on the same socket.
+static SshSession * parkedSessions[8];
+#endif
+
 int cancelRunning() {
 	int running = 0;
 	ObtainSemaphore(&theLock);
@@ -457,6 +463,15 @@ int cancelRunning() {
 			cs->close();
 		}
 	}
+#if BEBBOSSH_AROS
+	for (int i = 0; i < 8; ++i) {
+		SshSession * cs = parkedSessions[i];
+		if (cs && cs->hasRunningCommand()) {
+			cs->sendBreak();
+			++running;
+		}
+	}
+#endif
 	ReleaseSemaphore(&theLock);
 	if (running)
 		logme(L_WARN, "%ld clients are still busy", running);
@@ -464,10 +479,6 @@ int cancelRunning() {
 }
 
 #if BEBBOSSH_AROS
-// Sessions whose connection is gone while their AROS exec child still uses a
-// channel, displaced from clients[] by a new connection on the same socket.
-static SshSession * parkedSessions[8];
-
 static void parkSession(SshSession * cs) {
 	for (int i = 0; i < 8; ++i) {
 		if (!parkedSessions[i]) {
@@ -479,6 +490,32 @@ static void parkSession(SshSession * cs) {
 	// keeping it allocated is safer than freeing memory the command still uses
 	logme(L_WARN, "no slot to park server %s, leaving it allocated", cs->name);
 }
+
+// Sessions a stopping daemon must not free yet: live ones that isAlive()
+// keeps and parked ones whose file-mode exec child still writes into its
+// ShellChannel.
+static int busyArosSessions() {
+	int n = 0;
+	uint32_t sz = clients.getMax();
+	for (uint32_t i = 0; i < sz; ++i) {
+		if (clients[i] && clients[i]->isAlive())
+			++n;
+	}
+	for (int i = 0; i < 8; ++i) {
+		if (parkedSessions[i] && parkedSessions[i]->hasRunningCommand())
+			++n;
+	}
+	return n;
+}
+
+static LONG arosSeconds() {
+	struct DateStamp ds;
+	DateStamp(&ds);
+	return ((LONG)ds.ds_Days * 1440 + ds.ds_Minute) * 60 + ds.ds_Tick / TICKS_PER_SECOND;
+}
+
+// after this long a stopping daemon reports what it is still waiting for
+#define AROS_STOP_WARN_SECONDS 30
 #endif
 
 // prune dead clients
@@ -670,6 +707,12 @@ void abortAll() {
 		if (c)
 			c->abort();
 	}
+#if BEBBOSSH_AROS
+	for (int i = 0; i < 8; ++i) {
+		if (parkedSessions[i])
+			parkedSessions[i]->abort();
+	}
+#endif
 }
 
 static bool init() {
@@ -1129,16 +1172,40 @@ __stdargs int main(int argc, char *argv[]) {
 				(0xff & (serverAddress >> 8)),
 				(0xff & serverAddress), htons(server.sin_port));
 
+#if BEBBOSSH_AROS
+		LONG stopSince = 0;
+#endif
 		for(;;) {
 			if (stopped) {
+#if BEBBOSSH_AROS
+				if (!stopSince) {
+					stopSince = arosSeconds();
+					cancelRunning(); // close the idle sessions right away
+				}
+#endif
 				abortAll();
 				pruneDeadClients();
 			}
 
 			// terminated
 			if (stopped && !timerOn) {
+#if BEBBOSSH_AROS
+				// Children of live and parked sessions use daemon memory until
+				// they end, so wait for them after the Break instead of freeing
+				// it under them. They signal CTRL_F when they finish; WaitSelect
+				// also wakes up every second while stopping.
+				int busy = busyArosSessions();
+				if (!busy) {
+					logme(L_INFO, "exiting main loop");
+					break;
+				}
+				if (!(stopped & 15))
+					logme(arosSeconds() - stopSince < AROS_STOP_WARN_SECONDS ? L_INFO : L_WARN,
+						"waiting for %ld busy sessions to end their commands", (LONG)busy);
+#else
 				logme(L_INFO, "exiting main loop");
 				break;
+#endif
 			}
 
 			if (stopped && !(++stopped&15)) {
@@ -1194,6 +1261,12 @@ __stdargs int main(int argc, char *argv[]) {
 				signales &= SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | timerMask;
 				checkFinished();
 				pruneDeadClients();
+#elif BEBBOSSH_AROS
+			// while stopping, wake up regularly to check the running commands
+			struct timeval stopWait;
+			stopWait.tv_sec = 1;
+			stopWait.tv_usec = 0;
+			WaitSelect(selectMax + 1, &readfds, NULL, NULL, stopped ? &stopWait : 0, &signales);
 #else
 			WaitSelect(selectMax + 1, &readfds, NULL, NULL, 0, &signales);
 #endif
@@ -1221,7 +1294,13 @@ __stdargs int main(int argc, char *argv[]) {
 				if (noopMask)
 					sendNoop();
 			}
+#if BEBBOSSH_AROS
+			// not while stopping: the stop waits for !timerOn, and WaitSelect
+			// wakes up every second on its own then
+			if (clients.getCount() && !timerOn && !stopped)
+#else
 			if (clients.getCount() && !timerOn)
+#endif
 				startTimer();
 
 			if (signales & portMask) {
