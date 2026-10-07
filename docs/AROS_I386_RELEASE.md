@@ -175,9 +175,10 @@ a command still uses:
 
 1. Idle daemon, and with an idle connected client: the daemon exits within a
    second or two and can be started again at once.
-2. A running command (`ssh ... Wait 20`): the Break reaches the command, the
-   log shows "waiting for N busy sessions to end their commands" until it
-   ends, then "exiting main loop"; no guru.
+2. A running command (`ssh ... Wait 20`): the command still runs to its end,
+   since the Break cannot reach a command whose output goes to a file. Until
+   then the log shows "waiting for N busy sessions to end their commands",
+   then "exiting main loop"; no guru.
 3. The same with the connection dropped while `Wait 20` runs and a new
    connection opened on the same socket (a parked session): the daemon waits
    for the parked command too.

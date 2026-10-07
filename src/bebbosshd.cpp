@@ -491,9 +491,9 @@ static void parkSession(SshSession * cs) {
 	logme(L_WARN, "no slot to park server %s, leaving it allocated", cs->name);
 }
 
-// Sessions a stopping daemon must not free yet: live ones (an interactive
-// shell child still sends packets to the daemon port) and parked ones whose
-// file-mode exec child still writes into its ShellChannel.
+// Sessions a stopping daemon must not free yet: live ones that isAlive()
+// keeps and parked ones whose file-mode exec child still writes into its
+// ShellChannel.
 static int busyArosSessions() {
 	int n = 0;
 	uint32_t sz = clients.getMax();
@@ -1180,7 +1180,7 @@ __stdargs int main(int argc, char *argv[]) {
 #if BEBBOSSH_AROS
 				if (!stopSince) {
 					stopSince = arosSeconds();
-					cancelRunning(); // Break the running commands right away
+					cancelRunning(); // close the idle sessions right away
 				}
 #endif
 				abortAll();

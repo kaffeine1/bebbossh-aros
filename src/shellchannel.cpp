@@ -889,6 +889,11 @@ void ShellChannel::startProc() {
 		}
 		if (input)
 			Close(input);
+#ifndef BEBBOSSH_AROS_MINCRT // x86_64 runs commands synchronously
+		// no Permit(): the Forbid ends with this process, so the daemon cannot
+		// exit and unload this code before the process has left it
+		Forbid();
+#endif
 		sc->done = 1;
 		Signal(thisTask, SIGBREAKF_CTRL_F);
 		return;
