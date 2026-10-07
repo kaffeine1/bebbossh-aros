@@ -272,12 +272,13 @@ VM pass over them:
    applies instead of its 1 MiB default, so run the runtime smoke with the
    example file in place.
 
-Status at v1.0.3 (AROS One x86_64, QEMU `qemu64` and
-`qemu64,+aes,+pclmulqdq,+ssse3`, rtl8139 card): items 1 to 4, 7 and 8 pass;
-for item 3 also `Break` with and without a connected client, each followed
-by an immediate restart. Item 6 also passes from the host, with the TAB
-sent on its own as a terminal sends it (checked on the v1.0.3 kit after the
-release). Item 5 needs an AROS console and is still open. The AROS-native clients were also exercised over loopback with
+Status at v1.0.4 (AROS One x86_64, QEMU `qemu64` and
+`qemu64,+aes,+pclmulqdq,+ssse3`, rtl8139 card): items 1 to 4, 6 and 7 pass;
+for item 3 `Break` on an idle daemon, with an idle client and during a
+running command, each followed by an immediate restart. Item 6 runs from the
+host, with the TAB sent on its own as a terminal sends it. Item 8 passed at
+v1.0.3 and its code has not changed since. Item 5 needs an AROS console and is
+still open. The AROS-native clients were also exercised over loopback with
 public-key login: `bebboscp` upload and download (byte-identical) and
 `bebbossh` command execution.
 
