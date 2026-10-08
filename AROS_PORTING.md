@@ -176,11 +176,11 @@ with `hosted` in the name; hosted describes a validation environment, not a
 runtime target.
 
 ```text
-v1.0.3-aros-i386-abiv0
+v1.0.4-aros-i386-abiv0
 bebbossh-aros-i386-abiv0-<version>.zip
 bebbossh-aros-i386-abiv0-<version>.tar.gz
 
-v1.0.3-aros-x86_64
+v1.0.4-aros-x86_64
 bebbossh-aros-x86_64-<version>.zip
 bebbossh-aros-x86_64-<version>.tar.gz
 ```
@@ -261,7 +261,7 @@ validation before the next release tag):
   on an AROS One VM.
 - Client: `Ctrl-C` in the password prompt (`SetSignal`) and keyboard
   qualifiers for cursor keys (`keyboard.device` through the exec wrappers).
-- Shell: TAB completion for explicit paths (`C:Li<TAB>`); completion in the
+- Shell: TAB completion for explicit paths (`C:Vers<TAB>`); completion in the
   current directory also needs `BEBBOSSH_AROS_X64_CD`.
 - `bebbosshd` reads `sshd_config` like i386: `ENVARC:ssh/sshd_config`, then
   `PROGDIR:sshd_config`. `readIni()` needs only `Open`, `FGets` and `Close`,
@@ -461,10 +461,13 @@ Known limits:
   available. Minimal-runtime builds avoid the fragile AROS OS entropy calls and
   use a self-contained mixer instead.
 - Remote `exec` covers simple non-interactive commands only. On i386 the
-  child-task backend has a soft 30-second timeout and keeps the daemon
-  responsive; the x86_64/mincrt synchronous backend blocks the daemon and is for
-  bounded commands only (intentional divergence; see the x86_64 parity status
-  section).
+  child-task backend keeps the daemon responsive; after 30 seconds it sends a
+  timeout notice and reports exit status 124, but the command runs to its end
+  (Ctrl-C cannot reach a command whose output goes to a file). The
+  x86_64/mincrt synchronous backend blocks the daemon and is for bounded
+  commands only (intentional divergence; see the x86_64 parity status section).
+- Commands typed in the interactive SSH shell run inside the daemon on both
+  targets, so other clients wait until they end.
 - Shell redirection and pipes (`>`, `<`, `|`) are rejected before execution; a
   remote `>/NIL:` test degraded the daemon.
 - Known interactive/stdin-driven commands are rejected with exit status 2 (even

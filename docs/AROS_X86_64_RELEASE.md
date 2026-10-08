@@ -22,7 +22,7 @@ AROS i386 `alt-abiv0` is a separate, stable target with its own gate
 Release naming (see `AROS_PORTING.md`):
 
 ```text
-v1.0.3-aros-x86_64
+v1.0.4-aros-x86_64
 bebbossh-aros-x86_64-<version>.zip
 bebbossh-aros-x86_64-<version>.tar.gz
 ```
@@ -58,8 +58,8 @@ artifacts.
 For a future version, override the defaults:
 
 ```sh
-BEBBOSSH_RELEASE_TAG=v1.0.4-aros-x86_64 \
-BEBBOSSH_RELEASE_VERSION=v1.0.4 \
+BEBBOSSH_RELEASE_TAG=v1.0.5-aros-x86_64 \
+BEBBOSSH_RELEASE_VERSION=v1.0.5 \
 ./scripts/aros-x86_64-public-release-smoke.sh
 ```
 
@@ -241,7 +241,8 @@ VM pass over them:
    cooked mode; Ctrl-C at the password prompt quits; Shift+cursor keys reach
    the remote side as modified cursor keys; `setenv USER name` is used as the
    default login name.
-6. Interactive shell: `C:Li<TAB>` completes to `C:List`.
+6. Interactive shell: `C:Vers<TAB>` completes to `C:Version`; an ambiguous
+   prefix such as `C:Li` lists the matches.
 7. Crypto: one SCP transfer with each cipher (`-c aes128-gcm@openssh.com`,
    `-c chacha20-poly1305@openssh.com`), on a VM CPU model that exposes
    AES-NI/PCLMULQDQ (QEMU `-cpu qemu64,+aes,+pclmulqdq,+ssse3` or `-cpu host`)
@@ -271,11 +272,13 @@ VM pass over them:
    applies instead of its 1 MiB default, so run the runtime smoke with the
    example file in place.
 
-Status at v1.0.3 (AROS One x86_64, QEMU `qemu64` and
-`qemu64,+aes,+pclmulqdq,+ssse3`, rtl8139 card): items 1 to 4, 7 and 8 pass;
-for item 3 also `Break` with and without a connected client, each followed
-by an immediate restart. Items 5 and 6 need an AROS console and are still
-open. The AROS-native clients were also exercised over loopback with
+Status at v1.0.4 (AROS One x86_64, QEMU `qemu64` and
+`qemu64,+aes,+pclmulqdq,+ssse3`, rtl8139 card): items 1 to 4, 6 and 7 pass;
+for item 3 `Break` on an idle daemon, with an idle client and during a
+running command, each followed by an immediate restart. Item 6 runs from the
+host, with the TAB sent on its own as a terminal sends it. Item 8 passed at
+v1.0.3 and its code has not changed since. Item 5 needs an AROS console and is
+still open. The AROS-native clients were also exercised over loopback with
 public-key login: `bebboscp` upload and download (byte-identical) and
 `bebbossh` command execution.
 

@@ -1307,7 +1307,8 @@ bool ShellChannel::runArosExec(bool closeAfterCommand) {
 			LONG got = Read(output, buf, sizeof(buf));
 			if (got <= 0)
 				break;
-			server->channelWrite(channel, buf, got);
+			if (server->channelWrite(channel, buf, got) < 0)
+				break; // the connection is gone
 		}
 		Close(output);
 	}
@@ -1380,7 +1381,8 @@ bool ShellChannel::runArosExecMincrtX64(bool closeAfterCommand) {
 			LONG got = Read(output, buf, sizeof(buf));
 			if (got <= 0)
 				break;
-			server->channelWrite(channel, buf, got);
+			if (server->channelWrite(channel, buf, got) < 0)
+				break; // the connection is gone
 		}
 		Close(output);
 	}
@@ -1605,7 +1607,8 @@ bool ShellChannel::endCommand(){
 					LONG got = Read(output, buf, sizeof(buf));
 					if (got <= 0)
 						break;
-					server->channelWrite(channel, buf, got);
+					if (server->channelWrite(channel, buf, got) < 0)
+						break; // the connection is gone
 				}
 				Close(output);
 			}

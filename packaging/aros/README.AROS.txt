@@ -269,6 +269,13 @@ Known Limits
 - Interactive SSH sessions can run simple commands (dir, cd, version, exit) and
   return to the prompt, but full PTY-style interactive program support is not
   complete. Stdin-driven programs are rejected with exit status 2.
+- A command typed in an interactive SSH session runs inside the daemon, on
+  both targets: other connections wait until it ends, and Ctrl-C does not
+  stop it. On i386, run long commands as `ssh host command`, which runs them
+  in a child task and keeps the daemon responsive.
+- i386: a remote command still running after 30 seconds gets a timeout
+  notice and exit status 124, but it keeps running until it ends. A daemon
+  stopped with Ctrl-C also waits for its running commands to end.
 - Shell redirection and pipes (`>`, `<`, `|`) are not supported on AROS and are
   rejected with exit status 2.
 - x86_64: HomeDir is only used when BEBBOSSH_AROS_X64_CD is set (see the next
@@ -282,8 +289,9 @@ Known Limits
 - AROS One x86_64 with an Intel e1000 network card (e1000.device): under heavy
   network load the system can halt or reboot by itself. The cause is in the
   AROS e1000 driver, not in BebboSSH; in testing it happened only with two or
-  more daemons running. Use an rtl8139 or pcnet ("vlance") card instead and
-  select its driver in the AROS network preferences
+  more daemons running. It is fixed upstream (deadwood2/AROS issue 274);
+  until AROS One ships the fixed driver, use an rtl8139 or pcnet ("vlance")
+  card and select its driver in the AROS network preferences
   (DEVS:networks/rtl8139.device or DEVS:networks/pcnet32.device).
 - The test password in passwd.example is not safe. Change it before use, and do
   not distribute private host keys generated for local testing.
