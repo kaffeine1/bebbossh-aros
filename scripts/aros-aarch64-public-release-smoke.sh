@@ -8,9 +8,9 @@ repo=${BEBBOSSH_RELEASE_REPO:-kaffeine1/bebbossh-aros}
 tag=${BEBBOSSH_RELEASE_TAG:-v1.0.5-aros-aarch64}
 version=${BEBBOSSH_RELEASE_VERSION:-v1.0.5}
 base="bebbossh-aros-aarch64-$version"
-# Set to the v1.0.5 release archives once they are published.
-expected_zip=${BEBBOSSH_RELEASE_ZIP_SHA256:-}
-expected_tgz=${BEBBOSSH_RELEASE_TGZ_SHA256:-}
+# Defaults match the v1.0.5 release archives. Override at release time.
+expected_zip=${BEBBOSSH_RELEASE_ZIP_SHA256:-f7267a217701b96ce18262499ea02b27f12ab00bd32fcc630e3925358ff240b4}
+expected_tgz=${BEBBOSSH_RELEASE_TGZ_SHA256:-4e3f994b34f420d9982cad1fde9123994dc6d7bfb114617ce61a461c86702d7b}
 
 host=${BEBBOSSH_AROS_HOST:-127.0.0.1}
 port=${BEBBOSSH_AROS_PORT:-}
