@@ -222,8 +222,9 @@ The most important directives are:
   Ciphers aes128-gcm@openssh.com,chacha20-poly1305@openssh.com
       Ciphers offered by the daemon. On i386 the default is aes128-gcm only,
       so a client that insists on chacha20-poly1305 is disconnected; add this
-      line to offer both. Without a Ciphers line the x86_64 daemon offers
-      both.
+      line to offer both. Without a Ciphers line the x86_64 and aarch64
+      daemons offer both; the client chooses, and OpenSSH chooses
+      chacha20-poly1305 by default.
 
 Command-line overrides are available for quick tests:
 
@@ -267,7 +268,9 @@ Current Runtime Status
   PCLMULQDQ when the CPU (or the VM CPU model) provides them.
 - aarch64 (AROS on the Raspberry Pi, the aarch64 kit): first release, tested
   on a Raspberry Pi 400. It works like the i386 kit: a remote command
-  (ssh host command) runs in a child task.
+  (ssh host command) runs in a child task. AES-GCM runs as plain C there,
+  without AES instructions, so the daemon also offers chacha20-poly1305 and
+  bebbossh/bebboscp try it first.
 
 A clean-VM i386 release checklist is kept in the source repository under
 docs/AROS_I386_RELEASE.md.

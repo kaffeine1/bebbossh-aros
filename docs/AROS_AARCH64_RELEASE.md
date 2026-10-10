@@ -161,6 +161,23 @@ In QEMU (`raspi3b`, AROS nightly of 2026-10-05) the daemon also exits without
 a kernel trap after a duplicate channel id and after `Break`, and the battery
 of items 2 and 5 to 8 passes.
 
+## Changes to validate before the next tag
+
+1. Ciphers: without a `Ciphers` line the daemon now offers
+   `chacha20-poly1305@openssh.com` as well (v1.0.5 offered only
+   `aes128-gcm@openssh.com`), and `bebbossh`/`bebboscp` try it first;
+   `--ciphers` and `ssh_config` still set the order. AES-GCM is plain C on
+   aarch64, without AES instructions. ChaCha20, Poly1305 and the SSH AEAD
+   give the same output as x86_64 and pass the RFC 8439 vectors in a Linux
+   aarch64 build under QEMU user mode. On the Pi:
+   - OpenSSH `scp` of 1 MiB both ways without `-c` (`scp -v` prints the
+     negotiated cipher) and with `-c aes128-gcm@openssh.com`, byte-identical;
+     compare the two transfer times.
+   - `bebboscp` over loopback to a daemon started with `-v5` (a short check
+     only, see Known limits): the log shows
+     `using chacha20-poly1305@openssh.com`, and with `--ciphers 1`
+     `using aes128-gcm@openssh.com`.
+
 ## Known limits
 
 - Raspberry Pi 400: a daemon logging at debug level (`-v5`) into a console

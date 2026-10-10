@@ -194,7 +194,7 @@ header. The wrapper adds three compiler flags:
   tested with a signed `char`.
 
 aarch64 uses the same code paths as i386 (full SDK, remote commands in child
-tasks), with two differences:
+tasks), with three differences:
 
 - `src/rand.c` mixes in the generic timer count `cntvct_el0`, which AROS tasks
   can read (54 MHz on the Pi 400, 62.5 MHz in QEMU), where x86 uses `rdtsc`.
@@ -205,6 +205,10 @@ tasks), with two differences:
   then a trap). On aarch64 the timer request in `bebbosshd.cpp` and the
   keyboard.device port and request in `keyboard.cpp` use the exec
   `CreateMsgPort()`/`CreateIORequest()` calls and their `Delete` pairs.
+- AES-GCM is portable C there (no AES or PMULL instructions), so the daemon
+  offers chacha20-poly1305 without a `Ciphers` line, unlike i386, and
+  `bebbossh`/`bebboscp` try it first (`DEFAULT_ENC_ORDER` in
+  `include/client.h`).
 
 Release checklist and validation status: `docs/AROS_AARCH64_RELEASE.md`.
 

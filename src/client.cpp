@@ -196,7 +196,7 @@ static ChaCha20 * writeCounterBc;
 char hostnameSet, portSet, usernameSet, consoleSet, termSet, keyfileSet, loglevelSet;
 
 // 1 = aes128-gcm@openssh.com, 2 = chacha20poly1305@openssh.com
-char const * encOrder = "12";
+char const * encOrder = DEFAULT_ENC_ORDER;
 char const * userOrder = 0;
 char const * const AES128 = "aes128-gcm@openssh.com";
 char const * const CHACHA20 = "chacha20-poly1305@openssh.com";
