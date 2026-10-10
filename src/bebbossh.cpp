@@ -852,7 +852,8 @@ static void parseParams(unsigned argc, char **argv) {
 	if (term)
 		TERM = term;
 
-#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
+#if defined(__AROS__)
+	// stdin is the C library's FILE on AROS, not a DOS file handle
 	escape = IsInteractive(Input());
 #else
 	escape = IsInteractive(stdin);

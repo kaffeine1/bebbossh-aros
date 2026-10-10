@@ -1,0 +1,28 @@
+# AROS aarch64 (Raspberry Pi) build wrapper.
+# Uses the aarch64-aros crosstools toolchain (GCC 6.5.0) with the sysroot of an
+# AROS raspi-aarch64 build: the compiler's default spec links startup.o, the
+# posixc/stdc libraries and libautoinit, so AROS_SDK_ROOT stays unset.
+#
+#   make -f Makefile.aros-aarch64 AROS_TOOLCHAIN=<toolchain dir> SYSROOT=<AROS>/Developer
+
+AROS_TOOLCHAIN ?= $(HOME)/aros-toolchains/aros-toolchain-aarch64
+SYSROOT ?= $(AROS_TOOLCHAIN)/sysroot
+
+CC = $(AROS_TOOLCHAIN)/bin/aarch64-aros-gcc
+CXX = $(AROS_TOOLCHAIN)/bin/aarch64-aros-g++
+AR = $(AROS_TOOLCHAIN)/bin/aarch64-aros-ar
+STRIP = $(AROS_TOOLCHAIN)/bin/aarch64-aros-strip
+OBJCOPY = $(AROS_TOOLCHAIN)/bin/aarch64-aros-objcopy
+
+OUTDIR ?= aros-aarch64
+PACKAGE_DIR ?= dist/bebbossh-aros-aarch64
+AROS_TARGET_TRIPLET ?= aarch64-aros
+STRIP_OUTPUTS ?= yes
+
+# -ffixed-x18: the register is reserved on AROS aarch64.
+# -fno-common: the AROS loader rejects COMMON symbols in the relocatable ELF.
+# -fsigned-char: char is unsigned on aarch64; keep the signed char of the
+# other targets, which the code was written and tested with.
+TARGET_CFLAGS ?= --sysroot=$(SYSROOT) -ffixed-x18 -fno-common -fsigned-char
+
+include Makefile.aros

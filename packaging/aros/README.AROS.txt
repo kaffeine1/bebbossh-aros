@@ -17,6 +17,7 @@ inside the kit:
 
 - bebbossh-aros-i386-abiv0-* is for 32-bit AROS One / VMware i386 systems.
 - bebbossh-aros-x86_64-* is for 64-bit AROS systems.
+- bebbossh-aros-aarch64-* is for AROS on the Raspberry Pi (aarch64).
 
 Archives with "hosted" in their name are internal validation artifacts, not
 public runtime kits. Do not use a hosted i386 binary on AROS One / VMware i386;
@@ -72,6 +73,9 @@ Install
 The example configuration uses PROGDIR: paths, so the server can find
 sshd_config, passwd, and ssh_host_ed25519_key when launched from its own
 directory.
+
+On the Raspberry Pi, SYS: is a FAT volume: protect reports an error there,
+but the commands still run, so the error can be ignored.
 
 Installing Commands In C:
 -------------------------
@@ -244,6 +248,10 @@ normal DebugLevel 1 package configuration should not leave a daemon output
 window during boot. For diagnostics, temporarily use DebugLevel debug or launch
 bebbosshd with -v5.
 
+On the Raspberry Pi, start AROSTCP at boot (ENVARC:AROSTCP/AutoRun containing
+True) and start the daemon a few seconds later; the validated scripts are in
+docs/AROS_AARCH64_RELEASE.md (included in the aarch64 kit).
+
 When replacing an existing bebbosshd over SCP/SFTP, delete the old file first
 and then upload the new binary. Download it back and byte-compare it if this is
 a release or test VM update.
@@ -257,6 +265,9 @@ Current Runtime Status
 - x86_64 (AROS One / VMware 64 bit, the x86_64 kit): stable since v1.0.0.
   SSH commands run synchronously, so keep them short. AES-GCM uses AES-NI and
   PCLMULQDQ when the CPU (or the VM CPU model) provides them.
+- aarch64 (AROS on the Raspberry Pi, the aarch64 kit): first release, tested
+  on a Raspberry Pi 400. It works like the i386 kit: a remote command
+  (ssh host command) runs in a child task.
 
 A clean-VM i386 release checklist is kept in the source repository under
 docs/AROS_I386_RELEASE.md.
@@ -293,6 +304,9 @@ Known Limits
   until AROS One ships the fixed driver, use an rtl8139 or pcnet ("vlance")
   card and select its driver in the AROS network preferences
   (DEVS:networks/rtl8139.device or DEVS:networks/pcnet32.device).
+- Raspberry Pi 400 (aarch64): a daemon logging at debug level (-v5) into a
+  console window during heavy transfers froze the system. Keep the default
+  DebugLevel 1 there and use -v5 only for short diagnostics.
 - The test password in passwd.example is not safe. Change it before use, and do
   not distribute private host keys generated for local testing.
 

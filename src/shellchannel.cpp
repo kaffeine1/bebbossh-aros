@@ -719,16 +719,12 @@ int ShellChannel::handleData(char * indata, unsigned len) {
 						break;
 					}
 
-					char * esc = &indata[i];
 					char z = 0;
-					int ii = i;
 					for(i += 2;i < len; ++i) {
 						z = indata[i];
 						if (z == 7 || (z >= 0x40 && z <= 0x7E))
 							break;
 					}
-					++i;
-					ii = i - ii;
 					logme(L_TRACE, "@%ld:%ld escape sequence %c", server->getSockFd(), channel, z);
 
 					switch (z) {
@@ -753,7 +749,7 @@ int ShellChannel::handleData(char * indata, unsigned len) {
 					case 'C': // cursor right
 						if (xpos < xend) {
 							// with CTRL?
-							if (indata[i - 2] == '5') {
+							if (indata[i - 1] == '5') {
 								// find next white space
 								char * p = xpos;
 								while (p < xend && *p > ' ')
@@ -771,7 +767,7 @@ int ShellChannel::handleData(char * indata, unsigned len) {
 					case 'D': // cursor left
 						if (xpos > line) {
 							// with CTRL?
-							if (indata[i - 2] == '5') {
+							if (indata[i - 1] == '5') {
 								// find prev white space
 								char * p = xpos;
 								while (p > line && p[-1] <= ' ')
@@ -782,8 +778,9 @@ int ShellChannel::handleData(char * indata, unsigned len) {
 								xpos = p;
 							} else {
 								--xpos;
-								memcpy(out, esc, ii);
-								out += ii;
+								// echo a plain cursor left: the AROS console does not
+								// understand the ESC[1;2D that Shift+Left sends
+								out = cursorLeft(out, 1);
 							}
 						}
 						break;

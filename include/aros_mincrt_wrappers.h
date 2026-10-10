@@ -70,6 +70,7 @@ BPTR bebbossh_aros_current_dir(BPTR lock);
 LONG bebbossh_aros_ioerr(void);
 LONG bebbossh_aros_wait_for_char(BPTR file, LONG timeout);
 LONG bebbossh_aros_is_interactive(BPTR file);
+LONG bebbossh_aros_flush(BPTR file);
 LONG bebbossh_aros_set_mode(BPTR file, LONG mode);
 char *bebbossh_aros_fgets(BPTR file, char *buf, LONG buflen);
 LONG bebbossh_aros_name_from_lock(BPTR lock, char *buffer, LONG length);
@@ -223,6 +224,7 @@ void bebbossh_aros_get_sys_time(struct Device *timerBase, void *tv);
 #define IoErr() bebbossh_aros_ioerr()
 #define WaitForChar(file, timeout) bebbossh_aros_wait_for_char((file), (timeout))
 #define IsInteractive(file) bebbossh_aros_is_interactive((file))
+#define Flush(file) bebbossh_aros_flush((file))
 #define SetMode(file, mode) bebbossh_aros_set_mode((file), (mode))
 #define FGets(file, buf, buflen) bebbossh_aros_fgets((file), (buf), (buflen))
 #define NameFromLock(lock, buffer, length) bebbossh_aros_name_from_lock((lock), (buffer), (length))

@@ -1519,6 +1519,26 @@ LONG bebbossh_aros_is_interactive(BPTR file)
 #endif
 }
 
+LONG bebbossh_aros_flush(BPTR file)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 60);
+    APTR save;
+    LONG ret;
+
+    if (!file)
+        return 0;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((LONG (*)(BPTR))func)(file);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return Flush(file);
+#endif
+}
+
 char *bebbossh_aros_fgets(BPTR file, char *buf, LONG buflen)
 {
 #if defined(__x86_64__)

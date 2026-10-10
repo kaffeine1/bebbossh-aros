@@ -1230,6 +1230,10 @@ bool connectClient() {
 			if (theWindow)
 				orgWindowTitle = (const char *)theWindow->Title;
 		}
+#else
+	// RunCommand() leaves the command line in the Input() buffer for ReadArgs();
+	// drop it, or the host key question reads it as the answer
+	Flush(Input());
 #endif
 #endif
 

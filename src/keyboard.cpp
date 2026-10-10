@@ -64,6 +64,16 @@
 #define KBD_DELETE_IO(r) bebbossh_aros_delete_iorequest(r)
 #define KBD_OPEN_DEVICE(n, u, r, f) bebbossh_aros_open_device((n), (u), (r), (f))
 #define KBD_CLOSE_DEVICE(r) bebbossh_aros_close_device(r)
+#elif defined(__AROS__) && defined(__aarch64__)
+// aarch64: clib/alib_protos.h declares CreatePort() and CreateExtIO(), so the
+// calls would bind to amiga.lib while the local DeletePort() below frees with
+// FreeMem through *(APTR *)4: use the exec calls on both sides.
+#define KBD_CREATE_PORT() CreateMsgPort()
+#define KBD_DELETE_PORT(p) DeleteMsgPort(p)
+#define KBD_CREATE_IO(p, s) CreateIORequest((p), (s))
+#define KBD_DELETE_IO(r) DeleteIORequest((struct IORequest *)(r))
+#define KBD_OPEN_DEVICE(n, u, r, f) OpenDevice((n), (u), (r), (f))
+#define KBD_CLOSE_DEVICE(r) CloseDevice(r)
 #else
 #define KBD_CREATE_PORT() CreatePort(0, 0)
 #define KBD_DELETE_PORT(p) DeletePort(p)

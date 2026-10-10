@@ -12,6 +12,7 @@ pkgdir=${2:-dist/bebbossh-aros-i386-abiv0}
 # instead of always embedding the i386 ones.
 case "$pkgdir" in
     *x86_64*) arch=x86_64; ARCH=X86_64 ;;
+    *aarch64*) arch=aarch64; ARCH=AARCH64 ;;
     *) arch=i386; ARCH=I386 ;;
 esac
 release_smoke="scripts/aros-${arch}-public-release-smoke.sh"
