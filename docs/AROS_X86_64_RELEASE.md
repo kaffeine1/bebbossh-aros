@@ -22,7 +22,7 @@ AROS i386 `alt-abiv0` is a separate, stable target with its own gate
 Release naming (see `AROS_PORTING.md`):
 
 ```text
-v1.0.4-aros-x86_64
+v1.0.5-aros-x86_64
 bebbossh-aros-x86_64-<version>.zip
 bebbossh-aros-x86_64-<version>.tar.gz
 ```
@@ -58,8 +58,8 @@ artifacts.
 For a future version, override the defaults:
 
 ```sh
-BEBBOSSH_RELEASE_TAG=v1.0.5-aros-x86_64 \
-BEBBOSSH_RELEASE_VERSION=v1.0.5 \
+BEBBOSSH_RELEASE_TAG=v1.0.6-aros-x86_64 \
+BEBBOSSH_RELEASE_VERSION=v1.0.6 \
 ./scripts/aros-x86_64-public-release-smoke.sh
 ```
 
@@ -125,10 +125,11 @@ bebbosshd -A AROS:BSSHPKG/passwd -K AROS:BSSHPKG/ssh_host_ed25519_key -H AROS:
 ## AROS Native Client Gate
 
 The host-side smoke proves the daemon, OpenSSH SCP, and OpenSSH SFTP. The
-AROS-native client tools also need one real AROS shell validation (via VNC or a
-real console) before a release is considered complete, the same as the i386
-gate. Keep this gate manual until there is a robust way to inject AROS shell
-commands without focus races.
+AROS-native client tools also need one AROS console validation before a
+release is considered complete, the same as the i386 gate. In QEMU it can be
+driven from the host: start the client in its own window through the daemon
+(`NewShell CON:0/20/800/500/CLIENT FROM <script>`; the new window gets the
+input focus) and type with the monitor's `sendkey`.
 
 ## Autostart Gate
 
@@ -272,13 +273,15 @@ VM pass over them:
    applies instead of its 1 MiB default, so run the runtime smoke with the
    example file in place.
 
-Status at v1.0.4 (AROS One x86_64, QEMU `qemu64` and
-`qemu64,+aes,+pclmulqdq,+ssse3`, rtl8139 card): items 1 to 4, 6 and 7 pass;
-for item 3 `Break` on an idle daemon, with an idle client and during a
-running command, each followed by an immediate restart. Item 6 runs from the
-host, with the TAB sent on its own as a terminal sends it. Item 8 passed at
-v1.0.3 and its code has not changed since. Item 5 needs an AROS console and is
-still open. The AROS-native clients were also exercised over loopback with
+Status at v1.0.5 (AROS One x86_64, QEMU `qemu64` and
+`qemu64,+aes,+pclmulqdq,+ssse3`, rtl8139 card): items 1 to 7 pass; for
+item 3 `Break` on an idle daemon, with an idle client and during a running
+command, each followed by an immediate restart. Item 5 runs on the AROS One
+console with the keys sent through the QEMU monitor (see the native client
+gate); since v1.0.5 the host key question also waits for the answer. Item 6
+runs from the host, with the TAB sent on its own as a terminal sends it.
+Item 8 passed at v1.0.3 and its code has not changed since. The
+AROS-native clients were also exercised over loopback with
 public-key login: `bebboscp` upload and download (byte-identical) and
 `bebbossh` command execution.
 

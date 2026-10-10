@@ -4,7 +4,7 @@
 **Author:** s.franke@bebbosoft.de
 **Uploader:** s.franke@bebbosoft.de
 **Upstream architecture:** m68k-amigaos
-**AROS fork targets:** i386 `alt-abiv0` stable, x86_64 (mincrt) stable
+**AROS fork targets:** i386 `alt-abiv0` stable, x86_64 (mincrt) stable, aarch64 (Raspberry Pi) first release
 **Type:** comm/net
 **Version:** 1.45
 **Required:** bsdsocket.library (e.g. AmiTCP)
@@ -25,8 +25,9 @@ point per architecture:
 
 | Target | Status |
 | --- | --- |
-| AROS i386 `alt-abiv0` | stable (v1.0.4) |
-| AROS x86_64 (mincrt) | stable (v1.0.4; tested against OpenSSH-class clients) |
+| AROS i386 `alt-abiv0` | stable (v1.0.5) |
+| AROS x86_64 (mincrt) | stable (v1.0.5; tested against OpenSSH-class clients) |
+| AROS aarch64 (Raspberry Pi) | first release (v1.0.5; tested on a Raspberry Pi 400) |
 
 What works: the SSH server (`bebbosshd`) and client (`bebbossh`), Ed25519
 key generation (`bebbosshkeygen`), non-interactive remote command execution,
@@ -38,8 +39,9 @@ remote shell redirection or pipes (`>`, `<`, `|`).
 
 Latest public runtime releases:
 
-- i386 `alt-abiv0`: https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.4-aros-i386-abiv0
-- x86_64 `mincrt`: https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.4-aros-x86_64
+- i386 `alt-abiv0`: https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.5-aros-i386-abiv0
+- x86_64 `mincrt`: https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.5-aros-x86_64
+- aarch64 (Raspberry Pi): https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.5-aros-aarch64
 
 ### Roadmap
 
@@ -51,8 +53,7 @@ Latest public runtime releases:
   command whose output goes to a file.
 - SFTP: apply the times from `FSETSTAT` after `CLOSE` (OpenSSH `put -p`),
   following the next upstream BebboSSH release.
-- x86_64: suppress the DOS requester for a missing volume, and test the
-  native client on an AROS console.
+- x86_64: suppress the DOS requester for a missing volume.
 
 Build/packaging: see `AROS_PORTING.md` · Installation/use: see
 `packaging/aros/README.AROS.txt` · Testing: see `docs/AROS_TESTER.md`.

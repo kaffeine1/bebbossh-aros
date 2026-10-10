@@ -36,13 +36,16 @@ validation.
   it validates the release-style filesystem, startup path, and package layout.
 - QEMU AROS One x86_64: required for every x86_64 runtime kit; hosted x86_64
   does not prove the non-hosted AROS One daemon path.
+- Raspberry Pi: required for every aarch64 runtime kit; the network of the
+  QEMU `raspi3b` machine is too slow for transfer tests.
 
 The release gate does not start QEMU VMs. Boot the VM, start or autostart
 `bebbosshd`, expose its guest SSH port through QEMU forwarding, then pass the
 forwarded port to `scripts/aros-release-gate.sh`.
 
 For public i386 runtime kits, use `docs/AROS_I386_RELEASE.md` first. For
-x86_64 kits, use the parallel `docs/AROS_X86_64_RELEASE.md`. Each
+x86_64 kits, use the parallel `docs/AROS_X86_64_RELEASE.md`, and for aarch64
+kits `docs/AROS_AARCH64_RELEASE.md`. Each
 checklist verifies the GitHub release assets and then, when `BEBBOSSH_AROS_PORT`
 is set, runs a focused SSH/SCP/SFTP smoke against a clean AROS One VM (the
 x86_64 hosted/QEMU port convention is `20022`). Use `scripts/aros-release-gate.sh`

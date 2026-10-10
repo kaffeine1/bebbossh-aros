@@ -1,13 +1,14 @@
 # BebboSSH AROS Porting Notes
 
-This is a multi-target AROS porting tree. The same source is used for i386 and
-x86_64, while makefiles, package names, release tags, and validation status are
-kept target-specific.
+This is a multi-target AROS porting tree. The same source is used for i386,
+x86_64 and aarch64, while makefiles, package names, release tags, and validation
+status are kept target-specific.
 
 | Target | Status | Build entry point | Notes |
 | --- | --- | --- | --- |
 | AROS i386 `alt-abiv0` for AROS One / VMware 32 bit | stable / validated | `Makefile.aros` | public runtime kit: `bebbossh-aros-i386-abiv0-*` |
 | AROS x86_64 for AROS One / VMware 64 bit | hosted validated, external VMware feedback OK | `Makefile.aros-x86_64` | public runtime kit: `bebbossh-aros-x86_64-*` |
+| AROS aarch64 for the Raspberry Pi (`raspi-aarch64`) | validated on a Raspberry Pi 400 | `Makefile.aros-aarch64` | public runtime kit: `bebbossh-aros-aarch64-*` |
 | Hosted AROS i386/x86_64 | automation and transfer stress validated | target-specific makefile | internal validation only; do not publish as `hosted` runtime kits |
 
 This port is maintained as a derivative of Stefan "Bebbo" Franke's original
@@ -36,8 +37,9 @@ consistent with the upstream project.
 
 - Added a platform/endian compatibility layer to separate Amiga API usage from
   Linux/POSIX-only server paths.
-- Added `Makefile.aros` (shared i386/x86_64 source build) and
-  `Makefile.aros-x86_64` (x86_64 wrapper), with target triplet overrides.
+- Added `Makefile.aros` (shared source build), `Makefile.aros-x86_64` (x86_64
+  wrapper) and `Makefile.aros-aarch64` (aarch64 wrapper), with target triplet
+  overrides.
 - Added an AROS x86_64 minimal startup/runtime path for `bebbosshkeygen` and
   `bebbosshd`, avoiding standard runtime paths that were unstable on the VM.
 - Kept m68k assembly out of the AROS build, kept the interactive AmigaDOS shell
@@ -168,6 +170,44 @@ OpenSSH-class clients (full SSH/SFTP/SCP smoke + 1 MiB transfer stress
 20/20 with `BEBBOSSH_AROS_STRESS_DELAY=0`). Detailed test status lives in
 `docs/AROS_TESTER.md`.
 
+## AROS aarch64 build
+
+`Makefile.aros-aarch64` wraps `Makefile.aros` for the Raspberry Pi port of AROS
+(`raspi-aarch64`). It uses the `aarch64-aros` crosstools (GCC 6.5.0) with the
+`Developer` directory of an AROS `raspi-aarch64` build as sysroot. The
+compiler's default spec links `startup.o`, the posixc/stdc libraries and
+`libautoinit`, so `AROS_SDK_ROOT` stays unset:
+
+```sh
+make -f Makefile.aros-aarch64 all \
+  AROS_TOOLCHAIN=<toolchain dir> \
+  SYSROOT=<AROS build>/bin/raspi-aarch64/AROS/Developer
+```
+
+The products (the four tools and the five crypto self-tests) land in
+`aros-aarch64/`, stripped; the strip keeps the AROS OS/ABI tag in the ELF
+header. The wrapper adds three compiler flags:
+
+- `-ffixed-x18`: the register is reserved on AROS aarch64.
+- `-fno-common`: the AROS loader rejects COMMON symbols in the relocatable ELF.
+- `-fsigned-char`: `char` is unsigned on aarch64; the code was written and
+  tested with a signed `char`.
+
+aarch64 uses the same code paths as i386 (full SDK, remote commands in child
+tasks), with two differences:
+
+- `src/rand.c` mixes in the generic timer count `cntvct_el0`, which AROS tasks
+  can read (54 MHz on the Pi 400, 62.5 MHz in QEMU), where x86 uses `rdtsc`.
+- The aarch64 SDK declares `CreateExtIO()` and `CreatePort()` in
+  `clib/alib_protos.h`, so the calls bound to the `amiga.lib` versions
+  (`AllocMem`) while the matching frees went through `free()` or the local
+  `DeletePort()`. Every daemon exit crashed ("TLSF free-list corruption",
+  then a trap). On aarch64 the timer request in `bebbosshd.cpp` and the
+  keyboard.device port and request in `keyboard.cpp` use the exec
+  `CreateMsgPort()`/`CreateIORequest()` calls and their `Delete` pairs.
+
+Release checklist and validation status: `docs/AROS_AARCH64_RELEASE.md`.
+
 ## Release naming
 
 Use architecture/ABI-specific release tags and assets so users can identify the
@@ -176,17 +216,22 @@ with `hosted` in the name; hosted describes a validation environment, not a
 runtime target.
 
 ```text
-v1.0.4-aros-i386-abiv0
+v1.0.5-aros-i386-abiv0
 bebbossh-aros-i386-abiv0-<version>.zip
 bebbossh-aros-i386-abiv0-<version>.tar.gz
 
-v1.0.4-aros-x86_64
+v1.0.5-aros-x86_64
 bebbossh-aros-x86_64-<version>.zip
 bebbossh-aros-x86_64-<version>.tar.gz
+
+v1.0.5-aros-aarch64
+bebbossh-aros-aarch64-<version>.zip
+bebbossh-aros-aarch64-<version>.tar.gz
 ```
 
 Use the i386 `abiv0` archive for 32-bit AROS One/VMware systems. Use the
-`x86_64` archive for 64-bit AROS systems. Keep any hosted-only binaries and
+`x86_64` archive for 64-bit AROS systems, and the `aarch64` archive for AROS
+on the Raspberry Pi. Keep any hosted-only binaries and
 packages as ignored local lab artifacts, especially for i386 where the hosted
 binary is not interchangeable with the AROS One/VMware `alt-abiv0` build.
 
@@ -259,8 +304,11 @@ validation before the next release tag):
   `struct Window` match the runtime. The x86_64 client still reports the mouse
   position as 1,1 until reading `IntuitionBase->ActiveWindow` has been tested
   on an AROS One VM.
-- Client: `Ctrl-C` in the password prompt (`SetSignal`) and keyboard
-  qualifiers for cursor keys (`keyboard.device` through the exec wrappers).
+- Client: `Ctrl-C` in the password prompt (`SetSignal`), keyboard qualifiers
+  for cursor keys (`keyboard.device` through the exec wrappers), and a `Flush`
+  wrapper that drops the command line `RunCommand()` leaves in the `Input()`
+  buffer, so the host key question waits for the answer. Validated on the
+  AROS One console for v1.0.5.
 - Shell: TAB completion for explicit paths (`C:Vers<TAB>`); completion in the
   current directory also needs `BEBBOSSH_AROS_X64_CD`.
 - `bebbosshd` reads `sshd_config` like i386: `ENVARC:ssh/sshd_config`, then
@@ -343,6 +391,11 @@ automation suite, redirection and interactive-command rejection, PTY exec,
 minimal shell, and SFTP/SCP for the same operation set. This hosted validation
 does not replace the separate AROS One `alt-abiv0` release validation path. For
 detailed test status and counts, see `docs/AROS_TESTER.md`.
+
+aarch64 is validated on a Raspberry Pi 400 (AROS `raspi-aarch64` of
+2026-09-12) for the crypto self-tests, OpenSSH login and exec, SFTP/SCP up to
+1 MiB both ways, zero-delay transfer stress, two daemons, forwarding, the
+native clients and `Break`; the list is in `docs/AROS_AARCH64_RELEASE.md`.
 
 AROS x86_64/mincrt SSH exec uses a synchronous DOS `SystemTagList` backend that
 redirects command stdout/stderr to a temporary `T:` file, reads it back over
