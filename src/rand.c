@@ -70,6 +70,11 @@ static uint64_t aros_rdtsc(void) {
 	    uint32_t lo, hi;
 	    __asm__ volatile("rdtsc" : "=a"(lo), "=d"(hi));
 	    return ((uint64_t)hi << 32) | lo;
+#elif defined(__aarch64__) && defined(__GNUC__)
+	    /* Generic timer count, readable by AROS tasks (checked on raspi-aarch64) */
+	    uint64_t v;
+	    __asm__ volatile("mrs %0, cntvct_el0" : "=r"(v));
+	    return v;
 #else
     return 0;
 #endif
