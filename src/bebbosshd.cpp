@@ -317,7 +317,7 @@ void handleMsg(struct Message * msg) {
 			} else {
 				packet->dp_Res1 = DOSFALSE;
 				packet->dp_Res2 = ERROR_NO_MORE_ENTRIES;
-				logme(L_TRACE, "ACTION_WAIT_CHAR for %s NO data", sc->getName());
+				logme(L_TRACE, "ACTION_WAIT_CHAR without shell channel, NO data");
 			}
 		} break;
 		case ACTION_READ: {
@@ -380,7 +380,7 @@ void handleMsg(struct Message * msg) {
 			ShellChannel *sc = findByBreakPort(packet->dp_Port);
 			struct FileHandle *fh = (struct FileHandle*) BADDR(packet->dp_Arg1);
 			char const * name = getBSTR((BPTR) packet->dp_Arg3);
-			logme(L_DEBUG, "ACTION_FINDINPUT: %s lock=%08lX name=%s @%08lX %08lX", sc->getName(), (void *)packet->dp_Arg2, name, fh->fh_Type, packet->dp_Port);
+			logme(L_DEBUG, "ACTION_FINDINPUT: %s lock=%08lX name=%s @%08lX %08lX", sc ? sc->getName() : "(no shell channel)", (void *)packet->dp_Arg2, name, fh->fh_Type, packet->dp_Port);
 
 			memset(fh, 0, sizeof(struct FileHandle));
 			fh->fh_Port = 1;
