@@ -112,6 +112,17 @@ or keep the default PROGDIR: configuration by running:
   cd DH0:BSSHPKG
   bebbosshd
 
+Client Host Keys
+----------------
+
+bebbossh and bebboscp keep the server keys in ENVARC:.ssh/known_hosts. The
+first connection to a server asks whether to trust its key, but only when the
+input is a console window. Without a console, for example when the client runs
+as a remote command through bebbosshd, an unknown server is refused: connect
+once from a Shell window first. A server whose key differs from the stored one
+is refused with a warning, as OpenSSH does. If the change is expected, remove
+the server's line from known_hosts.
+
 Configuration Files
 -------------------
 
@@ -225,6 +236,10 @@ The most important directives are:
       line to offer both. Without a Ciphers line the x86_64 and aarch64
       daemons offer both; the client chooses, and OpenSSH chooses
       chacha20-poly1305 by default.
+
+  AllowTcpForwarding yes
+      direct-tcpip forwarding (ssh -L) through the daemon, allowed by
+      default. Set it to no to refuse forwarding requests.
 
 Command-line overrides are available for quick tests:
 
