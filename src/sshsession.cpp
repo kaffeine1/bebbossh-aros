@@ -1309,7 +1309,7 @@ bool SshSession::handleOpenChannel(uint8_t *p) {
 		if (sc) {
 			channels.add(channelNo, sc);
 
-			sendOpenChannelConfirmation(sc, windowsize, maxsize);
+			sendOpenChannelConfirmation(sc, maxsize);
 			return true;
 		}
 	} else if (0 == strcmp((char*) s, "direct-tcpip")) {
@@ -1326,7 +1326,7 @@ bool SshSession::handleOpenChannel(uint8_t *p) {
 				channels.add(channelNo, fc);
 				auto * l = fc->getListener();
 				listeners.add(l->getSockFd(), l);
-				sendOpenChannelConfirmation(fc, windowsize, maxsize);
+				sendOpenChannelConfirmation(fc, maxsize);
 				return true;
 			}
 
@@ -1347,14 +1347,16 @@ bool SshSession::handleOpenChannel(uint8_t *p) {
 	return false;
 }
 
-void SshSession::sendOpenChannelConfirmation(Channel *c, uint32_t windowsize, uint32_t maxsize) {
+void SshSession::sendOpenChannelConfirmation(Channel *c, uint32_t maxsize) {
 	outdata[5] = SSH_MSG_CHANNEL_OPEN_CONFIRMATION;
 	putInt32Aligned(&outdata[6] , c->getChannel());
 	putInt32Aligned(&outdata[10] , c->getChannel());
-	putInt32Aligned(&outdata[14] , windowsize);
+	// our receive window, the one updateWindowSize() counts down and refills;
+	// the client's window (windowsize) only limits what we send
+	putInt32Aligned(&outdata[14] , c->getWindowSize());
 	putInt32Aligned(&outdata[18] , maxsize);
 	write(outdata + 5, 17);
-	logme(L_FINE, "@%ld sent SSH_MSG_CHANNEL_OPEN_CONFIRMATION for session, window=%ld, max=%ld", sockFd, windowsize, maxsize);
+	logme(L_FINE, "@%ld sent SSH_MSG_CHANNEL_OPEN_CONFIRMATION for session, window=%ld, max=%ld", sockFd, c->getWindowSize(), maxsize);
 }
 
 static bool authorizeKey(uint8_t *hostBase64, uint8_t *buffer) {

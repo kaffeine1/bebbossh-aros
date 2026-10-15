@@ -113,6 +113,12 @@ public:
     inline uint32_t getChannel() const { return channel; }
 
     /**
+     * Get the receive window: what the peer may still send on this channel.
+     * @return Window size in bytes
+     */
+    inline uint32_t getWindowSize() const { return windowSize; }
+
+    /**
      * Check if this is a session channel.
      * @return true if channel type is C_SESSION
      */
