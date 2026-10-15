@@ -99,6 +99,13 @@ bool ClientChannel::handleMessage(uint8_t msg, uint8_t * p, uint32_t maxLen) {
 	if (msg == SSH_MSG_CHANNEL_DATA) {
 		uint32_t length = getInt32(p);
 		p += 4;
+		// the length comes from the server: maxLen counts from before the
+		// 4-byte length field, so the data must fit in maxLen - 4
+		// (patch 0011 of bebbossh 1.46.1 by Matthias Muench)
+		if (maxLen < 4 || length > maxLen - 4) {
+			logme(L_ERROR, "channel %ld: data length %ld exceeds packet %ld", channelNo, length, maxLen);
+			return false;
+		}
 		p[length] = 0;
 
 		logme(L_FINE, "channel %ld got %ld bytes in %ld", channelNo, length, maxLen);
@@ -128,7 +135,7 @@ bool ClientChannel::handleMessage(uint8_t msg, uint8_t * p, uint32_t maxLen) {
 	if (msg == SSH_MSG_CHANNEL_REQUEST) {
 
 		// it's a logout
-		if (*(uint32_t *)(p) == 11 && 0 == strncmp((char *)p + 4, "exit-status", 11)) {
+		if (maxLen >= 4 + 11 && *(uint32_t *)(p) == 11 && 0 == strncmp((char *)p + 4, "exit-status", 11)) {
 			if (channelNo == 0) {
 				logme(L_DEBUG, "exit since channel %ld ended", channelNo);
 				return false;

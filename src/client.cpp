@@ -624,6 +624,15 @@ static bool verifyHost(uint8_t const * hostBase64) {
  * Handle the KexEcdhReply packet.
  * Returns true if the host was successfully verified.
  */
+// Does [p, p + length) lie inside the payload, which starts at buffer + 5 and
+// has payloadLen bytes? The length comes from the server: compare without
+// adding, so it cannot wrap (unsigned long is 32 bit on i386). From patch
+// 0011 of bebbossh 1.46.1 by Matthias Muench, with exact bounds.
+static bool fitsPayload(uint8_t const *p, unsigned long length, unsigned long payloadLen) {
+	unsigned long off = (unsigned long)(p - buffer);
+	return off <= payloadLen + 5 && length <= payloadLen + 5 - off;
+}
+
 static bool handleKexEcdhReply(SHA256 &handshakeMD, unsigned long packetSize) {
 	// packet data starts at buffer + 5;
 	uint8_t *p = buffer + 5;
@@ -635,7 +644,7 @@ static bool handleKexEcdhReply(SHA256 &handshakeMD, unsigned long packetSize) {
 
 	// get host digest
 	unsigned long length = getInt32(p);
-	if (length + (p - buffer) > packetSize) {
+	if (!fitsPayload(p + 4, length, packetSize)) {
 		error = ERROR_INVALID_PACKET;
 		return false;
 	}
@@ -646,11 +655,6 @@ static bool handleKexEcdhReply(SHA256 &handshakeMD, unsigned long packetSize) {
 	p += 4;
 	handshakeMD.update(p, length);
 	HSU(p, 0, length);
-
-	if (length + (p - buffer) > packetSize) {
-		error = ERROR_INVALID_PACKET;
-		return false;
-	}
 
 	uint8_t hostBase64[64];
 	{
@@ -665,7 +669,7 @@ static bool handleKexEcdhReply(SHA256 &handshakeMD, unsigned long packetSize) {
 
 	length = getInt32(p);
 	p += 4;
-	if (length + (p - buffer) > packetSize) {
+	if (!fitsPayload(p, length, packetSize)) {
 		error = ERROR_INVALID_PACKET;
 		return false;
 	}
@@ -674,7 +678,7 @@ static bool handleKexEcdhReply(SHA256 &handshakeMD, unsigned long packetSize) {
 	// host public key
 	length = getInt32(p);
 	p += 4;
-	if (length + (p - buffer) > packetSize) {
+	if (length < 32 || !fitsPayload(p, length, packetSize)) {
 		error = ERROR_INVALID_PACKET;
 		return false;
 	}
@@ -732,26 +736,25 @@ static bool handleKexEcdhReply(SHA256 &handshakeMD, unsigned long packetSize) {
 #endif
 
 	unsigned long sigBlobLength = getInt32(p);
-	if (sigBlobLength + (p - buffer) - 1 > packetSize) {
-		printf("%ld > %ld\n", sigBlobLength + (p - buffer), packetSize);
+	if (!fitsPayload(p + 4, sigBlobLength, packetSize)) {
 		error = ERROR_INVALID_PACKET;
 		return false;
 	}
 	p += 4;
 
 	length = getInt32(p);
-	if (length + (p - buffer) - 1 > packetSize) {
+	if (!fitsPayload(p + 4, length, packetSize)) {
 		error = ERROR_INVALID_PACKET;
 		return false;
 	}
 	p += 4;
 	p += length; // check the name? no, check will fail else.
 	length = getInt32(p);
-	if (length != 64 || length + (p - buffer) - 1 > packetSize) {
+	p += 4;
+	if (length != 64 || !fitsPayload(p, length, packetSize)) {
 		error = ERROR_INVALID_PACKET;
 		return false;
 	}
-	p += 4;
 
 	logme(L_DEBUG, "verifying server signature ed25519 START");
 	int r = ge_verify_ed25519(hash, 32, p, hpk);
@@ -1052,16 +1055,26 @@ static bool authenticate() {
 	if (!sendEncrypted(buffer + 5, len))
 		return false;
 
+	unsigned plen;
 	for(;;) {
-		if (receiveEncryptedPacket() == 0)
+		plen = receiveEncryptedPacket();
+		if (plen == 0)
 			return false;
 		if (buffer[5] != SSH_MSG_USERAUTH_BANNER)
 			break;
 
+		// the banner length comes from the server: never write or read past
+		// the payload (message type and length field are 5 bytes)
 		len = getInt32Aligned(buffer + 6); // even
+		if (len > (plen < 5 ? 0 : plen - 5))
+			len = plen < 5 ? 0 : plen - 5;
 		buffer[10 + len] = 0;
 		puts((char *)buffer + 10);
 	}
+
+	// the method name-list is an SSH string, not NUL terminated: end it at
+	// the end of the payload before strstr()
+	buffer[5 + plen] = 0;
 
 	// try loginPass with public key
 	if (strstr((char *)buffer + 10, "publickey")) {
@@ -1678,7 +1691,7 @@ void eventLoop() {
 				if (!cc) {
 					logme(L_ERROR, "got packet for invalid channel %ld", channelNo);
 				} else {
-					bool r = cc->handleMessage(k, p, len - 9); // 9 = PACKETLEN + MSG + CHANNELNO = 4 + 1 + 4
+					bool r = cc->handleMessage(k, p, len - 5); // bytes available from p (MSG + CHANNELNO consumed)
 					if (!r)
 						stopped = 1;
 				}
