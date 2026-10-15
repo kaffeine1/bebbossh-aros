@@ -127,7 +127,13 @@ static int parseParams(unsigned argc, char **argv) {
 
 				if (i + 1 == argc)
 					goto missing;
-				strcpy(outfilename, argv[++i]);
+				// room for the ".pub" that is appended later (patch 0005 of
+				// bebbossh 1.46.1 by Matthias Muench)
+				if (strlen(argv[++i]) >= sizeof(outfilename) - 4) {
+					printf("file name too long: %s\n", argv[i]);
+					exit(10);
+				}
+				strcpy(outfilename, argv[i]);
 				continue;
 			case 'c':
 			case 'C':
@@ -169,6 +175,10 @@ __stdargs int main(int argc, char **argv) {
 	filename = concat(sshDir, ".ssh/id_ed25519", NULL);
 #endif
 
+	if (strlen(filename) >= sizeof(outfilename) - 4) {
+		printf("file name too long: %s\n", filename);
+		return 10;
+	}
 	strcpy(outfilename, filename);
 
 	int paramStatus = parseParams(argc, argv);
@@ -193,6 +203,10 @@ __stdargs int main(int argc, char **argv) {
 			for (; *p > ' '; ++p)
 				;
 			*p = 0;
+			if (strlen(buf) >= sizeof(outfilename) - 4) {
+				printf("file name too long: %s\n", buf);
+				return 10;
+			}
 			strcpy(outfilename, buf);
 		}
 	}
@@ -333,7 +347,9 @@ __stdargs int main(int argc, char **argv) {
 	putInt32Aligned(privLenPos, privLen);
 
 	/* MIME-encode private key */
-	static uint8_t mime[512];
+	// base64 of the private key blob: up to about 500 bytes with a 255
+	// character comment, plus line breaks; 512 overflowed from ~150 characters
+	static uint8_t mime[1024];
 	mimeEncode(mime, key, t - key);
 
 	BSSH_WRITE(out, "-----BEGIN OPENSSH PRIVATE KEY-----\n", 36);
