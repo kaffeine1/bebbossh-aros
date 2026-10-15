@@ -978,6 +978,16 @@ int SshSession::consumeSocketData(char *indata, int len) {
 
 		packetSize += 16; // add signature size
 
+			// the connection protocol (channels) is only valid after a successful
+			// authentication: before it only service and user-auth requests
+			// (patch 0016 of bebbossh 1.46.1 by Matthias Muench)
+			if (state != LOGGEDIN
+					&& indata[5] != SSH_MSG_SERVICE_REQUEST
+					&& indata[5] != SSH_MSG_USERAUTH_REQUEST) {
+				logme(L_ERROR, "@%ld message %ld before authentication, dropping", sockFd, indata[5]);
+				return -1;
+			}
+
 			switch (indata[5]) {
 			case SSH_MSG_SERVICE_REQUEST:
 				logme(L_FINE, "@%ld got SSH_MSG_SERVICE_REQUEST", sockFd);

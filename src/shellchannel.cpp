@@ -1686,6 +1686,8 @@ bool ShellChannel::startCommand(char const * cmd){
     int slave;
 
     const char *username = server->getUser();
+    if (!username)                      // never reached unauthenticated now,
+    	return false;                     // but guard getpwnam(NULL) anyway
     struct passwd *pw = getpwnam(username);
     if (!pw)
     	return false;
