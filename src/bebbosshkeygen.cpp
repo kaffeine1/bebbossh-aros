@@ -56,24 +56,38 @@
 extern "C" BPTR bebbossh_aros_open(const char *name, LONG mode);
 extern "C" void bebbossh_aros_close(BPTR file);
 extern "C" LONG bebbossh_aros_write(BPTR file, const void *buf, LONG len);
+extern "C" LONG bebbossh_aros_delete_file(const char *name);
 #define BSSH_OPEN(name, mode) bebbossh_aros_open((name), (mode))
 #define BSSH_CLOSE(file) bebbossh_aros_close((file))
 #define BSSH_WRITE(file, buf, len) bebbossh_aros_write((file), (buf), (len))
+#define BSSH_DELETE(name) bebbossh_aros_delete_file((name))
+// the wrapper returns nothing; DOS Write() is unbuffered, so the Write()
+// results already cover the data
+#define BSSH_CLOSE_OK(file) (bebbossh_aros_close((file)), true)
 #else
 #define BSSH_OPEN(name, mode) Open((name), (mode))
 #define BSSH_CLOSE(file) Close(file)
 #define BSSH_WRITE(file, buf, len) Write((file), (buf), (len))
+#define BSSH_DELETE(name) DeleteFile((name))
+#define BSSH_CLOSE_OK(file) (Close(file) != 0)
 #endif
 #if BEBBOSSH_AROS && !defined(BEBBOSSH_AROS_MINCRT)
 #define puts(s) Printf("%s\n", (s))
 #define printf Printf
-#define fflush(s) ((void)0)
+// Printf() output stays buffered until a newline: show the prompts
+#define fflush(s) ((void)Flush(Output()))
 #endif
 #else
 #include "amiemul.h"
 #define BSSH_OPEN(name, mode) Open((name), (mode))
 #define BSSH_CLOSE(file) Close(file)
 #define BSSH_WRITE(file, buf, len) Write((file), (buf), (len))
+#define BSSH_DELETE(name) DeleteFile((name))
+// Close() is fclose() here, which returns 0 on success
+#define BSSH_CLOSE_OK(file) (Close(file) == 0)
+#endif
+#if BEBBOSSH_AROS
+#include <aros_randpool.h>
 #endif
 
 
@@ -88,7 +102,37 @@ static char comment[256] = "Amiga";
 #define KGMAINTRACE(s) ((void)0)
 #endif
 
+// write checks and secret wipes from patch 0008 of bebbossh 1.46.1 by
+// Matthias Muench; volatile, so the compiler keeps the stores
+static void wipe(void *p, unsigned len) {
+	volatile uint8_t *v = (volatile uint8_t *) p;
+	while (len--)
+		*v++ = 0;
+}
+
+static bool writeAll(BPTR file, const void *p, int len) {
+	return (int) BSSH_WRITE(file, p, len) == len;
+}
+
+#if BEBBOSSH_AROS && !defined(BEBBOSSH_AROS_MINCRT)
+// RunCommand() puts the argument line into the Input() buffer: main() drops
+// it with Flush() at a console, and redirected input is read with Read(),
+// which bypasses that buffer (patch 0008 of bebbossh 1.46.1)
+static bool consoleInput;
+#endif
+
 static char *readLine(char *buf, int len) {
+#if BEBBOSSH_AROS && !defined(BEBBOSSH_AROS_MINCRT)
+	if (!consoleInput) {
+		int n = 0;
+		char c;
+		while (n < len - 1 && Read(Input(), &c, 1) == 1 && c != '\n')
+			if (c != '\r')
+				buf[n++] = c;
+		buf[n] = 0;
+		return buf;
+	}
+#endif
 #if BEBBOSSH_AMIGA_API
 	char *s = FGets(Input(), buf, len);
 #else
@@ -189,6 +233,10 @@ __stdargs int main(int argc, char **argv) {
 	// remove the program arguments from stdin
 	FGetC(stdin);
 	fflush(stdin);
+#elif BEBBOSSH_AROS && !defined(BEBBOSSH_AROS_MINCRT)
+	consoleInput = IsInteractive(Input()) != 0;
+	if (consoleInput)
+		Flush(Input());
 #endif
 
 	puts("Generating public/private ed25519 key pair");
@@ -225,6 +273,16 @@ __stdargs int main(int argc, char **argv) {
 	}
 #endif
 
+#if BEBBOSSH_AROS && BEBBOSSH_RANDPOOL
+	// a long-term key: more timer wake-ups and jitter on top of the pool's
+	// first-use collection
+	aros_randpool_stir(32);
+	if (!(aros_randpool_flags() & AROS_RANDPOOL_JITTER_OK))
+		puts("warning: little CPU timer jitter (emulated CPU?), see Random Numbers in README.AROS.txt");
+	if (!(aros_randpool_flags() & AROS_RANDPOOL_SEED_SAVED))
+		puts("note: the random seed ENVARC:.ssh/random_seed was not saved");
+#endif
+
 	static uint8_t pk[32];
 	static uint8_t sk[64];
 #if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
@@ -237,6 +295,7 @@ __stdargs int main(int argc, char **argv) {
 	ge_pubkey(pk, az);
 	KGMAINTRACE("keygen: after ge_pubkey");
 	memcpy(sk + 32, pk, 32);
+	wipe(az, sizeof(az));
 #else
 	ge_new_keypair_ed25519(pk, sk);
 #endif
@@ -289,7 +348,8 @@ __stdargs int main(int argc, char **argv) {
 		}
 		out = BSSH_OPEN(outfilename, MODE_NEWFILE);
 		if (!out) {
-			printf("can't write to: %s", outfilename);
+			printf("can't write to: %s\n", outfilename);
+			wipe(sk, sizeof(sk));
 			return 10;
 		}
 	}
@@ -352,18 +412,26 @@ __stdargs int main(int argc, char **argv) {
 	static uint8_t mime[1024];
 	mimeEncode(mime, key, t - key);
 
-	BSSH_WRITE(out, "-----BEGIN OPENSSH PRIVATE KEY-----\n", 36);
+	bool ok = writeAll(out, "-----BEGIN OPENSSH PRIVATE KEY-----\n", 36);
 
-	for (uint8_t *p = mime, *q = p + strlen((char*) mime); p < q; p += 72) {
+	for (uint8_t *p = mime, *q = p + strlen((char*) mime); ok && p < q; p += 72) {
 		int l = q - p;
 		if (l > 72)
 			l = 72;
-		BSSH_WRITE(out, p, l);
-		BSSH_WRITE(out, "\n", 1);
+		ok = writeAll(out, p, l) && writeAll(out, "\n", 1);
 	}
 
-	BSSH_WRITE(out, "-----END OPENSSH PRIVATE KEY-----\n", 34);
-	BSSH_CLOSE(out);
+	ok = ok && writeAll(out, "-----END OPENSSH PRIVATE KEY-----\n", 34);
+	ok = BSSH_CLOSE_OK(out) && ok;
+	wipe(sk, sizeof(sk));
+	// the first 62 bytes are the fixed header template; keep it for a resident rerun
+	wipe(key + 62, sizeof(key) - 62);
+	wipe(mime, sizeof(mime));
+	if (!ok) {
+		BSSH_DELETE(outfilename);
+		printf("error writing %s\n", outfilename);
+		return 10;
+	}
 
 	/* write public key */
 	uint8_t pubbuf[4 + 11 + 4 + 32];
@@ -377,17 +445,21 @@ __stdargs int main(int argc, char **argv) {
 	strcat(outfilename, ".pub");
 	out = BSSH_OPEN(outfilename, MODE_NEWFILE);
 	if (!out) {
-		printf("can't write %s", outfilename);
+		printf("can't write %s\n", outfilename);
 		return 5;
 	}
 
-	BSSH_WRITE(out, "ssh-ed25519 ", 12);
-	BSSH_WRITE(out, mime, strlen((char* )mime));
-	BSSH_WRITE(out, " ", 1);
-	BSSH_WRITE(out, comment, strlen(comment));
-	BSSH_WRITE(out, "\n", 1);
-
-	BSSH_CLOSE(out);
+	ok = writeAll(out, "ssh-ed25519 ", 12)
+			&& writeAll(out, mime, strlen((char* )mime))
+			&& writeAll(out, " ", 1)
+			&& writeAll(out, comment, strlen(comment))
+			&& writeAll(out, "\n", 1);
+	ok = BSSH_CLOSE_OK(out) && ok;
+	if (!ok) {
+		BSSH_DELETE(outfilename);
+		printf("error writing %s\n", outfilename);
+		return 5;
+	}
 
 	return 0;
 }
