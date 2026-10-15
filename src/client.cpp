@@ -599,15 +599,15 @@ static bool verifyHost(uint8_t const * hostBase64) {
 	// attack, the user has to remove the old entry deliberately
 	// (patch 0010 of bebbossh 1.46.1 by Matthias Muench)
 	if (changed) {
+		// in parts: the x86_64 mincrt printf() formats at most 511 characters
 		printf("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n"
 		       "@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @\n"
-		       "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n"
-		       "Someone could be eavesdropping on you right now (man-in-the-\n"
-		       "middle attack), or the host key of %s has just been changed.\n"
-		       "ssh-ed25519 key sent by the host: %s\n"
-		       "key stored in %s: %s\n"
-		       "If the change is expected, remove the line for %s from that file.\n",
-		       hostname, hostBase64, knownHosts, stored, hostname);
+		       "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
+		printf("Someone could be eavesdropping on you right now (man-in-the-\n"
+		       "middle attack), or the host key of %s has just been changed.\n", hostname);
+		printf("ssh-ed25519 key sent by the host: %s\n"
+		       "key stored in %s: %s\n", hostBase64, knownHosts, stored);
+		printf("If the change is expected, remove the line for %s from that file.\n", hostname);
 		Close(f);
 		return false;
 	}
