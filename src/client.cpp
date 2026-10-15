@@ -288,6 +288,14 @@ static bool ensureBufferSize(unsigned nsize) {
 	return true;
 }
 
+// constant-time compare, so a forged AEAD tag leaks nothing via timing
+static int ctcmp(uint8_t const *a, uint8_t const *b, unsigned n) {
+	uint8_t r = 0;
+	for (unsigned i = 0; i < n; ++i)
+		r |= a[i] ^ b[i];
+	return r; // 0 == equal
+}
+
 static void increment(uint8_t iv[12]) {
 	for (int i = 11; i >= 0; --i) {
 		if (++iv[i])
@@ -486,7 +494,7 @@ int receiveEncryptedPacket() {
 
 	uint8_t check[16];
 	readAead->calcHash(check);
-	if (0 != memcmp(check, p + len, 16)) {
+	if (0 != ctcmp(check, p + len, 16)) {
 		error = ERROR_SIGNATURE_MISMATCH;
 		return 0;
 	}
@@ -714,6 +722,17 @@ static bool handleKexEcdhReply(SHA256 &handshakeMD, unsigned long packetSize) {
 	logme(L_DEBUG, "calculating shared secret using X25519 START");
 	fe_scalarmult_x25519(sharedSecret.data, csk, p);
 	logme(L_DEBUG, "calculating shared secret using X25519 STOP");
+	{
+		// a low-order server key yields an all-zero secret and fully
+		// predictable session keys - refuse it (RFC 7748 6.1)
+		uint8_t z = 0;
+		for (int i = 0; i < 32; ++i)
+			z |= sharedSecret.data[i];
+		if (z == 0) {
+			error = ERROR_SERVER_PUBKEY;
+			return false;
+		}
+	}
 	p += length;
 	normalizeSharedSecret(&sharedSecret);
 
@@ -1128,6 +1147,20 @@ void cleanup() {
 	if (writeBc) delete writeBc;
 	if (readCounterBc) delete readCounterBc;
 	if (writeCounterBc) delete writeCounterBc;
+
+	// wipe key material - AmigaOS does not clear freed memory, so the
+	// session keys, the X25519 secret and the user's private key would
+	// otherwise stay readable for the next task
+	{
+		volatile uint8_t *v = (volatile uint8_t *)&keyMat;
+		for (unsigned i = 0; i < sizeof(keyMat); ++i) v[i] = 0;
+		v = (volatile uint8_t *)&sharedSecret;
+		for (unsigned i = 0; i < sizeof(sharedSecret); ++i) v[i] = 0;
+		v = (volatile uint8_t *)csk;
+		for (unsigned i = 0; i < sizeof(csk); ++i) v[i] = 0;
+		v = (volatile uint8_t *)userSK;
+		for (unsigned i = 0; i < sizeof(userSK); ++i) v[i] = 0;
+	}
 
 	if (sockfd >= 0)
 		CloseSocket(sockfd);
