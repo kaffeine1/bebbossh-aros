@@ -22,6 +22,7 @@
  * Purpose:
  *  - Provide pseudo-random filler for buffers
  *    * Amiga: uses hardware vhposr + DateStamp ticks
+ *    * AROS: SHA-512 entropy pool with a seed file (aros_randpool.cpp)
  *    * POSIX: uses random()
  *    * FAKERAND: deterministic sequence for testing
  *  - Provide unzero() utility to replace zero bytes with their position index
@@ -58,9 +59,13 @@
   #include <bcrypt.h>
 #endif
 
+#if defined(__AROS__)
+#include "aros_randpool.h" // BEBBOSSH_RANDPOOL, aros_randfill()
+#endif
+
 // #define FAKERAND 1
 
-#if defined(__AROS__)
+#if defined(__AROS__) && !BEBBOSSH_RANDPOOL
 #if defined(BEBBOSSH_AROS_MINCRT)
 #include "aros_mincrt_wrappers.h"
 #endif
@@ -102,6 +107,8 @@ void randfill(void * _to, unsigned len) {
 		t = (t >> 31) | (t << 1);
 		*to++ = x;
 	}
+#elif defined(__AROS__) && BEBBOSSH_RANDPOOL
+	aros_randfill(_to, len);
 #elif defined(__AROS__)
     unsigned char *to = (unsigned char *)_to;
     static uint64_t state;
