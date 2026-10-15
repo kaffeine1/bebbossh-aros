@@ -406,6 +406,10 @@ int receivePacket(ptype packetType) {
 		// read bytes until \n occurs.
 		int pos = 0;
 		for (;; ++pos) {
+			if (pos >= (int)buffersize) {
+				error = ERROR_INVALID_PACKET;
+				return 0;
+			}
 			if (1 != recv(sockfd, buffer + pos, 1, 0))
 				return 0;
 			if (buffer[pos] == '\n')
@@ -430,6 +434,13 @@ int receivePacket(ptype packetType) {
 		packetSize = htonl(packetSize);
 	} else {
 		packetSize = getInt32Aligned(buffer);
+	}
+	// the length comes from the server: a negative one would make
+	// ensureBufferSize() allocate too little
+	if (packetSize < 5 || packetSize > 256 * 1024) {
+		logme(L_ERROR, "invalid packet length %ld", packetSize);
+		error = ERROR_INVALID_PACKET;
+		return 0;
 	}
 //	printf("%08lx\n", packetSize);
 	int nsize = packetSize + 4;
@@ -1557,6 +1568,8 @@ bool openChannels() {
 
 	uint8_t * pp = buffer + 18;
 	maxBuffer = getInt32(pp);
+	if (maxBuffer < 1024) // 512 bytes are kept for the headers
+		return false;
 	if (maxBuffer > 32768)
 		maxBuffer = 32768;
 	maxBuffer -= 512;
