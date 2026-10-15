@@ -2,11 +2,11 @@
 set -eu
 
 repo=${BEBBOSSH_RELEASE_REPO:-kaffeine1/bebbossh-aros}
-tag=${BEBBOSSH_RELEASE_TAG:-v1.0.5-aros-i386-abiv0}
-version=${BEBBOSSH_RELEASE_VERSION:-v1.0.5}
+tag=${BEBBOSSH_RELEASE_TAG:-v1.0.6-aros-i386-abiv0}
+version=${BEBBOSSH_RELEASE_VERSION:-v1.0.6}
 base="bebbossh-aros-i386-abiv0-$version"
-expected_zip=${BEBBOSSH_RELEASE_ZIP_SHA256:-75ae13a3c4dc5d8b345fed880eb834cb30eca93b5a0759e2e193481b0154a4a7}
-expected_tgz=${BEBBOSSH_RELEASE_TGZ_SHA256:-ce451267dca94a7925718c831f8a95530dac679991ceddba4de3a06ea5f7ab6f}
+expected_zip=${BEBBOSSH_RELEASE_ZIP_SHA256:-4a6d3ba54d155ac81030f33c30906cad62457d0bbf4932964918e3edf82b699a}
+expected_tgz=${BEBBOSSH_RELEASE_TGZ_SHA256:-3ec7eb8f100220c07b3eda9e375c040a58a18dfeadb9c55e7c2a44dfcc85063e}
 
 host=${BEBBOSSH_AROS_HOST:-127.0.0.1}
 port=${BEBBOSSH_AROS_PORT:-}
