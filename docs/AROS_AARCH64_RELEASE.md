@@ -22,7 +22,7 @@ three targets are not interchangeable.
 Release naming (see `AROS_PORTING.md`):
 
 ```text
-v1.0.5-aros-aarch64
+v1.0.6-aros-aarch64
 bebbossh-aros-aarch64-<version>.zip
 bebbossh-aros-aarch64-<version>.tar.gz
 ```

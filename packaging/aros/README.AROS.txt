@@ -281,8 +281,8 @@ Current Runtime Status
 - x86_64 (AROS One / VMware 64 bit, the x86_64 kit): stable since v1.0.0.
   SSH commands run synchronously, so keep them short. AES-GCM uses AES-NI and
   PCLMULQDQ when the CPU (or the VM CPU model) provides them.
-- aarch64 (AROS on the Raspberry Pi, the aarch64 kit): first release, tested
-  on a Raspberry Pi 400. It works like the i386 kit: a remote command
+- aarch64 (AROS on the Raspberry Pi, the aarch64 kit): tested on a
+  Raspberry Pi 400. It works like the i386 kit: a remote command
   (ssh host command) runs in a child task. AES-GCM runs as plain C there,
   without AES instructions, so the daemon also offers chacha20-poly1305 and
   bebbossh/bebboscp try it first.
