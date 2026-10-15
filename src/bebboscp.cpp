@@ -1321,7 +1321,7 @@ static void printUsage() {
 	puts("    -v <n>        set verbosity, defaults to 3 = WARN");
 	puts("    --ciphers <n> use the ciphers in the given order:");
 	puts("                  1=aes128-gcm, 2=chacha20-poly1305");
-	puts("                  defaults to n=21");
+	puts("                  defaults to n=" DEFAULT_ENC_ORDER);
 }
 
 static void parseParams(unsigned argc, char **argv) {

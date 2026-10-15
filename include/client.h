@@ -73,6 +73,14 @@ enum err {
     ERROR_LAST                  // Sentinel value
 };
 
+// Default cipher order of bebbossh/bebboscp: 1 = aes128-gcm, 2 = chacha20-poly1305.
+// On aarch64 AES-GCM is plain C, without AES instructions: ChaCha20 goes first.
+#if defined(__aarch64__)
+#define DEFAULT_ENC_ORDER "21"
+#else
+#define DEFAULT_ENC_ORDER "12"
+#endif
+
 // Global client state variables
 extern err error;               // Current error state
 extern short stopped;           // Client run status flag

@@ -135,9 +135,10 @@ char const * hostKeyName = "/etc/ssh/ssh_host_ed25519_key";
 #endif
 
 bool hasAes = true;
-#if BEBBOSSH_AROS && !defined(BEBBOSSH_AROS_MINCRT)
+#if BEBBOSSH_AROS && !defined(BEBBOSSH_AROS_MINCRT) && !defined(__aarch64__)
 // Hosted AROS validation currently uses AES-GCM by default; ChaCha can still
 // be enabled explicitly via sshd_config once that backend has more soak time.
+// aarch64 offers both: AES-GCM is plain C there, without AES instructions.
 bool hasChacha = false;
 #else
 bool hasChacha = true;

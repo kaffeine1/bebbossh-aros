@@ -161,6 +161,23 @@ In QEMU (`raspi3b`, AROS nightly of 2026-10-05) the daemon also exits without
 a kernel trap after a duplicate channel id and after `Break`, and the battery
 of items 2 and 5 to 8 passes.
 
+## Ciphers
+
+Without a `Ciphers` line the daemon offers `chacha20-poly1305@openssh.com`
+as well as `aes128-gcm@openssh.com` (v1.0.5 offered only AES-GCM), and
+`bebbossh`/`bebboscp` try ChaCha20-Poly1305 first; `--ciphers` and
+`ssh_config` still set the order. AES-GCM is plain C on aarch64, without
+AES instructions. Checked on the Pi 400:
+
+- OpenSSH negotiates `chacha20-poly1305@openssh.com` without `-c`.
+- 4 MiB with OpenSSH `scp` both ways, and with `bebboscp` over loopback,
+  byte-identical with each cipher. Both ciphers take the same time: about
+  0.5 s up and 2 s down with `scp`, 0.7 s each way with `bebboscp`.
+- The daemon log shows `using chacha20-poly1305@openssh.com` for
+  `bebboscp`, and `using aes128-gcm@openssh.com` with `--ciphers 1`.
+- The release battery passes with ChaCha20-Poly1305 as the OpenSSH
+  default, including 100 logins and the zero-delay transfer stress.
+
 ## Known limits
 
 - Raspberry Pi 400: a daemon logging at debug level (`-v5`) into a console
