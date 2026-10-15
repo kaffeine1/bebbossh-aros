@@ -288,6 +288,14 @@ static bool ensureBufferSize(unsigned nsize) {
 	return true;
 }
 
+// constant-time compare, so a forged AEAD tag leaks nothing via timing
+static int ctcmp(uint8_t const *a, uint8_t const *b, unsigned n) {
+	uint8_t r = 0;
+	for (unsigned i = 0; i < n; ++i)
+		r |= a[i] ^ b[i];
+	return r; // 0 == equal
+}
+
 static void increment(uint8_t iv[12]) {
 	for (int i = 11; i >= 0; --i) {
 		if (++iv[i])
@@ -398,6 +406,10 @@ int receivePacket(ptype packetType) {
 		// read bytes until \n occurs.
 		int pos = 0;
 		for (;; ++pos) {
+			if (pos >= (int)buffersize) {
+				error = ERROR_INVALID_PACKET;
+				return 0;
+			}
 			if (1 != recv(sockfd, buffer + pos, 1, 0))
 				return 0;
 			if (buffer[pos] == '\n')
@@ -422,6 +434,13 @@ int receivePacket(ptype packetType) {
 		packetSize = htonl(packetSize);
 	} else {
 		packetSize = getInt32Aligned(buffer);
+	}
+	// the length comes from the server: a negative one would make
+	// ensureBufferSize() allocate too little
+	if (packetSize < 5 || packetSize > 256 * 1024) {
+		logme(L_ERROR, "invalid packet length %ld", packetSize);
+		error = ERROR_INVALID_PACKET;
+		return 0;
 	}
 //	printf("%08lx\n", packetSize);
 	int nsize = packetSize + 4;
@@ -486,7 +505,7 @@ int receiveEncryptedPacket() {
 
 	uint8_t check[16];
 	readAead->calcHash(check);
-	if (0 != memcmp(check, p + len, 16)) {
+	if (0 != ctcmp(check, p + len, 16)) {
 		error = ERROR_SIGNATURE_MISMATCH;
 		return 0;
 	}
@@ -534,17 +553,6 @@ static void parse_line(char *line, char **n, char **c, char **k) {
 }
 
 // helper: write one line into a memory buffer
-static char *append_line(char *out, const char *n, const char *c, const char *k) {
-    out = stpcpy(out, n);
-    *out++ = ' ';
-    out = stpcpy(out, c);
-    *out++ = ' ';
-    out = stpcpy(out, k);
-    *out++ = '\n';
-    *out = '\0';
-    return out;
-}
-
 static bool verifyHost(uint8_t const * hostBase64) {
 	if (!sshDotDir) sshDotDir = concat(sshDir, ".ssh", NULL);
 	if (!knownHosts) knownHosts = concat(sshDotDir, "/known_hosts", NULL);
@@ -564,9 +572,10 @@ static bool verifyHost(uint8_t const * hostBase64) {
  	}
 
 	char * buf = (char *)buffer;
-	bool replace = false;
 	bool r = false;
-	Seek(f, OFFSET_BEGINNING, 0);
+	bool changed = false;
+	char stored[100];
+	Seek(f, 0, OFFSET_BEGINNING);
 	while(!r) {
 		char * p = buf + 1000;
 			if (!BSSH_FGETS(f, p, buffersize - 1000))
@@ -578,68 +587,51 @@ static bool verifyHost(uint8_t const * hostBase64) {
 		if (0 == strcmp(n, hostname) && 0 == strcmp(c, "ssh-ed25519")) {
 			r = 0 == strcmp(k, (char *)hostBase64);
 			if (!r) {
-				printf("host key %s differs from stored host key %s for host %s\n", hostBase64, k, hostname);
-				replace = true;
+				strncpy(stored, k, sizeof(stored) - 1);
+				stored[sizeof(stored) - 1] = 0;
+				changed = true;
 			}
 			break;
 		}
 	}
+
+	// a changed key is never accepted here, as in OpenSSH: it may be an
+	// attack, the user has to remove the old entry deliberately
+	// (patch 0010 of bebbossh 1.46.1 by Matthias Muench)
+	if (changed) {
+		// in parts: the x86_64 mincrt printf() formats at most 511 characters
+		printf("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n"
+		       "@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @\n"
+		       "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
+		printf("Someone could be eavesdropping on you right now (man-in-the-\n"
+		       "middle attack), or the host key of %s has just been changed.\n", hostname);
+		printf("ssh-ed25519 key sent by the host: %s\n"
+		       "key stored in %s: %s\n", hostBase64, knownHosts, stored);
+		printf("If the change is expected, remove the line for %s from that file.\n", hostname);
+		Close(f);
+		return false;
+	}
+
 	if (!r) {
+		// only ask at a console, never take the answer from redirected input
+		if (!IsInteractive(BSSH_STDIN())) {
+			printf("unknown host %s with ssh-ed25519 key %s\n"
+			       "not asking: the input is not a console; connect once interactively\n"
+			       "or add the key to %s\n", hostname, hostBase64, knownHosts);
+			Close(f);
+			return false;
+		}
 		printf("do you trust host %s with ssh-ed25519 key %s? Then enter: yes\n", hostname, hostBase64);
 		fflush(stdout);
 		*buf = 0;
 			BSSH_FGETS(BSSH_STDIN(), buf, 5);
 		if (0 == strncmp("yes", (char *)buffer, 3)) {
 			r = true;
-			if (replace) {
-				// Get file size
-				Seek(f, 0, OFFSET_END);
-				long size = Seek(f, 0, OFFSET_CURRENT);
-
-				Close(f);
-				f = Open(knownHosts, MODE_OLDFILE);
-
-				size += 1024;// extra room
-				char *mem = (char *)malloc(size);
-				if (!mem) {
-					logme(L_ERROR, "out of memory for %ld bytes", size);
-					exit(10);
-				}
-
-				char *out = mem;
-				char * p = buf + 1000;
-					while (BSSH_FGETS(f, p, buffersize - 1000)) {
-					char *n, *c, *k;
-					parse_line(p, &n, &c, &k);
-
-					// skip lines without 3 values
-					if (!*n || !*c || !*k)
-						continue;
-
-					if (strcmp(n, hostname) == 0 && strcmp(c, "ssh-ed25519") == 0) {
-						// skip old entry
-						continue;
-					}
-					out = append_line(out, n, c, k);
-				}
-
-				// append new entry
-				out = append_line(out, hostname, "ssh-ed25519", (char *)hostBase64);
-
-				// rewind and truncate
-				Close(f);
-				f = Open(knownHosts, MODE_NEWFILE);
-				Write(f, mem, out - mem);
-
-				free(mem);
-			} else {
-				// just append
-				Seek(f, OFFSET_END, 0);
-					char line[1024];
-					int n = snprintf(line, sizeof(line), "%s ssh-ed25519 %s\n", hostname, hostBase64);
-					if (n > 0)
-						BSSH_WRITE_FILE(f, line, n);
-			}
+			Seek(f, 0, OFFSET_END);
+			char line[1024];
+			int n = snprintf(line, sizeof(line), "%s ssh-ed25519 %s\n", hostname, hostBase64);
+			if (n > 0)
+				BSSH_WRITE_FILE(f, line, n);
 		}
 	}
 
@@ -651,6 +643,15 @@ static bool verifyHost(uint8_t const * hostBase64) {
  * Handle the KexEcdhReply packet.
  * Returns true if the host was successfully verified.
  */
+// Does [p, p + length) lie inside the payload, which starts at buffer + 5 and
+// has payloadLen bytes? The length comes from the server: compare without
+// adding, so it cannot wrap (unsigned long is 32 bit on i386). From patch
+// 0011 of bebbossh 1.46.1 by Matthias Muench, with exact bounds.
+static bool fitsPayload(uint8_t const *p, unsigned long length, unsigned long payloadLen) {
+	unsigned long off = (unsigned long)(p - buffer);
+	return off <= payloadLen + 5 && length <= payloadLen + 5 - off;
+}
+
 static bool handleKexEcdhReply(SHA256 &handshakeMD, unsigned long packetSize) {
 	// packet data starts at buffer + 5;
 	uint8_t *p = buffer + 5;
@@ -662,7 +663,7 @@ static bool handleKexEcdhReply(SHA256 &handshakeMD, unsigned long packetSize) {
 
 	// get host digest
 	unsigned long length = getInt32(p);
-	if (length + (p - buffer) > packetSize) {
+	if (!fitsPayload(p + 4, length, packetSize)) {
 		error = ERROR_INVALID_PACKET;
 		return false;
 	}
@@ -673,11 +674,6 @@ static bool handleKexEcdhReply(SHA256 &handshakeMD, unsigned long packetSize) {
 	p += 4;
 	handshakeMD.update(p, length);
 	HSU(p, 0, length);
-
-	if (length + (p - buffer) > packetSize) {
-		error = ERROR_INVALID_PACKET;
-		return false;
-	}
 
 	uint8_t hostBase64[64];
 	{
@@ -692,7 +688,7 @@ static bool handleKexEcdhReply(SHA256 &handshakeMD, unsigned long packetSize) {
 
 	length = getInt32(p);
 	p += 4;
-	if (length + (p - buffer) > packetSize) {
+	if (!fitsPayload(p, length, packetSize)) {
 		error = ERROR_INVALID_PACKET;
 		return false;
 	}
@@ -701,7 +697,7 @@ static bool handleKexEcdhReply(SHA256 &handshakeMD, unsigned long packetSize) {
 	// host public key
 	length = getInt32(p);
 	p += 4;
-	if (length + (p - buffer) > packetSize) {
+	if (length < 32 || !fitsPayload(p, length, packetSize)) {
 		error = ERROR_INVALID_PACKET;
 		return false;
 	}
@@ -737,6 +733,17 @@ static bool handleKexEcdhReply(SHA256 &handshakeMD, unsigned long packetSize) {
 	logme(L_DEBUG, "calculating shared secret using X25519 START");
 	fe_scalarmult_x25519(sharedSecret.data, csk, p);
 	logme(L_DEBUG, "calculating shared secret using X25519 STOP");
+	{
+		// a low-order server key yields an all-zero secret and fully
+		// predictable session keys - refuse it (RFC 7748 6.1)
+		uint8_t z = 0;
+		for (int i = 0; i < 32; ++i)
+			z |= sharedSecret.data[i];
+		if (z == 0) {
+			error = ERROR_SERVER_PUBKEY;
+			return false;
+		}
+	}
 	p += length;
 	normalizeSharedSecret(&sharedSecret);
 
@@ -759,26 +766,25 @@ static bool handleKexEcdhReply(SHA256 &handshakeMD, unsigned long packetSize) {
 #endif
 
 	unsigned long sigBlobLength = getInt32(p);
-	if (sigBlobLength + (p - buffer) - 1 > packetSize) {
-		printf("%ld > %ld\n", sigBlobLength + (p - buffer), packetSize);
+	if (!fitsPayload(p + 4, sigBlobLength, packetSize)) {
 		error = ERROR_INVALID_PACKET;
 		return false;
 	}
 	p += 4;
 
 	length = getInt32(p);
-	if (length + (p - buffer) - 1 > packetSize) {
+	if (!fitsPayload(p + 4, length, packetSize)) {
 		error = ERROR_INVALID_PACKET;
 		return false;
 	}
 	p += 4;
 	p += length; // check the name? no, check will fail else.
 	length = getInt32(p);
-	if (length != 64 || length + (p - buffer) - 1 > packetSize) {
+	p += 4;
+	if (length != 64 || !fitsPayload(p, length, packetSize)) {
 		error = ERROR_INVALID_PACKET;
 		return false;
 	}
-	p += 4;
 
 	logme(L_DEBUG, "verifying server signature ed25519 START");
 	int r = ge_verify_ed25519(hash, 32, p, hpk);
@@ -1079,16 +1085,26 @@ static bool authenticate() {
 	if (!sendEncrypted(buffer + 5, len))
 		return false;
 
+	unsigned plen;
 	for(;;) {
-		if (receiveEncryptedPacket() == 0)
+		plen = receiveEncryptedPacket();
+		if (plen == 0)
 			return false;
 		if (buffer[5] != SSH_MSG_USERAUTH_BANNER)
 			break;
 
+		// the banner length comes from the server: never write or read past
+		// the payload (message type and length field are 5 bytes)
 		len = getInt32Aligned(buffer + 6); // even
+		if (len > (plen < 5 ? 0 : plen - 5))
+			len = plen < 5 ? 0 : plen - 5;
 		buffer[10 + len] = 0;
 		puts((char *)buffer + 10);
 	}
+
+	// the method name-list is an SSH string, not NUL terminated: end it at
+	// the end of the payload before strstr()
+	buffer[5 + plen] = 0;
 
 	// try loginPass with public key
 	if (strstr((char *)buffer + 10, "publickey")) {
@@ -1142,6 +1158,20 @@ void cleanup() {
 	if (writeBc) delete writeBc;
 	if (readCounterBc) delete readCounterBc;
 	if (writeCounterBc) delete writeCounterBc;
+
+	// wipe key material - AmigaOS does not clear freed memory, so the
+	// session keys, the X25519 secret and the user's private key would
+	// otherwise stay readable for the next task
+	{
+		volatile uint8_t *v = (volatile uint8_t *)&keyMat;
+		for (unsigned i = 0; i < sizeof(keyMat); ++i) v[i] = 0;
+		v = (volatile uint8_t *)&sharedSecret;
+		for (unsigned i = 0; i < sizeof(sharedSecret); ++i) v[i] = 0;
+		v = (volatile uint8_t *)csk;
+		for (unsigned i = 0; i < sizeof(csk); ++i) v[i] = 0;
+		v = (volatile uint8_t *)userSK;
+		for (unsigned i = 0; i < sizeof(userSK); ++i) v[i] = 0;
+	}
 
 	if (sockfd >= 0)
 		CloseSocket(sockfd);
@@ -1538,6 +1568,8 @@ bool openChannels() {
 
 	uint8_t * pp = buffer + 18;
 	maxBuffer = getInt32(pp);
+	if (maxBuffer < 1024) // 512 bytes are kept for the headers
+		return false;
 	if (maxBuffer > 32768)
 		maxBuffer = 32768;
 	maxBuffer -= 512;
@@ -1705,7 +1737,7 @@ void eventLoop() {
 				if (!cc) {
 					logme(L_ERROR, "got packet for invalid channel %ld", channelNo);
 				} else {
-					bool r = cc->handleMessage(k, p, len - 9); // 9 = PACKETLEN + MSG + CHANNELNO = 4 + 1 + 4
+					bool r = cc->handleMessage(k, p, len - 5); // bytes available from p (MSG + CHANNELNO consumed)
 					if (!r)
 						stopped = 1;
 				}

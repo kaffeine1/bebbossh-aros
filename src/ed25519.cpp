@@ -266,7 +266,11 @@ void barrett_reduce(uint16_t r[32], const uint16_t x[64]) {
 			r2[i + j] = u & 0xff;
 			u >>= 8;
 		}
-		r2[i + j] += u;
+		// r2 = m * q3 mod b^(k+1): the carry beyond r2[32] is discarded; adding
+		// it wrote r2[33], one past the array (patch 0005 of bebbossh 1.46.1
+		// by Matthias Muench)
+		if (i + j < 33)
+			r2[i + j] += u;
 	}
 
 	unsigned int pb = 0;

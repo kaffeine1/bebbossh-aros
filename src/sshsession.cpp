@@ -334,6 +334,40 @@ static void increment(uint8_t iv[12]) {
 	}
 }
 
+// ---- bounded parsing of a received packet -------------------------------
+// Everything a client sends is length-prefixed and untrusted. g_pktEnd is one
+// past the current packet; bstr()/bu32() never read or advance past it and set
+// g_parseBad on any overrun, and the dispatcher then drops the session. One
+// packet is parsed at a time, so file scope is safe. From patch 0013 of
+// bebbossh 1.46.1 by Matthias Muench.
+static uint8_t *g_pktEnd;
+static bool g_parseBad;
+
+static uint8_t *bstr(uint8_t *&p) {
+	if (g_parseBad || p + 4 > g_pktEnd) { g_parseBad = true; return g_pktEnd; }
+	uint32_t l = getInt32(p);
+	p += 4;
+	if (l > (uint32_t)(g_pktEnd - p)) { g_parseBad = true; return g_pktEnd; }
+	uint8_t *r = p;
+	p += l;
+	return r;
+}
+
+static uint32_t bu32(uint8_t *&p) {
+	if (g_parseBad || p + 4 > g_pktEnd) { g_parseBad = true; return 0; }
+	uint32_t v = getInt32(p);
+	p += 4;
+	return v;
+}
+
+// constant-time compare, so a forged AEAD tag leaks nothing through timing
+static int ctcmp(uint8_t const *a, uint8_t const *b, unsigned n) {
+	uint8_t r = 0;
+	for (unsigned i = 0; i < n; ++i)
+		r |= a[i] ^ b[i];
+	return r;
+}
+
 void SshSession::abort() {
 	for (int i = 0; i < channels.getMax(); ++i) {
 		if (channels[i])
@@ -830,6 +864,11 @@ int SshSession::consumeSocketData(char *indata, int len) {
 		return 0;
 	}
 
+	// bound all length-prefixed fields to this packet (refined after
+	// decryption in the AUTH/LOGGEDIN case)
+	g_pktEnd = (uint8_t*) indata + 4 + packetSize;
+	g_parseBad = false;
+
 	if (isLogLevel(L_ULTRA))
 		_dump("in", indata, packetSize + 4 > 128 ? 128 : packetSize + 4);
 
@@ -842,47 +881,55 @@ int SshSession::consumeSocketData(char *indata, int len) {
 		logme(L_FINE, "@%ld got SSH_MSG_KEX_INIT", sockFd);
 
 		uint8_t *p = (uint8_t*) indata + 22;
-		uint8_t *kex_algorithms = sshString(p);
+		uint8_t *kex_algorithms = bstr(p);
+		if (g_parseBad) return -1;
 		if (!sshNameListContains(kex_algorithms, "curve25519-sha256")) {
 			logme(L_INFO, "@%ld unsupported kex_algorithms", sockFd);
 			return -1;
 		}
 
-		uint8_t *server_host_key_algorithms = sshString(p);
+		uint8_t *server_host_key_algorithms = bstr(p);
+		if (g_parseBad) return -1;
 		if (!sshNameListContains(server_host_key_algorithms, "ssh-ed25519")) {
 			logme(L_INFO, "@%ld unsupported server_host_key_algorithms", sockFd);
 			return -1;
 		}
 
-		uint8_t *encryption_algorithm = sshString(p);
+		uint8_t *encryption_algorithm = bstr(p);
+		if (g_parseBad) return -1;
 		char const *cipher = selectEnabledCipher(encryption_algorithm);
 		if (!cipher) {
 			logme(L_INFO, "@%ld unsupported encryption_algorithm", sockFd);
 			return -1;
 		}
-		encryption_algorithm = sshString(p);
+		encryption_algorithm = bstr(p);
+		if (g_parseBad) return -1;
 		if (!sshNameListContains(encryption_algorithm, cipher)) {
 			logme(L_INFO, "@%ld unsupported encryption_algorithm", sockFd);
 			return -1;
 		}
 
-		uint8_t *mac_algorithm = sshString(p);
+		uint8_t *mac_algorithm = bstr(p);
+		if (g_parseBad) return -1;
 		if (!sshNameListContains(mac_algorithm, "hmac-sha2-256")) {
 			logme(L_INFO, "@%ld unsupported mac_algorithm", sockFd);
 			return -1;
 		}
-		mac_algorithm = sshString(p);
+		mac_algorithm = bstr(p);
+		if (g_parseBad) return -1;
 		if (!sshNameListContains(mac_algorithm, "hmac-sha2-256")) {
 			logme(L_INFO, "@%ld unsupported mac_algorithm", sockFd);
 			return -1;
 		}
 
-		uint8_t *compression_algorithm = sshString(p);
+		uint8_t *compression_algorithm = bstr(p);
+		if (g_parseBad) return -1;
 		if (!sshNameListContains(compression_algorithm, "none")) {
 			logme(L_INFO, "@%ld unsupported compression_algorithm", sockFd);
 			return -1;
 		}
-		compression_algorithm = sshString(p);
+		compression_algorithm = bstr(p);
+		if (g_parseBad) return -1;
 		if (!sshNameListContains(compression_algorithm, "none")) {
 			logme(L_INFO, "@%ld unsupported compression_algorithm", sockFd);
 			return -1;
@@ -916,6 +963,10 @@ int SshSession::consumeSocketData(char *indata, int len) {
 		}
 		logme(L_FINE, "@%ld got SSH_MSG_KEX_ECDH_INIT", sockFd);
 
+		if ((uint8_t*)indata + 10 + 32 > g_pktEnd) {
+			logme(L_INFO, "@%ld KEX_ECDH_INIT too short", sockFd);
+			return -1;
+		}
 		uint32_t keyLen = getInt32(indata + 6);
 		if (keyLen != 32) {
 			logme(L_INFO, "@%ld expected key length 32 - got %ld", sockFd, keyLen);
@@ -978,6 +1029,20 @@ int SshSession::consumeSocketData(char *indata, int len) {
 
 		packetSize += 16; // add signature size
 
+			// bound all length-prefixed fields to the decrypted payload
+			g_pktEnd = (uint8_t*) indata + 5 + len;
+			g_parseBad = false;
+
+			// the connection protocol (channels) is only valid after a successful
+			// authentication: before it only service and user-auth requests
+			// (patch 0016 of bebbossh 1.46.1 by Matthias Muench)
+			if (state != LOGGEDIN
+					&& indata[5] != SSH_MSG_SERVICE_REQUEST
+					&& indata[5] != SSH_MSG_USERAUTH_REQUEST) {
+				logme(L_ERROR, "@%ld message %ld before authentication, dropping", sockFd, indata[5]);
+				return -1;
+			}
+
 			switch (indata[5]) {
 			case SSH_MSG_SERVICE_REQUEST:
 				logme(L_FINE, "@%ld got SSH_MSG_SERVICE_REQUEST", sockFd);
@@ -1025,6 +1090,10 @@ int SshSession::consumeSocketData(char *indata, int len) {
 			_dump("unknown", indata, packetSize + 4);
 			logme(L_INFO, "@%ld unknown packet received %ld", sockFd, indata[5]);
 			break;
+		}
+		if (g_parseBad) {
+			logme(L_ERROR, "@%ld malformed packet, dropping session", sockFd);
+			return -1;
 		}
 	}
 		break;
@@ -1118,7 +1187,7 @@ bool SshSession::login(uint8_t *user, uint8_t *pass) {
 }
 
 bool SshSession::handleChannelEof(uint8_t *p) {
-	uint32_t channelNo = getInt32(p);
+	uint32_t channelNo = bu32(p);
 	Channel * c = channels[channelNo];
 	if (c) {
 		c->abort();
@@ -1135,6 +1204,13 @@ bool SshSession::handleChannelData(uint8_t *p, int alen) {
 	if (c) {
 		uint32_t len = getInt32Aligned(p);
 		p += 4;
+		// the data length is client-supplied: never read past the payload
+		// (alen counts the message type, channel number and length: 9 bytes)
+		if (alen < 9 || len > (uint32_t)(alen - 9)) {
+			logme(L_ERROR, "@%ld channel data length %ld exceeds packet", sockFd, len);
+			g_parseBad = true; // the dispatcher drops the session
+			return false;
+		}
 
 		uint32_t toAdd = c->updateWindowSize(len);
 		if (toAdd) {
@@ -1182,11 +1258,11 @@ bool SshSession::handleChannelData(uint8_t *p, int alen) {
 }
 
 bool SshSession::handleChannelRequest(uint8_t *p) {
-	uint32_t channelNo = getInt32Aligned(p);
-	p += 4;
+	uint32_t channelNo = bu32(p);
 	Channel * c = channels[channelNo];
 	if (c) {
-		uint8_t *s = sshString(p);
+		uint8_t *s = bstr(p);
+		if (g_parseBad) goto Error;
 		*p = 0;
 		logme(L_TRACE, "@%ld channel %ld %s", sockFd, channelNo, s);
 
@@ -1197,9 +1273,10 @@ bool SshSession::handleChannelRequest(uint8_t *p) {
 			}
 
 			++p;
-			sshString(p); // term = ...
-			uint32_t numCols = getInt32(p); p+= 4;
-			uint32_t numRows = getInt32(p);
+			bstr(p); // term = ...
+			uint32_t numCols = bu32(p);
+			uint32_t numRows = bu32(p);
+			if (g_parseBad) goto Error;
 
 			ShellChannel *sc = (ShellChannel*) c;
 			sc->setPty(true);
@@ -1233,7 +1310,8 @@ bool SshSession::handleChannelRequest(uint8_t *p) {
 
 			if (isExec) {
 				++p;
-				uint8_t *c = sshString(p);
+				uint8_t *c = bstr(p);
+				if (g_parseBad) return false;
 				*p = 0;
 				logme(L_DEBUG, "@%ld exec: `%s`", sockFd, c);
 				sc->startCommand((char*) c);
@@ -1245,7 +1323,8 @@ bool SshSession::handleChannelRequest(uint8_t *p) {
 
 		if (0 == strcmp((char*) s, "subsystem")) {
 			++p;
-			uint8_t *sub = sshString(p);
+			uint8_t *sub = bstr(p);
+			if (g_parseBad) goto Error;
 			bool isSftp = p - sub == 4 && 0 == strncmp((char*) sub, "sftp", 4);
 			*p = 0;
 			if (!isSftp) {
@@ -1296,7 +1375,11 @@ bool SshSession::handleChannelRequest(uint8_t *p) {
 }
 
 bool SshSession::handleOpenChannel(uint8_t *p) {
-	uint8_t *s = sshString(p);
+	uint8_t *s = bstr(p);
+	if (g_parseBad || p + 12 > g_pktEnd) { // channel number, window, max packet
+		g_parseBad = true;
+		return false;
+	}
 	uint32_t channelNo = getInt32(p);
 	windowsize = getInt32(p + 4);
 	maxsize = getInt32(p + 8);
@@ -1313,16 +1396,21 @@ bool SshSession::handleOpenChannel(uint8_t *p) {
 			return true;
 		}
 	} else if (0 == strcmp((char*) s, "direct-tcpip")) {
+		extern int allowForwarding;
+		if (!allowForwarding) {
+			logme(L_INFO, "@%ld direct-tcpip refused (AllowTcpForwarding no)", sockFd);
+			reason = 1; // administratively prohibited
+			goto Fail;
+		}
 		ForwardChannel *fc = new ForwardChannel(this, channelNo);
 		if (fc) {
 			p += 12;
-			uint8_t *to = sshString(p);
-			uint32_t toPort = getInt32(p);
-			p += 4;
-			uint8_t *src = sshString(p);
-			uint32_t srcPort = getInt32(p);
+			uint8_t *to = bstr(p);
+			uint32_t toPort = bu32(p);
+			uint8_t *src = bstr(p);
+			uint32_t srcPort = bu32(p);
 
-			if (fc->init(src, srcPort, to, toPort)) {
+			if (!g_parseBad && fc->init(src, srcPort, to, toPort)) {
 				channels.add(channelNo, fc);
 				auto * l = fc->getListener();
 				listeners.add(l->getSockFd(), l);
@@ -1335,6 +1423,7 @@ bool SshSession::handleOpenChannel(uint8_t *p) {
 		}
 	}
 
+Fail:
 	outdata[5] = SSH_MSG_CHANNEL_OPEN_FAILURE;
 	putInt32Aligned(&outdata[6] , channelNo);
 	putInt32Aligned(&outdata[10] , reason); // resource
@@ -1398,18 +1487,24 @@ static bool authorizeKey(uint8_t *hostBase64, uint8_t *buffer) {
 
 bool SshSession::handleUserAuthRequest(uint8_t *p) {
 	uint8_t *p5 = p - 1;
-	uint8_t *user = sshString(p);
+	uint8_t *user = bstr(p);
 
-	uint8_t *s = sshString(p);
-	if (strcmp((char*) s, "ssh-connection"))
+	uint8_t *s = bstr(p);
+	if (g_parseBad || strcmp((char*) s, "ssh-connection"))
 		return false;
 
-	s = sshString(p);
-	uint8_t auth = *p;
-	*p = 0;
-	if (0 == strcmp((char*) s, "password")) {
+	s = bstr(p);
+	// on an overrun fall through to the FAILURE reply below: never return
+	// silently, the client would wait for an answer
+	bool ok = !g_parseBad && p < g_pktEnd;
+	uint8_t auth = ok ? *p : 0;
+	if (ok)
+		*p = 0;
+	if (ok && 0 == strcmp((char*) s, "password")) {
 		++p;
-		s = sshString(p);
+		s = bstr(p);
+		if (g_parseBad)
+			return false;
 		*p = 0;
 		if (login(user, s)) {
 			write(loginSuccess, sizeof(loginSuccess));
@@ -1423,15 +1518,18 @@ bool SshSession::handleUserAuthRequest(uint8_t *p) {
 #endif
 				return true;
 			}
-	} else if (0 == strcmp((char*) s, "publickey")) {
+	} else if (ok && 0 == strcmp((char*) s, "publickey")) {
 		*p++ = auth;
 		uint8_t *blob = p;
-		uint8_t *keyType = sshString(p);
-		if (0 == strcmp((char*) keyType, "ssh-ed25519") && getInt32(p) == 0x33) {
+		uint8_t *keyType = bstr(p);
+		if (!g_parseBad && 0 == strcmp((char*) keyType, "ssh-ed25519") &&
+				p + 4 <= g_pktEnd && getInt32(p) == 0x33) {
 			p += 4; // skip 0 0 0 0x33
 			uint8_t *q = p;
-			keyType = sshString(p);
-			if (0 == strcmp((char*) keyType, "ssh-ed25519") && getInt32(p) == 0x20) {
+			keyType = bstr(p);
+			if (!g_parseBad && 0 == strcmp((char*) keyType, "ssh-ed25519") &&
+					p + 4 <= g_pktEnd && getInt32(p) == 0x20 &&
+					p + 4 + 0x20 <= g_pktEnd && q + 0x33 <= g_pktEnd) { // key and blob inside
 				p += 4; // skip 0 0 0 0x20
 				uint8_t *pk = p;
 				mimeEncode(p + 200, q, 0x33);
@@ -1440,10 +1538,11 @@ bool SshSession::handleUserAuthRequest(uint8_t *p) {
 						// validate the signature
 						p += 0x20;
 						uint8_t *end = p;
-						if (getInt32(p) == 0x53) {
+						if (p + 4 <= g_pktEnd && getInt32(p) == 0x53) {
 							p += 4; // skip 0 0 0 0x53
-							keyType = sshString(p);
-							if (0 == strcmp((char*) keyType, "ssh-ed25519") && getInt32(p) == 0x40) {
+							keyType = bstr(p);
+							if (!g_parseBad && 0 == strcmp((char*) keyType, "ssh-ed25519") &&
+									p + 4 <= g_pktEnd && getInt32(p) == 0x40 && p + 4 + 0x40 <= g_pktEnd) {
 								p += 4; // skip 0 0 0 0x40
 								// we have a signature. create the message to verify
 								uint8_t *m = p + 100;
@@ -1468,27 +1567,23 @@ bool SshSession::handleUserAuthRequest(uint8_t *p) {
 							}
 						}
 					} else {
+						// only a "would you accept this key?" query, without a signature:
+						// acknowledge the key, but the login needs the signed request
+						// above (patch 0014 of bebbossh 1.46.1 by Matthias Muench)
 						outdata[5] = SSH_MSG_USERAUTH_PK_OK;
 						memcpy(&outdata[6], blob, 70);
 
 							write(outdata + 5, 71);
 							logme(L_FINE, "@%ld sent SSH_MSG_USERAUTH_PK_OK", sockFd);
-#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
-							strncpy(usernameStorage, (char *)user, sizeof(usernameStorage) - 1);
-							usernameStorage[sizeof(usernameStorage) - 1] = 0;
-							username = usernameStorage;
-#else
-							username = strdup((char *)user);
-#endif
-							return true;
+							return false; // stay in AUTH, wait for the signature
 						}
 				}
 			}
 		}
 		logme(L_DEBUG, "@%ld declined key %s", sockFd, keyType);
-	} else if (0 == strcmp((char*) s, "publickey-hostbound-v00@openssh.com")) {
+	} else if (ok && 0 == strcmp((char*) s, "publickey-hostbound-v00@openssh.com")) {
 		++p;
-		uint8_t *keyType = sshString(p);
+		uint8_t *keyType = bstr(p);
 		logme(L_DEBUG, "@%ld authorizing key %s", sockFd, keyType);
 
 	}
@@ -1499,7 +1594,9 @@ bool SshSession::handleUserAuthRequest(uint8_t *p) {
 }
 
 void SshSession::handleServiceRequest(uint8_t *p) {
-	uint8_t *s = sshString(p);
+	uint8_t *s = bstr(p);
+	if (g_parseBad)
+		return;
 	if (0 == strncmp((char*) s, "ssh-userauth", 12)) {
 		write(serviceAccept, sizeof(serviceAccept));
 		logme(L_FINE, "@%ld sent SSH_MSG_SERVICE_ACCEPT", sockFd);
@@ -1527,7 +1624,7 @@ int SshSession::decryptPacket(uint8_t *p, unsigned len) {
 
 	uint8_t check[16];
 	readAead->calcHash(check);
-	if (0 != memcmp(check, p + len, 16)) {
+	if (0 != ctcmp(check, p + len, 16)) {
 		logme(L_ERROR, "@%ld packet signature mismatch", sockFd);
 		return 0;
 	}

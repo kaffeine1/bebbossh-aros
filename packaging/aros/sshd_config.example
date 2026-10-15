@@ -22,3 +22,6 @@ HomeDir DH0:
 
 # Used by command/shell tasks. Keep this conservative on AROS/i386.
 Stack 262144
+
+# direct-tcpip forwarding (ssh -L) is allowed by default; this refuses it.
+#AllowTcpForwarding no

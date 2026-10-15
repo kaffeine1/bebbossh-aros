@@ -124,11 +124,29 @@ static int ge25519_unpackneg_vartime(ge25519 *r, const uint8_t p[32]) {
 	return 0;
 }
 
+// RFC 8032 5.1.7: S must be < L, otherwise the signature is malleable
+// (S + L verifies as well). Patch 0010 of bebbossh 1.46.1 by Matthias Muench.
+static int scalarIsCanonical(uint8_t const *s) {
+	static const uint8_t L[32] = {
+		0xed, 0xd3, 0xf5, 0x5c, 0x1a, 0x63, 0x12, 0x58,
+		0xd6, 0x9c, 0xf7, 0xa2, 0xde, 0xf9, 0xde, 0x14,
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10 };
+	for (int i = 31; i >= 0; --i) {
+		if (s[i] < L[i])
+			return 1;
+		if (s[i] > L[i])
+			return 0;
+	}
+	return 0; // S == L
+}
+
 int ge_verify_ed25519(uint8_t *m, unsigned mlen, uint8_t const *sm, uint8_t const *pk) {
 	ge25519 pkPoint;
 	uint16_t schram[32], scs[32];
 
 	if (ge25519_unpackneg_vartime(&pkPoint, pk))
+		return 0;
+	if (!scalarIsCanonical(sm + 32))
 		return 0;
 
 

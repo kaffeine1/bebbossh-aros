@@ -57,6 +57,16 @@ consistent with the upstream project.
 - Tightened daemon/session cleanup on shutdown and abnormal disconnect.
 - Hardened SSH banner and KEX name-list parsing against binary KEX data
   arriving with the client banner.
+- Ported the security fixes of bebbossh 1.46.1 by Matthias Münch (patches
+  0005 and 0010 to 0016): packet parsing bounded to the received packet in
+  the daemon and the client, authentication required before the connection
+  protocol, no login from a public-key query alone, SFTP attribute and write
+  bounds, `AllowTcpForwarding`, buffer fixes in `barrett_reduce()` and
+  `bebbosshkeygen`, canonical Ed25519 signatures only, constant-time tag
+  checks, an all-zero X25519 secret refused, key material wiped on exit, and
+  host key checks that refuse a changed key and ask only at a console. The
+  client also bounds the server's version line, packet length and maximum
+  packet size.
 
 ## Crypto linking: static, not a shared library
 

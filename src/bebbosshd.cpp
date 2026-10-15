@@ -145,6 +145,7 @@ bool hasChacha = true;
 #endif
 extern char const * AES128;
 extern char const * CHACHA20;
+int allowForwarding = 1; // AllowTcpForwarding (direct-tcpip); 1 = yes
 
 /* This task and its message port */
 struct Task * thisTask;
@@ -881,6 +882,10 @@ void readIni() {
 		} else
 		if (0 == stricmp("HomeDir", s)) {
 			homeDir = strdup(p);
+		} else
+		if (0 == stricmp("AllowTcpForwarding", s)) {
+			allowForwarding = (0 == stricmp(p, "no") || 0 == stricmp(p, "0")
+					|| 0 == stricmp(p, "false")) ? 0 : 1;
 		} else
 		if (0 == stricmp("HostKey", s)) {
 			hostKeyName = strdup(p);
