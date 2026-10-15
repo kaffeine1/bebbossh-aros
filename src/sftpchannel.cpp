@@ -370,7 +370,10 @@ void putFib(uint8_t * & q, struct FileInfoBlock * fib) {
 	putInt32AndInc(q, nowtime.tv_sec);
 }
 
-void setAttrs(uint8_t * p, uint8_t * path) {
+void setAttrs(uint8_t * p, uint8_t * end, uint8_t * path) {
+	// every field length below comes from the client: never read past the
+	// request (end is one past it). Patch 0015 of bebbossh 1.46.1 by Matthias Muench.
+	if (p + 4 > end) return;
 	uint32_t flags = getInt32(p);
 	p += 4;
 
@@ -379,13 +382,20 @@ void setAttrs(uint8_t * p, uint8_t * path) {
 	if (flags & SSH_FILEXFER_ATTR_ALLOCATION_SIZE)
 		p += 8;
 	if (flags & SSH_FILEXFER_ATTR_OWNERGROUP) {
+		if (p + 4 > end) return;
 		uint32_t l = getInt32(p); // skip owner
-		p += l + 4;
+		p += 4;
+		if (l > (uint32_t)(end - p)) return;
+		p += l;
+		if (p + 4 > end) return;
 		l = getInt32(p);	// skip group
-		p += l + 4;
+		p += 4;
+		if (l > (uint32_t)(end - p)) return;
+		p += l;
 	}
 
 	if (flags & SSH_FILEXFER_ATTR_PERMISSIONS) {
+		if (p + 4 > end) return;
 		uint32_t protect = getInt32(p);
 		p += 4;
 #if BEBBOSSH_AROS
@@ -396,6 +406,7 @@ void setAttrs(uint8_t * p, uint8_t * path) {
 	}
 	struct timeval tv;
 	if (flags & SSH2_FILEXFER_ATTR_ACMODTIME) {
+		if (p + 8 > end) return;
 		// SFTP v3: atime then mtime, both uint32 seconds
 		uint32_t atime = getInt32(p);
 		p += 4;
@@ -896,6 +907,11 @@ printf("locked dir %s = %08lx\n", path, dir);
 			uint32_t len = getInt32(p);
 			p += 4;
 
+			// the write payload must lie inside the received request
+			// (patch 0015 of bebbossh 1.46.1 by Matthias Muench)
+			if (p > p0 || len > (uint32_t)(p0 - p))
+				return -1;
+
 			logme(L_DEBUG, "@%ld:%ld:%08lx sftp SSH_FXP_WRITE for %s @%ld:%ld", server->getSockFd(), channel, requestId, handle->filename, offset, len);
 
 			if (flags & SSH2_FXF_APPEND)
@@ -930,7 +946,7 @@ printf("locked dir %s = %08lx\n", path, dir);
 
 			logme(L_DEBUG, "@%ld:%ld sftp SSH_FXP_SETSTAT for %s", server->getSockFd(), channel, path);
 
-			setAttrs(p, path);
+			setAttrs(p, p0, path);
 
 			result = SSH_FX_OK;
 			goto Status;
@@ -991,7 +1007,7 @@ printf("locked dir %s = %08lx\n", path, dir);
 			DPTR lock = CreateDir((char *)path);
 			if (lock) {
 				UnLock(lock);
-				setAttrs(p, path);
+				setAttrs(p, p0, path);
 				result = SSH_FX_OK;
 			}
 			goto Status;

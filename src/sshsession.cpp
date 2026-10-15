@@ -1208,6 +1208,7 @@ bool SshSession::handleChannelData(uint8_t *p, int alen) {
 		// (alen counts the message type, channel number and length: 9 bytes)
 		if (alen < 9 || len > (uint32_t)(alen - 9)) {
 			logme(L_ERROR, "@%ld channel data length %ld exceeds packet", sockFd, len);
+			g_parseBad = true; // the dispatcher drops the session
 			return false;
 		}
 
@@ -1395,6 +1396,12 @@ bool SshSession::handleOpenChannel(uint8_t *p) {
 			return true;
 		}
 	} else if (0 == strcmp((char*) s, "direct-tcpip")) {
+		extern int allowForwarding;
+		if (!allowForwarding) {
+			logme(L_INFO, "@%ld direct-tcpip refused (AllowTcpForwarding no)", sockFd);
+			reason = 1; // administratively prohibited
+			goto Fail;
+		}
 		ForwardChannel *fc = new ForwardChannel(this, channelNo);
 		if (fc) {
 			p += 12;
@@ -1416,6 +1423,7 @@ bool SshSession::handleOpenChannel(uint8_t *p) {
 		}
 	}
 
+Fail:
 	outdata[5] = SSH_MSG_CHANNEL_OPEN_FAILURE;
 	putInt32Aligned(&outdata[6] , channelNo);
 	putInt32Aligned(&outdata[10] , reason); // resource
