@@ -137,7 +137,7 @@ struct SshSession : public Listener {
 
 	void createKexEcdhReply();
 
-	void sendOpenChannelConfirmation(Channel * c, uint32_t windowsize, uint32_t maxsize);
+	void sendOpenChannelConfirmation(Channel * c, uint32_t maxsize);
 
 	int decryptPacket(uint8_t * p, unsigned len);
 	void handleServiceRequest(uint8_t * p);
