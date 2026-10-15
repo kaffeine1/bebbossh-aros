@@ -534,17 +534,6 @@ static void parse_line(char *line, char **n, char **c, char **k) {
 }
 
 // helper: write one line into a memory buffer
-static char *append_line(char *out, const char *n, const char *c, const char *k) {
-    out = stpcpy(out, n);
-    *out++ = ' ';
-    out = stpcpy(out, c);
-    *out++ = ' ';
-    out = stpcpy(out, k);
-    *out++ = '\n';
-    *out = '\0';
-    return out;
-}
-
 static bool verifyHost(uint8_t const * hostBase64) {
 	if (!sshDotDir) sshDotDir = concat(sshDir, ".ssh", NULL);
 	if (!knownHosts) knownHosts = concat(sshDotDir, "/known_hosts", NULL);
@@ -564,9 +553,10 @@ static bool verifyHost(uint8_t const * hostBase64) {
  	}
 
 	char * buf = (char *)buffer;
-	bool replace = false;
 	bool r = false;
-	Seek(f, OFFSET_BEGINNING, 0);
+	bool changed = false;
+	char stored[100];
+	Seek(f, 0, OFFSET_BEGINNING);
 	while(!r) {
 		char * p = buf + 1000;
 			if (!BSSH_FGETS(f, p, buffersize - 1000))
@@ -578,68 +568,51 @@ static bool verifyHost(uint8_t const * hostBase64) {
 		if (0 == strcmp(n, hostname) && 0 == strcmp(c, "ssh-ed25519")) {
 			r = 0 == strcmp(k, (char *)hostBase64);
 			if (!r) {
-				printf("host key %s differs from stored host key %s for host %s\n", hostBase64, k, hostname);
-				replace = true;
+				strncpy(stored, k, sizeof(stored) - 1);
+				stored[sizeof(stored) - 1] = 0;
+				changed = true;
 			}
 			break;
 		}
 	}
+
+	// a changed key is never accepted here, as in OpenSSH: it may be an
+	// attack, the user has to remove the old entry deliberately
+	// (patch 0010 of bebbossh 1.46.1 by Matthias Muench)
+	if (changed) {
+		printf("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n"
+		       "@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @\n"
+		       "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n"
+		       "Someone could be eavesdropping on you right now (man-in-the-\n"
+		       "middle attack), or the host key of %s has just been changed.\n"
+		       "ssh-ed25519 key sent by the host: %s\n"
+		       "key stored in %s: %s\n"
+		       "If the change is expected, remove the line for %s from that file.\n",
+		       hostname, hostBase64, knownHosts, stored, hostname);
+		Close(f);
+		return false;
+	}
+
 	if (!r) {
+		// only ask at a console, never take the answer from redirected input
+		if (!IsInteractive(BSSH_STDIN())) {
+			printf("unknown host %s with ssh-ed25519 key %s\n"
+			       "not asking: the input is not a console; connect once interactively\n"
+			       "or add the key to %s\n", hostname, hostBase64, knownHosts);
+			Close(f);
+			return false;
+		}
 		printf("do you trust host %s with ssh-ed25519 key %s? Then enter: yes\n", hostname, hostBase64);
 		fflush(stdout);
 		*buf = 0;
 			BSSH_FGETS(BSSH_STDIN(), buf, 5);
 		if (0 == strncmp("yes", (char *)buffer, 3)) {
 			r = true;
-			if (replace) {
-				// Get file size
-				Seek(f, 0, OFFSET_END);
-				long size = Seek(f, 0, OFFSET_CURRENT);
-
-				Close(f);
-				f = Open(knownHosts, MODE_OLDFILE);
-
-				size += 1024;// extra room
-				char *mem = (char *)malloc(size);
-				if (!mem) {
-					logme(L_ERROR, "out of memory for %ld bytes", size);
-					exit(10);
-				}
-
-				char *out = mem;
-				char * p = buf + 1000;
-					while (BSSH_FGETS(f, p, buffersize - 1000)) {
-					char *n, *c, *k;
-					parse_line(p, &n, &c, &k);
-
-					// skip lines without 3 values
-					if (!*n || !*c || !*k)
-						continue;
-
-					if (strcmp(n, hostname) == 0 && strcmp(c, "ssh-ed25519") == 0) {
-						// skip old entry
-						continue;
-					}
-					out = append_line(out, n, c, k);
-				}
-
-				// append new entry
-				out = append_line(out, hostname, "ssh-ed25519", (char *)hostBase64);
-
-				// rewind and truncate
-				Close(f);
-				f = Open(knownHosts, MODE_NEWFILE);
-				Write(f, mem, out - mem);
-
-				free(mem);
-			} else {
-				// just append
-				Seek(f, OFFSET_END, 0);
-					char line[1024];
-					int n = snprintf(line, sizeof(line), "%s ssh-ed25519 %s\n", hostname, hostBase64);
-					if (n > 0)
-						BSSH_WRITE_FILE(f, line, n);
-			}
+			Seek(f, 0, OFFSET_END);
+			char line[1024];
+			int n = snprintf(line, sizeof(line), "%s ssh-ed25519 %s\n", hostname, hostBase64);
+			if (n > 0)
+				BSSH_WRITE_FILE(f, line, n);
 		}
 	}
 
