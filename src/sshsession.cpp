@@ -1478,19 +1478,15 @@ bool SshSession::handleUserAuthRequest(uint8_t *p) {
 							}
 						}
 					} else {
+						// only a "would you accept this key?" query, without a signature:
+						// acknowledge the key, but the login needs the signed request
+						// above (patch 0014 of bebbossh 1.46.1 by Matthias Muench)
 						outdata[5] = SSH_MSG_USERAUTH_PK_OK;
 						memcpy(&outdata[6], blob, 70);
 
 							write(outdata + 5, 71);
 							logme(L_FINE, "@%ld sent SSH_MSG_USERAUTH_PK_OK", sockFd);
-#if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)
-							strncpy(usernameStorage, (char *)user, sizeof(usernameStorage) - 1);
-							usernameStorage[sizeof(usernameStorage) - 1] = 0;
-							username = usernameStorage;
-#else
-							username = strdup((char *)user);
-#endif
-							return true;
+							return false; // stay in AUTH, wait for the signature
 						}
 				}
 			}
