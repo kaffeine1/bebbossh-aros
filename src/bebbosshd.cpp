@@ -663,7 +663,7 @@ void cleanup() {
 		logme(L_FINE, "free timer request");
 #if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
 		bebbossh_aros_delete_iorequest(timerIO);
-#elif BEBBOSSH_AROS && defined(__aarch64__)
+#elif BEBBOSSH_AROS
 		DeleteIORequest(&timerIO->tr_node);
 #else
 		free(timerIO);
@@ -759,9 +759,10 @@ static bool init() {
 
 #if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
 	timerIO = (struct timerequest *)bebbossh_aros_create_iorequest(timerPort, sizeof(struct timerequest));
-#elif BEBBOSSH_AROS && defined(__aarch64__)
-	// the aarch64 SDK declares CreateExtIO() in clib/alib_protos.h, so the call
-	// would bind to amiga.lib's AllocMem version while cleanup() frees with free()
+#elif BEBBOSSH_AROS
+	// the AROS SDKs declare CreateExtIO() for C, so the call binds to amiga.lib's
+	// AllocMem version (on i386 too), which cleanup() must not free(): use the
+	// exec pair on every AROS build
 	timerIO = (struct timerequest *)CreateIORequest(timerPort, sizeof(struct timerequest));
 #else
 	timerIO = (struct timerequest *)CreateExtIO(timerPort, sizeof(struct timerequest));
