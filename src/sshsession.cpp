@@ -1035,11 +1035,18 @@ int SshSession::consumeSocketData(char *indata, int len) {
 
 			// the connection protocol (channels) is only valid after a successful
 			// authentication: before it only service and user-auth requests
-			// (patch 0016 of bebbossh 1.46.1 by Matthias Muench)
+			// (patch 0016 of bebbossh 1.46.1 by Matthias Muench), and the
+			// transport messages a peer may send at any time (RFC 4253, 11):
+			// PuTTY sends SSH_MSG_IGNORE right before the password request
+			uint8_t msgType = (uint8_t) indata[5];
 			if (state != LOGGEDIN
-					&& indata[5] != SSH_MSG_SERVICE_REQUEST
-					&& indata[5] != SSH_MSG_USERAUTH_REQUEST) {
-				logme(L_ERROR, "@%ld message %ld before authentication, dropping", sockFd, indata[5]);
+					&& msgType != SSH_MSG_DISCONNECT
+					&& msgType != SSH_MSG_IGNORE
+					&& msgType != SSH_MSG_UNIMPLEMENTED
+					&& msgType != SSH_MSG_DEBUG
+					&& msgType != SSH_MSG_SERVICE_REQUEST
+					&& msgType != SSH_MSG_USERAUTH_REQUEST) {
+				logme(L_ERROR, "@%ld message %ld before authentication, dropping", (long) sockFd, (long) msgType);
 				return -1;
 			}
 
@@ -1085,6 +1092,12 @@ int SshSession::consumeSocketData(char *indata, int len) {
 			break;
 		case SSH_MSG_DISCONNECT:
 			logme(L_FINE, "@%ld got SSH_MSG_DISCONNECT", sockFd);
+			break;
+		case SSH_MSG_IGNORE:
+		case SSH_MSG_UNIMPLEMENTED:
+		case SSH_MSG_DEBUG:
+			// padding and keepalives (PuTTY), nothing to answer
+			logme(L_FINE, "@%ld got transport message %ld", (long) sockFd, (long) msgType);
 			break;
 		default:
 			_dump("unknown", indata, packetSize + 4);
@@ -1221,11 +1234,19 @@ bool SshSession::handleChannelData(uint8_t *p, int alen) {
 			logme(L_FINE, "@%ld sent SSH_MSG_CHANNEL_WINDOW_ADJUST %ld", sockFd, toAdd);
 		}
 
+		// one spare byte behind the kept data: the SFTP parser ends a string
+		// that closes a request with a 0 written right behind it
 		if (inChannelUse) {
 			logme(L_FINE, "applying partial channel data: inuse=%ld, len=%ld", inChannelUse, len);
 			int total = len + inChannelUse;
 			if (total > inChannelSize) {
-				inChannelBuf = (char *)realloc(inChannelBuf, total);
+				char *nb = (char *)realloc(inChannelBuf, total + 1);
+				if (!nb) {
+					logme(L_ERROR, "@%ld no memory for %ld bytes of channel data", (long) sockFd, (long) total);
+					g_parseBad = true; // the dispatcher drops the session
+					return false;
+				}
+				inChannelBuf = nb;
 				inChannelSize = total;
 			}
 			memcpy(inChannelBuf + inChannelUse, p, len);
@@ -1246,10 +1267,16 @@ bool SshSession::handleChannelData(uint8_t *p, int alen) {
 			p = p + len - rest;
 			logme(L_FINE, "keeping partial channel data: inuse=%ld, len=%ld", inChannelUse, rest);
 			if (rest > inChannelSize) {
-				inChannelBuf = (char *)realloc(inChannelBuf, rest);
+				char *nb = (char *)realloc(inChannelBuf, rest + 1);
+				if (!nb) {
+					logme(L_ERROR, "@%ld no memory for %ld bytes of channel data", (long) sockFd, (long) rest);
+					g_parseBad = true; // the dispatcher drops the session
+					return false;
+				}
+				inChannelBuf = nb;
 				inChannelSize = rest;
 			}
-			memcpy(inChannelBuf, p, rest);
+			memmove(inChannelBuf, p, rest); // p may point into inChannelBuf
 			inChannelUse = rest;
 			return true;
 		}
@@ -1440,13 +1467,20 @@ void SshSession::sendOpenChannelConfirmation(Channel *c, uint32_t maxsize) {
 	outdata[5] = SSH_MSG_CHANNEL_OPEN_CONFIRMATION;
 	putInt32Aligned(&outdata[6] , c->getChannel());
 	putInt32Aligned(&outdata[10] , c->getChannel());
-	// our receive window, the one updateWindowSize() counts down and refills;
-	// the client's window (windowsize) only limits what we send
+	// our receive window, the one updateWindowSize() counts down and refills.
+	// The client's window is kept in windowsize, but nothing waits on it yet:
+	// the daemon sends without checking it (no per-channel flow control)
 	putInt32Aligned(&outdata[14] , c->getWindowSize());
 	putInt32Aligned(&outdata[18] , maxsize);
 	write(outdata + 5, 17);
 	logme(L_FINE, "@%ld sent SSH_MSG_CHANNEL_OPEN_CONFIRMATION for session, window=%ld, max=%ld", sockFd, c->getWindowSize(), maxsize);
 }
+
+// scratch for the public-key login, outside the receive buffer: behind a
+// large packet the space is not ours to write
+static uint8_t authKeyB64[96];             // base64 of the 0x33 byte key blob
+static uint8_t authKeyLine[260];           // one authorized_keys line (256)
+static uint8_t authVerifyMsg[36 + 1024];   // session id + the signed request
 
 static bool authorizeKey(uint8_t *hostBase64, uint8_t *buffer) {
 	extern char const * sshDotDir;
@@ -1532,8 +1566,8 @@ bool SshSession::handleUserAuthRequest(uint8_t *p) {
 					p + 4 + 0x20 <= g_pktEnd && q + 0x33 <= g_pktEnd) { // key and blob inside
 				p += 4; // skip 0 0 0 0x20
 				uint8_t *pk = p;
-				mimeEncode(p + 200, q, 0x33);
-				if (authorizeKey(p + 200, p + 300)) {
+				mimeEncode(authKeyB64, q, 0x33);
+				if (authorizeKey(authKeyB64, authKeyLine)) {
 					if (auth) {
 						// validate the signature
 						p += 0x20;
@@ -1545,14 +1579,19 @@ bool SshSession::handleUserAuthRequest(uint8_t *p) {
 									p + 4 <= g_pktEnd && getInt32(p) == 0x40 && p + 4 + 0x40 <= g_pktEnd) {
 								p += 4; // skip 0 0 0 0x40
 								// we have a signature. create the message to verify
-								uint8_t *m = p + 100;
+								// in its own buffer: the request length is client-chosen
+								uint8_t *m = authVerifyMsg;
 								uint8_t *t = m;
-								putAny(t, hash, 0x20);
 								int len = end - p5;
-								memcpy(t, p5, len);
-								len += 36;
+								if (len > (int) sizeof(authVerifyMsg) - 36) {
+									len = 0; // longer than any real request: refuse
+								} else {
+									putAny(t, hash, 0x20);
+									memcpy(t, p5, len);
+									len += 36;
+								}
 //								_dump("vfymsg", m, len);
-									if (ge_verify_ed25519(m, len, p, pk)) {
+									if (len && ge_verify_ed25519(m, len, p, pk)) {
 										write(loginSuccess, sizeof(loginSuccess));
 										logme(L_FINE, "@%ld sent SSH_MSG_USERAUTH_SUCCESS", sockFd);
 #if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT)

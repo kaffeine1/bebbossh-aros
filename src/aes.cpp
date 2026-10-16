@@ -494,9 +494,10 @@ AES::AES(int dummy) : rounds(0), ckey(0), invckey(0) {
 }
 
 /**
- * AES destructor (no dynamic cleanup required).
+ * AES destructor: clears the expanded key.
  */
 AES::~AES() {
+  bsshWipe(keyData, sizeof(keyData));
 }
 
 /**

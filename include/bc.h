@@ -40,6 +40,16 @@
 #include <stdint.h>
 
 /**
+ * Clear key material where the compiler cannot drop the stores: AmigaOS and
+ * AROS do not clear freed memory, the next task could read the keys.
+ */
+static inline void bsshWipe(void *p, unsigned n) {
+    volatile uint8_t *v = (volatile uint8_t *) p;
+    while (n--)
+        *v++ = 0;
+}
+
+/**
  * @class BlockCipher
  * @brief Abstract interface for block cipher implementations.
  *

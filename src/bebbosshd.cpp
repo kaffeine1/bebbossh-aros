@@ -837,6 +837,21 @@ void parseNoop(char const * s) {
 		logme(L_WARN, "unknown value for Noop: %s", s);
 }
 
+// AllowTcpForwarding: the daemon serves direct-tcpip only, which OpenSSH
+// calls local forwarding. An unknown value turns forwarding off with a
+// warning: a typo must not leave it open.
+static void parseForwarding(char const * s) {
+	if (0 == stricmp(s, "yes") || 0 == stricmp(s, "all") || 0 == stricmp(s, "local")
+			|| 0 == stricmp(s, "true") || 0 == stricmp(s, "on") || 0 == stricmp(s, "1")) {
+		allowForwarding = 1;
+		return;
+	}
+	if (stricmp(s, "no") && stricmp(s, "remote") && stricmp(s, "false")
+			&& stricmp(s, "off") && stricmp(s, "0"))
+		logme(L_WARN, "unknown value for AllowTcpForwarding: %s, forwarding is off", s);
+	allowForwarding = 0;
+}
+
 void readIni() {
 	BPTR ini = Open(configName, MODE_OLDFILE);
 #if BEBBOSSH_AROS
@@ -884,8 +899,7 @@ void readIni() {
 			homeDir = strdup(p);
 		} else
 		if (0 == stricmp("AllowTcpForwarding", s)) {
-			allowForwarding = (0 == stricmp(p, "no") || 0 == stricmp(p, "0")
-					|| 0 == stricmp(p, "false")) ? 0 : 1;
+			parseForwarding(p);
 		} else
 		if (0 == stricmp("HostKey", s)) {
 			hostKeyName = strdup(p);

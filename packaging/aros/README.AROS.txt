@@ -61,8 +61,12 @@ Install
 
 3. Edit passwd and replace the example credentials.
 
-4. Generate a host key in the same directory:
+4. Generate a host key in the same directory. On a fresh system there is no
+   random seed yet (see Random Numbers): let a throwaway key create it first,
+   then make the host key:
 
+     bebbosshkeygen -f T:seed_key
+     delete T:seed_key T:seed_key.pub
      bebbosshkeygen -f ssh_host_ed25519_key
 
 5. Start the server from an AROS Shell:
@@ -198,7 +202,8 @@ bebbosshkeygen
 --------------
 
 bebbosshkeygen creates the Ed25519 host key used by bebbosshd to identify the
-server to SSH clients. Run it once in the install directory:
+server to SSH clients. Run it once in the install directory, after the random
+seed exists (Install, step 4):
 
   bebbosshkeygen -f ssh_host_ed25519_key
 
@@ -262,7 +267,9 @@ The most important directives are:
 
   AllowTcpForwarding yes
       direct-tcpip forwarding (ssh -L) through the daemon, allowed by
-      default. Set it to no to refuse forwarding requests.
+      default. Set it to no to refuse forwarding requests. yes, all and local
+      allow it; no and remote refuse it (the daemon has no remote
+      forwarding). Any other value also refuses it and logs a warning.
 
 Command-line overrides are available for quick tests:
 

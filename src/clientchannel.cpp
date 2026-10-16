@@ -36,6 +36,14 @@
 #include "ssh.h"
 #include "log.h"
 #include "clientchannel.h"
+#include "platform.h"
+#if BEBBOSSH_AMIGA_API
+#include <dos/dos.h> // BPTR, used by client.h
+#else
+#include <stdio.h>
+#include "amiemul.h"
+#endif
+#include "client.h" // error
 
 extern uint32_t maxBuffer;
 extern uint8_t *buffer;
@@ -148,11 +156,23 @@ bool ClientChannel::handleMessage(uint8_t msg, uint8_t * p, uint32_t maxLen) {
 	}
 
 	if (msg == SSH_MSG_CHANNEL_OPEN_CONFIRMATION) {
+		if (maxLen < 12) { // remote channel, window, maximum packet size
+			logme(L_ERROR, "channel %ld: short open confirmation", (long) channelNo);
+			error = ERROR_INVALID_PACKET;
+			return false;
+		}
 		uint32_t remoteChannelNo = getInt32(p);
 		p += 4;
 		// uint32_t windowSize = getInt32(p); // ignore :-)
 		p += 4;
 		uint32_t maxBuf = getInt32(p);
+		// the same lower bound as for the session channel in openChannels():
+		// the sender cuts its data into maxBuf pieces, and 0 never ends
+		if (maxBuf < 1024) {
+			logme(L_ERROR, "channel %ld: maximum packet size %ld too small", (long) channelNo, (long) maxBuf);
+			error = ERROR_INVALID_PACKET;
+			return false;
+		}
 
 		logme(L_DEBUG, "channel %ld confirmend, remote=%ld", channelNo, remoteChannelNo);
 
