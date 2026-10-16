@@ -125,7 +125,7 @@ First aarch64 release, on a Raspberry Pi 400 (AROS `raspi-aarch64` of
 log level unless noted:
 
 1. The five crypto self-tests (`testAES`, `testGCM`, `testChacha20`,
-   `testSHA512`, `testEd25519`) pass.
+   `testSHA512`, `testEd25519`) and `testRandpool` pass.
 2. OpenSSH login and command execution; 100 sequential logins.
 3. SFTP upload and download of 200 KB and 1 MiB, and OpenSSH `scp` of 1 MiB
    both ways with `aes128-gcm@openssh.com`, byte-identical. SFTP overwrite
@@ -154,8 +154,11 @@ log level unless noted:
 12. `Break` (Ctrl-C) on the daemon: an idle daemon exits at once; with a
     running command or a parked session it exits when the command ends; each
     time it restarts right away.
-13. Entropy: `src/rand.c` reads the generic timer count `cntvct_el0`, which
-    AROS tasks can read (54 MHz on the Pi 400).
+13. Entropy: `randfill()` is the SHA-512 pool of `src/aros_randpool.cpp`. It
+    times a 64 KiB memory walk with the generic timer count `cntvct_el0`
+    (54 MHz on the Pi 400), adds timer.device wake-ups, and keeps the seed
+    file `ENVARC:.ssh/random_seed` across reboots, which matters because the
+    Pi 400 has no battery-backed clock.
 
 In QEMU (`raspi3b`, AROS nightly of 2026-10-05) the daemon also exits without
 a kernel trap after a duplicate channel id and after `Break`, and the battery

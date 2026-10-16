@@ -123,6 +123,29 @@ once from a Shell window first. A server whose key differs from the stored one
 is refused with a warning, as OpenSSH does. If the change is expected, remove
 the server's line from known_hosts.
 
+Random Numbers
+--------------
+
+Keys, session secrets and the SSH packet padding come from a SHA-512 pool.
+Each program fills it on first use from CPU timer jitter, timer.device
+wake-ups and system counters, and from a 64-byte seed file,
+ENVARC:.ssh/random_seed, which it replaces right away (the directory is
+created if missing). The next run, also after a reboot, starts from the new
+seed.
+
+- Every machine needs its own seed. Delete ENVARC:.ssh/random_seed before
+  you copy a disk or SD card image, and never put it into a package.
+- On read-only media, such as a live CD, the seed cannot be replaced and
+  each run relies on its own timer jitter.
+- bebbosshkeygen collects more samples before it creates a key. It warns
+  when the CPU timer shows little jitter, as on a CPU emulated by QEMU
+  without hardware virtualisation; the key then relies more on the timer
+  wake-ups and on the seed. Create long-term keys after a bebbossh program
+  has run once, so that a seed exists.
+- On i386 and aarch64, bebbosshkeygen without -f asks for the file name and
+  waits for the answer. In scripts, pass -f, or redirect the input from NIL:
+  to take the defaults.
+
 Configuration Files
 -------------------
 

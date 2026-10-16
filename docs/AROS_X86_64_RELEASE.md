@@ -161,9 +161,11 @@ All three documented gates closed for v1.0.0; re-run them for every release.
    and routes `DateStamp` through the mincrt-safe `bebbossh_aros_datestamp`
    wrapper so each call mixes ns-class CPU time + 20 ms-class system tick.
    Residual: still a best-effort PRNG mixer, not a true CSPRNG; replace with
-   an AROS CSPRNG if one becomes available. Re-validation per release:
-   `make -f Makefile.aros-x86_64 run-tests` (testEd25519, testChacha20) +
-   confirm `bebbosshkeygen` outputs differ across runs.
+   an AROS CSPRNG if one becomes available. `randfill()` now uses the SHA-512
+   pool of `src/aros_randpool.cpp` with the seed file `ENVARC:.ssh/random_seed`.
+   Re-validation per release: `bebbosshkeygen` and the daemon create and
+   replace the seed file, and keys differ across runs and across identical
+   snapshot boots (the self-tests do not run on AROS One, see item 7).
 2. **Zero-delay password-auth churn (CLOSED).** Per-login passwd-cache reset
    in `SshSession::login` was the failure; removed so the cache loads once per
    daemon lifetime (same as i386). Adding/removing a user requires a daemon

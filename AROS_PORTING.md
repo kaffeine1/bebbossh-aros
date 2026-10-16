@@ -67,6 +67,11 @@ consistent with the upstream project.
   host key checks that refuse a changed key and ask only at a console. The
   client also bounds the server's version line, packet length and maximum
   packet size.
+- Replaced the AROS `randfill()` mixer with a SHA-512 entropy pool and a seed
+  file, `ENVARC:.ssh/random_seed` (`src/aros_randpool.cpp`, from patch 0008
+  of bebbossh 1.46.1 by Matthias Münch). `bebbosshkeygen` now checks its
+  writes, deletes a partial key, wipes the secrets and, on i386 and aarch64,
+  waits for its answers at a console instead of reading the command line.
 
 ## Crypto linking: static, not a shared library
 
@@ -121,6 +126,7 @@ The expected default build products are:
 - `aros-i386/testEd25519`
 - `aros-i386/testGCM`
 - `aros-i386/testSHA512`
+- `aros-i386/testRandpool`
 
 ## Experimental AROS x86_64 build
 
@@ -141,7 +147,7 @@ aros-x86_64/bebboscp
 aros-x86_64/bebbosshd
 aros-x86_64/bebbosshkeygen
 aros-x86_64/testAES aros-x86_64/testChacha20 aros-x86_64/testEd25519
-aros-x86_64/testGCM aros-x86_64/testSHA512
+aros-x86_64/testGCM aros-x86_64/testSHA512 aros-x86_64/testRandpool
 ```
 
 All four x86_64 products (`bebbosshkeygen`, `bebbosshd`, `bebbossh`, `bebboscp`)
@@ -171,9 +177,9 @@ Packager notes for the x86_64 wrapper:
 - The wrapper uses an x86_64-safe code model and disables unwind-table and
   hot/cold partition output; the only expected relocation is `R_X86_64_64`.
 - The x86_64 binaries use the minimal AROS runtime with standard init/exit
-  symbol sets disabled. The PRNG mixer was reviewed and the rdtsc + DateStamp
-  per-call entropy mix is now in place (see Known limits for the residual
-  best-effort PRNG note vs a full CSPRNG).
+  symbol sets disabled. `randfill()` is the SHA-512 pool of
+  `src/aros_randpool.cpp`, which includes no `proto/` header there and calls
+  the system only through the existing mincrt wrappers.
 
 x86_64 v1.0.0 is validated on AROS One x86_64 / QEMU e1000 against
 OpenSSH-class clients (full SSH/SFTP/SCP smoke + 1 MiB transfer stress
@@ -194,7 +200,7 @@ make -f Makefile.aros-aarch64 all \
   SYSROOT=<AROS build>/bin/raspi-aarch64/AROS/Developer
 ```
 
-The products (the four tools and the five crypto self-tests) land in
+The products (the four tools, the five crypto self-tests and `testRandpool`) land in
 `aros-aarch64/`, stripped; the strip keeps the AROS OS/ABI tag in the ELF
 header. The wrapper adds three compiler flags:
 
@@ -377,7 +383,8 @@ AROS One x86_64 QEMU e1000):
   safe under `-nostdlib`) for ns-class time variance, and routes `DateStamp`
   through the mincrt-safe `bebbossh_aros_datestamp` wrapper for 20 ms-class
   tick variance. Residual risk: still a best-effort PRNG mixer, not a true
-  CSPRNG; if an AROS CSPRNG becomes available, prefer it.
+  CSPRNG; if an AROS CSPRNG becomes available, prefer it. Superseded by the
+  entropy pool (see What changed).
 - **Zero-delay password-auth churn (`BEBBOSSH_AROS_STRESS_DELAY=0`):** fixed.
   `SshSession::login` no longer resets the password cache per login on
   x86_64/mincrt; cache loads once per daemon lifetime, same as i386. Validated
@@ -522,11 +529,13 @@ Known limits:
   `ENVARC:ssh/ssh_host_ed25519_key` is missing, AROS builds fall back to the
   matching `PROGDIR:` file. A read-only password file accepts plaintext test
   passwords without rewriting to `{ssha256}`, which is useful for ISO tests.
-- No known AROS system CSPRNG in this environment. `randfill()` is a best-effort
-  fallback that mixes local runtime entropy sources; it is stronger than the
-  original `time(0)` seed but should be replaced if an AROS CSPRNG becomes
-  available. Minimal-runtime builds avoid the fragile AROS OS entropy calls and
-  use a self-contained mixer instead.
+- No hardware random generator is used and there is no entropy estimate.
+  `randfill()` is a SHA-512 pool fed by CPU timer jitter, timer.device
+  wake-ups, system counters and the seed file `ENVARC:.ssh/random_seed`. On a
+  CPU emulated without a fine cycle counter (QEMU without hardware
+  virtualisation) the jitter is weak and `bebbosshkeygen` warns. The first
+  key on a fresh system without a seed, or on clones that share a seed,
+  depends on the timing of that run.
 - Remote `exec` covers simple non-interactive commands only. On i386 the
   child-task backend keeps the daemon responsive; after 30 seconds it sends a
   timeout notice and reports exit status 124, but the command runs to its end

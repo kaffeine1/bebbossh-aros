@@ -30,6 +30,13 @@ extern "C" int puts(const char *);
 #define KGTRACE(s) ((void)0)
 #endif
 
+// volatile, so the compiler keeps the stores that clear secrets
+static void wipe(void *p, unsigned len) {
+	volatile uint8_t *v = (volatile uint8_t *) p;
+	while (len--)
+		*v++ = 0;
+}
+
 /* create the secret key + randomizer from seed. */
 void secret_expand(uint8_t *az, uint8_t const *sk) {
 	KGTRACE("secret_expand: enter");
@@ -43,6 +50,8 @@ void secret_expand(uint8_t *az, uint8_t const *sk) {
 	sha.update(sk, 32);
 	sha.digest(az);
 #endif
+	// digest() resets only the state: the block buffer still holds sk
+	wipe(&sha, sizeof(sha));
 	az[0] &= 248;
 	az[31] &= 127;
 	az[31] |= 64;
@@ -163,6 +172,7 @@ void ge_pubkey(unsigned char *pk, unsigned char const *az) {
 	ed25519_from32bytes(scsk, az);
 	ge25519_scalarmult_vartime_base(&gepk, scsk);
 	ge25519_pack(pk, &gepk);
+	wipe(scsk, sizeof(scsk));
 }
 
 void ge_new_keypair_ed25519(unsigned char *pk, unsigned char *sk) {
@@ -175,4 +185,5 @@ void ge_new_keypair_ed25519(unsigned char *pk, unsigned char *sk) {
 	ge_pubkey(pk, az);
 	KGTRACE("ge_new_keypair: after ge_pubkey");
 	memcpy(sk + 32, pk, 32);
+	wipe(az, sizeof(az)); // patch 0008 of bebbossh 1.46.1 by Matthias Muench
 }
