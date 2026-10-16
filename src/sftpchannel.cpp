@@ -628,6 +628,18 @@ void SftpChannel::sendPacket(uint8_t *end, uint8_t * &out) {
  * 	>= 0 the count of not processed data
  */
 int SftpChannel::handleData(char *data, unsigned outerLen) {
+	int r = handleRequests(data, outerLen);
+	if (r < 0) {
+		// a malformed request: the stream is out of step from here on, so
+		// close the channel and let the client report an error instead of
+		// waiting for an answer that never comes. This deletes the channel:
+		// the caller does not touch it after a negative result.
+		close();
+	}
+	return r;
+}
+
+int SftpChannel::handleRequests(char *data, unsigned outerLen) {
 	logme(L_FINE, "@%ld:%ld sftp handle %ld bytes", server->getSockFd(), channel, outerLen);
 
 //	_dump("data", data, outerLen > 64 ? 64 : outerLen);

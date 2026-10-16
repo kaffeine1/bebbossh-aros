@@ -130,7 +130,8 @@ static char const * ERR_MSG[] = {
 		"can't bind the socket to a port",
 		"no host name given",
 		"no user name given",
-		"no cipher"
+		"no cipher",
+		"can't start the transfer or command"
 };
 
 struct Library *SocketBase = 0;
@@ -1464,7 +1465,8 @@ bool connectClient() {
 		// receive hostname version
 		if (receivePacket(TEXT_CRLF) == 0) {
 			logme(L_ERROR, "can't read SSH2 hello");
-			error = ERROR_READ;
+			if (!error) // keep a more precise one from receivePacket()
+				error = ERROR_READ;
 			break;
 		}
 
@@ -1496,7 +1498,8 @@ bool connectClient() {
 
 		if (receivePacket(UNENCRYPTED) == 0) {
 			logme(L_ERROR, "can't read SSH_MSG_KEX_INIT");
-			error = ERROR_READ;
+			if (!error) // keep a more precise one from receivePacket()
+				error = ERROR_READ;
 			break;
 		}
 
@@ -1524,7 +1527,8 @@ bool connectClient() {
 
 		if (receivePacket(UNENCRYPTED) == 0) {
 			logme(L_ERROR, "can't read SSH_MSG_KEX_ECDH_REPLY");
-			error = ERROR_READ;
+			if (!error) // keep a more precise one from receivePacket()
+				error = ERROR_READ;
 			break;
 		}
 
@@ -1545,7 +1549,8 @@ bool connectClient() {
 
 		if (receivePacket(UNENCRYPTED) == 0) {
 			logme(L_ERROR, "can't read SSH_MSG_NEWKEYS");
-			error = ERROR_READ;
+			if (!error) // keep a more precise one from receivePacket()
+				error = ERROR_READ;
 			break;
 		}
 
@@ -1603,20 +1608,25 @@ static uint8_t OPEN_SESSION[24] = {
 };
 
 bool openChannels() {
-	if (!sendEncrypted(OPEN_SESSION, sizeof(OPEN_SESSION)))
+	// set error on every way out: the exit code of bebboscp and bebbossh
+	// is the error, and 0 would report a failed connection as a success
+	if (!sendEncrypted(OPEN_SESSION, sizeof(OPEN_SESSION))) {
+		if (!error)
+			error = ERROR_NOMEM;
 		return false;
+	}
 
 	int len;
 	do {
 		len = receiveEncryptedPacket();
 		if (!len) {
+			if (!error)
+				error = ERROR_READ;
 			return false;
 		}
 	} while (buffer[5] == SSH_MSG_GLOBAL_REQUEST || buffer[5] == SSH_MSG_DEBUG);
 
 
-	// set error on every way out: the exit code of bebboscp and bebbossh
-	// is the error, and 0 would report a failed connection as a success
 	if (buffer[5] != SSH_MSG_CHANNEL_OPEN_CONFIRMATION) {
 		error = ERROR_WRONG_PACKET;
 		return false;
@@ -1642,8 +1652,11 @@ bool openChannels() {
 		auto c = clientChannels[i];
 		if (!c)
 			continue;
-		if (!c->start())
+		if (!c->start()) { // the server refused the subsystem or the shell, or a local check failed
+			if (!error)
+				error = ERROR_START;
 			return false;
+		}
 	}
 
 	return true;
@@ -1765,9 +1778,15 @@ void eventLoop() {
 			ClientChannel * c = l->getChannel();
 			int sfd = l->getSockFd();
 			if (sfd > 0 && FD_ISSET(sfd, &readfds) && c->canRead()) {
-				// offset 14 to avoid copying data as channel data
+				// offset 14 to avoid copying data as channel data. Read at most
+				// one packet of the channel: sendEncrypted() works in place, and
+				// its padding and MAC would overwrite the next piece of a larger
+				// read, which also could not grow the buffer under itself
 				char * p = 14 + (char *)buffer;
-				int read = recv(l->getSockFd(), p, buffersize - 14, 0);
+				int maxRead = buffersize - 14;
+				if (c->getMaxBuffer() < (uint32_t) maxRead)
+					maxRead = c->getMaxBuffer();
+				int read = recv(l->getSockFd(), p, maxRead, 0);
 				if (read > 0) {
 					logme(L_DEBUG, "read on socket %ld len=%ld ", l->getSockFd(), read);
 					read = l->processSocketData(p, read);

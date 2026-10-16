@@ -166,13 +166,17 @@ bool ClientChannel::handleMessage(uint8_t msg, uint8_t * p, uint32_t maxLen) {
 		// uint32_t windowSize = getInt32(p); // ignore :-)
 		p += 4;
 		uint32_t maxBuf = getInt32(p);
-		// the same lower bound as for the session channel in openChannels():
-		// the sender cuts its data into maxBuf pieces, and 0 never ends
+		// the same bounds as for the session channel in openChannels(): the
+		// sender cuts its data into maxBuf pieces, and 0 never ends; above
+		// 32 KiB a piece no longer fits the packet buffer
 		if (maxBuf < 1024) {
 			logme(L_ERROR, "channel %ld: maximum packet size %ld too small", (long) channelNo, (long) maxBuf);
 			error = ERROR_INVALID_PACKET;
 			return false;
 		}
+		if (maxBuf > 32768)
+			maxBuf = 32768;
+		maxBuf -= 512; // 512 bytes are kept for the headers
 
 		logme(L_DEBUG, "channel %ld confirmend, remote=%ld", channelNo, remoteChannelNo);
 

@@ -267,9 +267,10 @@ The most important directives are:
 
   AllowTcpForwarding yes
       direct-tcpip forwarding (ssh -L) through the daemon, allowed by
-      default. Set it to no to refuse forwarding requests. yes, all and local
-      allow it; no and remote refuse it (the daemon has no remote
-      forwarding). Any other value also refuses it and logs a warning.
+      default. Set it to no to refuse forwarding requests. yes, all, local,
+      true, on and 1 allow it; no, remote, false, off and 0 refuse it (the
+      daemon has no remote forwarding). Any other value also refuses it and
+      logs a warning.
 
 Command-line overrides are available for quick tests:
 

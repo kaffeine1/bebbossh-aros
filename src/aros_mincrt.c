@@ -865,8 +865,11 @@ void *realloc(void *ptr, size_t size)
         return malloc(size);
     old_size = ((size_t *)ptr)[-1];
     next = malloc(size);
-    if (next)
-        memcpy(next, ptr, old_size < size ? old_size : size);
+    /* as C realloc(): on failure the old block stays valid, the caller
+       still owns it and frees it */
+    if (!next)
+        return NULL;
+    memcpy(next, ptr, old_size < size ? old_size : size);
     free(ptr);
     return next;
 }

@@ -134,6 +134,13 @@ public:
     }
 
     /**
+     * Largest data payload sent in one packet of this channel.
+     */
+    inline uint32_t getMaxBuffer() const {
+        return maxBuffer;
+    }
+
+    /**
      * Add state flags to channel.
      * @param flag Flags to add
      * @return New state

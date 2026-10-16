@@ -72,6 +72,7 @@ class SftpChannel : public Channel {
 	void makeNameResponse(uint8_t * &q, char const * path, struct FileInfoBlock *fib);
 
 	void flush(uint8_t * out);
+	int handleRequests(char * data, unsigned outerLen);
 
 public:
 	SftpChannel(SshSession * server, uint32_t channel);

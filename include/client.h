@@ -70,6 +70,7 @@ enum err {
     ERROR_NO_HOST,              // No host specified
     ERROR_NO_USER,              // No username specified
     ERROR_NOCIPHERS,            // No compatible ciphers available
+    ERROR_START,                // Channel start refused (server or local check)
     ERROR_LAST                  // Sentinel value
 };
 

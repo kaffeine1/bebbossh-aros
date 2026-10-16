@@ -77,6 +77,8 @@ VM as the only release proof. The x86_64 system volume is typically `AROS:`
    cd AROS:BSSHPKG
    copy sshd_config.example sshd_config
    copy passwd.example passwd
+   bebbosshkeygen -f T:seed_key
+   delete T:seed_key T:seed_key.pub
    bebbosshkeygen -f ssh_host_ed25519_key
    stack 262144
    bebbosshd
