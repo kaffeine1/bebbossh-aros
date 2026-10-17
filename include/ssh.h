@@ -49,6 +49,8 @@
   type *name = (type *)((uintptr_t)(a_##name+3) & ~(uintptr_t)3)
 
 #define SSH_MSG_DISCONNECT         1
+#define SSH_MSG_IGNORE             2
+#define SSH_MSG_UNIMPLEMENTED      3
 #define SSH_MSG_DEBUG              4
 #define SSH_MSG_SERVICE_REQUEST    5
 #define SSH_MSG_SERVICE_ACCEPT     6

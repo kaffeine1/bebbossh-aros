@@ -130,7 +130,8 @@ static char const * ERR_MSG[] = {
 		"can't bind the socket to a port",
 		"no host name given",
 		"no user name given",
-		"no cipher"
+		"no cipher",
+		"can't start the transfer or command"
 };
 
 struct Library *SocketBase = 0;
@@ -471,6 +472,16 @@ int receivePacket(ptype packetType) {
 	dump("packet", buffer, packetSize + 4);
 #endif
 
+	// the padding length comes from the server too: it must leave the message
+	// type, or the payload length packetSize - 1 - padding of a KEXINIT or
+	// KEX_ECDH_REPLY wraps and passes every bound (encrypted packets are
+	// checked in receiveEncryptedPacket())
+	if (packetType == UNENCRYPTED && (unsigned)buffer[4] + 1 >= (unsigned)packetSize) {
+		logme(L_ERROR, "invalid padding length %ld", (long)buffer[4]);
+		error = ERROR_INVALID_PACKET;
+		return 0;
+	}
+
 	if (packetType == ENCRYPTED)
 		packetSize -= 16; // also read signature
 	return packetSize;
@@ -513,6 +524,9 @@ int receiveEncryptedPacket() {
 	increment(keyMat.encIvRead);
 
 	len -= pad1;
+	// end the payload with a 0, in the padding: the server's strings are not
+	// 0-terminated, and the last one, logged with %s, would run on
+	buffer[5 + len] = 0;
 	if (isLogLevel(L_TRACE))
 		_dump("packet content", p + 1, len > 256 ? 256 : len);
 	logme(L_FINE, "got packet type %ld, len=%ld", buffer[5], len);
@@ -575,11 +589,14 @@ static bool verifyHost(uint8_t const * hostBase64) {
 	bool r = false;
 	bool changed = false;
 	char stored[100];
+	bool endsWithNewline = true; // a key is appended after the last line
 	Seek(f, 0, OFFSET_BEGINNING);
 	while(!r) {
 		char * p = buf + 1000;
 			if (!BSSH_FGETS(f, p, buffersize - 1000))
 				break;
+		size_t lineLen = strlen(p);
+		endsWithNewline = lineLen > 0 && p[lineLen - 1] == '\n';
 
 	    char *n, *c, *k;
 	    parse_line(p, &n, &c, &k);
@@ -629,7 +646,10 @@ static bool verifyHost(uint8_t const * hostBase64) {
 			r = true;
 			Seek(f, 0, OFFSET_END);
 			char line[1024];
-			int n = snprintf(line, sizeof(line), "%s ssh-ed25519 %s\n", hostname, hostBase64);
+			// a file without a final newline would merge the new key into its
+			// last line, and that host would then look changed
+			int n = snprintf(line, sizeof(line), "%s%s ssh-ed25519 %s\n",
+					endsWithNewline ? "" : "\n", hostname, hostBase64);
 			if (n > 0)
 				BSSH_WRITE_FILE(f, line, n);
 		}
@@ -1190,15 +1210,45 @@ void cleanup() {
 }
 
 
-int setupEncryption() {
-	uint8_t * p = buffer + 22; // start of encoding
-	uint8_t * sig = sshString(p);
-	uint8_t * kex = sshString(p);
-	uint8_t * read = sshString(p);
-	uint8_t * write = sshString(p);
+// Is name in the comma-separated name-list [list, list + len)? The lists of
+// the server's KEXINIT are length-prefixed, not 0-terminated.
+static bool nameListContains(uint8_t const *list, uint32_t len, char const *name) {
+	unsigned nameLen = strlen(name);
+	uint8_t const *end = list + len;
+	while (list < end) {
+		uint8_t const *q = list;
+		while (q < end && *q != ',')
+			++q;
+		if ((unsigned)(q - list) == nameLen && 0 == memcmp(list, name, nameLen))
+			return true;
+		list = q + 1;
+	}
+	return false;
+}
 
-//	puts((char*)read);
-//	puts((char*)write);
+int setupEncryption() {
+	// the server's KEXINIT: kex, host key and client to server cipher lists;
+	// every length comes from the server and is bounded to the payload
+	// (receivePacket() checked that the padding leaves one)
+	uint8_t * p = buffer + 22; // start of encoding
+	uint8_t * end = buffer + 4 + packetSize - buffer[4];
+	uint8_t * read = 0;
+	uint32_t readLen = 0;
+	for (int i = 0; i < 3; ++i) {
+		if (p > end || end - p < 4) {
+			error = ERROR_INVALID_PACKET;
+			return 0;
+		}
+		uint32_t l = getInt32(p);
+		p += 4;
+		if (l > (uint32_t)(end - p)) {
+			error = ERROR_INVALID_PACKET;
+			return 0;
+		}
+		read = p;
+		readLen = l;
+		p += l;
+	}
 
 	char selected = 0;
 	for (char const * c = encOrder; *c; ++c) {
@@ -1208,7 +1258,7 @@ int setupEncryption() {
 		if (*c == '2')
 			t = CHACHA20;
 
-		if (strstr((char *)read, t)) {
+		if (t && nameListContains(read, readLen, t)) {
 			selected = *c;
 			break;
 		}
@@ -1415,7 +1465,8 @@ bool connectClient() {
 		// receive hostname version
 		if (receivePacket(TEXT_CRLF) == 0) {
 			logme(L_ERROR, "can't read SSH2 hello");
-			error = ERROR_READ;
+			if (!error) // keep a more precise one from receivePacket()
+				error = ERROR_READ;
 			break;
 		}
 
@@ -1447,12 +1498,14 @@ bool connectClient() {
 
 		if (receivePacket(UNENCRYPTED) == 0) {
 			logme(L_ERROR, "can't read SSH_MSG_KEX_INIT");
-			error = ERROR_READ;
+			if (!error) // keep a more precise one from receivePacket()
+				error = ERROR_READ;
 			break;
 		}
 
 		if (!setupEncryption()) {
-			error = ERROR_NOCIPHERS;
+			if (!error)
+				error = ERROR_NOCIPHERS;
 			break;
 		}
 
@@ -1474,7 +1527,8 @@ bool connectClient() {
 
 		if (receivePacket(UNENCRYPTED) == 0) {
 			logme(L_ERROR, "can't read SSH_MSG_KEX_ECDH_REPLY");
-			error = ERROR_READ;
+			if (!error) // keep a more precise one from receivePacket()
+				error = ERROR_READ;
 			break;
 		}
 
@@ -1495,7 +1549,8 @@ bool connectClient() {
 
 		if (receivePacket(UNENCRYPTED) == 0) {
 			logme(L_ERROR, "can't read SSH_MSG_NEWKEYS");
-			error = ERROR_READ;
+			if (!error) // keep a more precise one from receivePacket()
+				error = ERROR_READ;
 			break;
 		}
 
@@ -1553,23 +1608,41 @@ static uint8_t OPEN_SESSION[24] = {
 };
 
 bool openChannels() {
-	if (!sendEncrypted(OPEN_SESSION, sizeof(OPEN_SESSION)))
+	// set error on every way out: the exit code of bebboscp and bebbossh
+	// is the error, and 0 would report a failed connection as a success
+	if (!sendEncrypted(OPEN_SESSION, sizeof(OPEN_SESSION))) {
+		if (!error)
+			error = ERROR_NOMEM;
 		return false;
+	}
 
+	int len;
 	do {
-		if (!receiveEncryptedPacket()) {
+		len = receiveEncryptedPacket();
+		if (!len) {
+			if (!error)
+				error = ERROR_READ;
 			return false;
 		}
 	} while (buffer[5] == SSH_MSG_GLOBAL_REQUEST || buffer[5] == SSH_MSG_DEBUG);
 
 
-	if (buffer[5] != SSH_MSG_CHANNEL_OPEN_CONFIRMATION)
+	if (buffer[5] != SSH_MSG_CHANNEL_OPEN_CONFIRMATION) {
+		error = ERROR_WRONG_PACKET;
 		return false;
+	}
+	if (len < 17) { // type, both channel numbers, window, maximum packet size
+		error = ERROR_INVALID_PACKET;
+		return false;
+	}
 
 	uint8_t * pp = buffer + 18;
 	maxBuffer = getInt32(pp);
-	if (maxBuffer < 1024) // 512 bytes are kept for the headers
+	if (maxBuffer < 1024) { // 512 bytes are kept for the headers
+		logme(L_ERROR, "maximum packet size %ld too small", (long) maxBuffer);
+		error = ERROR_INVALID_PACKET;
 		return false;
+	}
 	if (maxBuffer > 32768)
 		maxBuffer = 32768;
 	maxBuffer -= 512;
@@ -1579,8 +1652,11 @@ bool openChannels() {
 		auto c = clientChannels[i];
 		if (!c)
 			continue;
-		if (!c->start())
+		if (!c->start()) { // the server refused the subsystem or the shell, or a local check failed
+			if (!error)
+				error = ERROR_START;
 			return false;
+		}
 	}
 
 	return true;
@@ -1702,9 +1778,15 @@ void eventLoop() {
 			ClientChannel * c = l->getChannel();
 			int sfd = l->getSockFd();
 			if (sfd > 0 && FD_ISSET(sfd, &readfds) && c->canRead()) {
-				// offset 14 to avoid copying data as channel data
+				// offset 14 to avoid copying data as channel data. Read at most
+				// one packet of the channel: sendEncrypted() works in place, and
+				// its padding and MAC would overwrite the next piece of a larger
+				// read, which also could not grow the buffer under itself
 				char * p = 14 + (char *)buffer;
-				int read = recv(l->getSockFd(), p, buffersize - 14, 0);
+				int maxRead = buffersize - 14;
+				if (c->getMaxBuffer() < (uint32_t) maxRead)
+					maxRead = c->getMaxBuffer();
+				int read = recv(l->getSockFd(), p, maxRead, 0);
 				if (read > 0) {
 					logme(L_DEBUG, "read on socket %ld len=%ld ", l->getSockFd(), read);
 					read = l->processSocketData(p, read);
@@ -1730,7 +1812,14 @@ void eventLoop() {
 			uint8_t * p = buffer + 5;
 			uint8_t k = *p++;
 
-			if (k >= SSH_MSG_CHANNEL_OPEN && *p <= SSH_MSG_CHANNEL_FAILURE) {
+			if (k >= SSH_MSG_CHANNEL_OPEN && k <= SSH_MSG_CHANNEL_FAILURE) {
+				// type and channel number must be there: with a shorter payload
+				// len - 5 wraps and passes every bound of handleMessage()
+				if (len < 5) {
+					logme(L_ERROR, "channel packet of %ld bytes", (long)len);
+					error = ERROR_INVALID_PACKET;
+					break;
+				}
 				uint32_t channelNo = getInt32(p);
 				p += 4;
 				ClientChannel * cc = clientChannels[channelNo];

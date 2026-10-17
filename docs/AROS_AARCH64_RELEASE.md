@@ -77,6 +77,8 @@ BEBBOSSH_AROS_WORKDIR=RAM: \
    cd SYS:BebboSSH
    copy sshd_config.example sshd_config
    copy passwd.example passwd
+   bebbosshkeygen -f T:seed_key
+   delete T:seed_key T:seed_key.pub
    bebbosshkeygen -f ssh_host_ed25519_key
    stack 262144
    bebbosshd
@@ -104,6 +106,9 @@ Execute SYS:BebboSSH/StartBSSH
 FailAt 21
 CD SYS:BebboSSH
 If NOT EXISTS SYS:BebboSSH/ssh_host_ed25519_key
+  Delete >NIL: T:seed_key T:seed_key.pub
+  SYS:BebboSSH/bebbosshkeygen -f T:seed_key
+  Delete >NIL: T:seed_key T:seed_key.pub
   SYS:BebboSSH/bebbosshkeygen -f SYS:BebboSSH/ssh_host_ed25519_key
 EndIf
 Run >NIL: NewShell CON:0/30/1000/620/BebboSSH FROM SYS:BebboSSH/RunDaemon

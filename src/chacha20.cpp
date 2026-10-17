@@ -47,7 +47,11 @@
 // ---------------- ChaCha20 ----------------
 ChaCha20::ChaCha20(): pos(64) {}
 
-ChaCha20::~ChaCha20() {}
+// the state holds the key, the stream the last keystream block
+ChaCha20::~ChaCha20() {
+	bsshWipe(state, sizeof(state));
+	bsshWipe(stream, sizeof(stream));
+}
 
 int ChaCha20::blockSize() const {
     return 1; // stream cipher, block size concept not used

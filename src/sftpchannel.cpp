@@ -105,6 +105,30 @@ static inline long delta_ms(const struct DateStamp &now,
 /** Largest SSH_FXP_READ reply payload; also advertised in limits@openssh.com. */
 static const uint32_t SFTP_MAX_READ = MAXPACKET - 32;
 
+/** Largest request accepted, as in OpenSSH's sftp-server (SFTP_MAX_MSG_LENGTH). */
+static const uint32_t SFTP_MAX_REQUEST = 256 * 1024;
+
+/**
+ * sshString() bounded to the request [p, end). On a length past the end, p is
+ * left beyond end, so the "p > p0" checks reject the request: a plain
+ * p += len can wrap on i386 and land before the request, past those checks.
+ */
+static uint8_t * reqString(uint8_t * &p, uint8_t * end) {
+	if (p > end || end - p < 4) {
+		p = end + 1;
+		return end;
+	}
+	uint32_t len = getInt32(p);
+	p += 4;
+	if (len > (uint32_t)(end - p)) {
+		p = end + 1;
+		return end;
+	}
+	uint8_t * r = p;
+	p += len;
+	return r;
+}
+
 #if BEBBOSSH_AMIGA_API
 static inline int flags2mode(int flags) {
 	if (flags & SSH2_FXF_CREAT)
@@ -604,6 +628,18 @@ void SftpChannel::sendPacket(uint8_t *end, uint8_t * &out) {
  * 	>= 0 the count of not processed data
  */
 int SftpChannel::handleData(char *data, unsigned outerLen) {
+	int r = handleRequests(data, outerLen);
+	if (r < 0) {
+		// a malformed request: the stream is out of step from here on, so
+		// close the channel and let the client report an error instead of
+		// waiting for an answer that never comes. This deletes the channel:
+		// the caller does not touch it after a negative result.
+		close();
+	}
+	return r;
+}
+
+int SftpChannel::handleRequests(char *data, unsigned outerLen) {
 	logme(L_FINE, "@%ld:%ld sftp handle %ld bytes", server->getSockFd(), channel, outerLen);
 
 //	_dump("data", data, outerLen > 64 ? 64 : outerLen);
@@ -624,7 +660,14 @@ int SftpChannel::handleData(char *data, unsigned outerLen) {
 		uint8_t *p = p0;
 		uint32_t packetLen = getInt32(p); // goto next packet
 
-		if (avail < packetLen + 4) {
+		// the length comes from the client: at least the type and the request
+		// id, and never packetLen + 4, which wraps near 4 GiB and stops the loop
+		if (packetLen < 5 || packetLen > SFTP_MAX_REQUEST) {
+			flush(out);
+			logme(L_ERROR, "@%ld:%ld sftp request length %ld out of range", (long) server->getSockFd(), (long) channel, (long) packetLen);
+			return -1;
+		}
+		if ((uint32_t)(avail - 4) < packetLen) {
 			flush(out);
 			logme(L_FINE, "remaining data too small: %ld, keep it for next request", avail);
 			return avail;
@@ -653,7 +696,7 @@ int SftpChannel::handleData(char *data, unsigned outerLen) {
 		case SSH_FXP_FSTAT:
 		case SSH_FXP_FSETSTAT:
 		case SSH_FXP_READDIR: {
-			uint8_t *inHandle = sshString(p);
+			uint8_t *inHandle = reqString(p, p0);
 			if (p > p0) // out of bounds
 				return -1;
 
@@ -704,7 +747,7 @@ int SftpChannel::handleData(char *data, unsigned outerLen) {
 			return 0;
 
 		case SSH_FXP_OPEN: {
-			uint8_t *path = sshString(p);
+			uint8_t *path = reqString(p, p0);
 			if (p > p0) // out of bounds
 				return -1;
 			*p = 0;
@@ -761,7 +804,7 @@ int SftpChannel::handleData(char *data, unsigned outerLen) {
 		}
 
 		case SSH_FXP_OPENDIR: {
-			uint8_t *path = sshString(p);
+			uint8_t *path = reqString(p, p0);
 			if (p > p0) // out of bounds
 				return -1;
 			*p = 0;
@@ -934,7 +977,7 @@ printf("locked dir %s = %08lx\n", path, dir);
 			if (k == SSH_FXP_FSETSTAT) {
 				path = (uint8_t*) handle->filename;
 			} else {
-				path = sshString(p);
+				path = reqString(p, p0);
 				if (p > p0) // out of bounds
 					return -1;
 				*p = 0;
@@ -960,7 +1003,7 @@ printf("locked dir %s = %08lx\n", path, dir);
 			if (k == SSH_FXP_FSTAT) {
 				path = (uint8_t*) handle->filename;
 			} else {
-				path = sshString(p);
+				path = reqString(p, p0);
 				if (p > p0) // out of bounds
 					return -1;
 
@@ -993,7 +1036,7 @@ printf("locked dir %s = %08lx\n", path, dir);
 		}
 
 		case SSH_FXP_MKDIR: {
-			uint8_t *path = sshString(p);
+			uint8_t *path = reqString(p, p0);
 			if (p > p0) // out of bounds
 				return -1;
 			*p = 0;
@@ -1015,7 +1058,7 @@ printf("locked dir %s = %08lx\n", path, dir);
 
 		case SSH_FXP_REMOVE:
 		case SSH_FXP_RMDIR: {
-			uint8_t *path = sshString(p);
+			uint8_t *path = reqString(p, p0);
 			if (p > p0) // out of bounds
 				return -1;
 			*p = 0;
@@ -1046,7 +1089,7 @@ printf("locked dir %s = %08lx\n", path, dir);
 		}
 
 		case SSH_FXP_REALPATH: {
-			uint8_t *path = sshString(p);
+			uint8_t *path = reqString(p, p0);
 			if (p > p0) // out of bounds
 				return -1;
 			*p = 0;
@@ -1079,7 +1122,7 @@ printf("locked dir %s = %08lx\n", path, dir);
 		}
 
 		case SSH_FXP_READLINK: {
-			uint8_t *link = sshString(p);
+			uint8_t *link = reqString(p, p0);
 			if (p > p0) // out of bounds
 				return -1;
 			*p = 0;
@@ -1150,11 +1193,11 @@ printf("locked dir %s = %08lx\n", path, dir);
 		}
 
 		case SSH_FXP_SYMLINK: {
-			uint8_t *link = sshString(p);
+			uint8_t *link = reqString(p, p0);
 			if (p > p0) // out of bounds
 				return -1;
 
-			uint8_t *to= sshString(p);
+			uint8_t *to= reqString(p, p0);
 			if (p > p0) // out of bounds
 				return -1;
 			*p = 0;
@@ -1175,7 +1218,7 @@ printf("locked dir %s = %08lx\n", path, dir);
 		}
 
 		case SSH_FXP_EXTENDED: {
-			uint8_t * name = sshString(p);
+			uint8_t * name = reqString(p, p0);
 			if (p > p0) // out of bounds
 				return -1;
 			*p = 0;
@@ -1198,12 +1241,12 @@ printf("locked dir %s = %08lx\n", path, dir);
 		}
 
 		case SSH_FXP_RENAME: {
-			uint8_t *from = sshString(p);
+			uint8_t *from = reqString(p, p0);
 			if (p > p0) // out of bounds
 				return -1;
 			uint8_t *fromEnd = p;
 
-			uint8_t *to= sshString(p);
+			uint8_t *to= reqString(p, p0);
 			if (p > p0) // out of bounds
 				return -1;
 			*fromEnd = 0;

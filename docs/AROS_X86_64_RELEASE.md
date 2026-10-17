@@ -77,6 +77,8 @@ VM as the only release proof. The x86_64 system volume is typically `AROS:`
    cd AROS:BSSHPKG
    copy sshd_config.example sshd_config
    copy passwd.example passwd
+   bebbosshkeygen -f T:seed_key
+   delete T:seed_key T:seed_key.pub
    bebbosshkeygen -f ssh_host_ed25519_key
    stack 262144
    bebbosshd
@@ -154,15 +156,16 @@ BEBBOSSH_AROS_PORT=20022 ./scripts/aros-x86_64-public-release-smoke.sh
 
 All three documented gates closed for v1.0.0; re-run them for every release.
 
-1. **Entropy review (CLOSED).** The previous x86_64/mincrt `randfill()` had
-   `aros_rdtsc()` stubbed to `0` and `DateStamp` gated out, so per-call entropy
-   was only addresses + a counter — not cryptographically random. `src/rand.c`
-   now enables inline-asm `rdtsc` (safe under `-nostdlib`: pure CPU instruction)
-   and routes `DateStamp` through the mincrt-safe `bebbossh_aros_datestamp`
-   wrapper so each call mixes ns-class CPU time + 20 ms-class system tick.
-   Residual: still a best-effort PRNG mixer, not a true CSPRNG; replace with
-   an AROS CSPRNG if one becomes available. `randfill()` now uses the SHA-512
-   pool of `src/aros_randpool.cpp` with the seed file `ENVARC:.ssh/random_seed`.
+1. **Entropy review (CLOSED).** Before v1.0.0 the x86_64/mincrt `randfill()`
+   had `aros_rdtsc()` stubbed to `0` and `DateStamp` gated out, so per-call
+   entropy was only addresses + a counter: not cryptographically random.
+   v1.0.0 made `src/rand.c` use inline-asm `rdtsc` (safe under `-nostdlib`:
+   pure CPU instruction) and route `DateStamp` through the mincrt-safe
+   `bebbossh_aros_datestamp` wrapper, a best-effort mixer of ns-class CPU
+   time and the 20 ms-class system tick. After v1.0.6 `randfill()` uses the
+   SHA-512 pool of `src/aros_randpool.cpp` with the seed file
+   `ENVARC:.ssh/random_seed` instead; the `src/rand.c` mixer is built only
+   with `BEBBOSSH_RANDPOOL=0`.
    Re-validation per release: `bebbosshkeygen` and the daemon create and
    replace the seed file, and keys differ across runs and across identical
    snapshot boots (the self-tests do not run on AROS One, see item 7).

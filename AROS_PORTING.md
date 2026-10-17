@@ -212,8 +212,10 @@ header. The wrapper adds three compiler flags:
 aarch64 uses the same code paths as i386 (full SDK, remote commands in child
 tasks), with three differences:
 
-- `src/rand.c` mixes in the generic timer count `cntvct_el0`, which AROS tasks
-  can read (54 MHz on the Pi 400, 62.5 MHz in QEMU), where x86 uses `rdtsc`.
+- The entropy pool (`src/aros_randpool.cpp`) reads the generic timer count
+  `cntvct_el0`, which AROS tasks can read (54 MHz on the Pi 400, 62.5 MHz in
+  QEMU), where x86 uses `rdtsc`. The old mixer in `src/rand.c`, built only
+  with `BEBBOSSH_RANDPOOL=0`, reads it too.
 - The aarch64 SDK declares `CreateExtIO()` and `CreatePort()` in
   `clib/alib_protos.h`, so the calls bound to the `amiga.lib` versions
   (`AllocMem`) while the matching frees went through `free()` or the local
