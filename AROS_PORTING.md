@@ -238,15 +238,15 @@ with `hosted` in the name; hosted describes a validation environment, not a
 runtime target.
 
 ```text
-v1.0.6-aros-i386-abiv0
+v1.0.7-aros-i386-abiv0
 bebbossh-aros-i386-abiv0-<version>.zip
 bebbossh-aros-i386-abiv0-<version>.tar.gz
 
-v1.0.6-aros-x86_64
+v1.0.7-aros-x86_64
 bebbossh-aros-x86_64-<version>.zip
 bebbossh-aros-x86_64-<version>.tar.gz
 
-v1.0.6-aros-aarch64
+v1.0.7-aros-aarch64
 bebbossh-aros-aarch64-<version>.zip
 bebbossh-aros-aarch64-<version>.tar.gz
 ```

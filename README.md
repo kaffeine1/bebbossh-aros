@@ -25,9 +25,9 @@ point per architecture:
 
 | Target | Status |
 | --- | --- |
-| AROS i386 `alt-abiv0` | stable (v1.0.6) |
-| AROS x86_64 (mincrt) | stable (v1.0.6; tested against OpenSSH-class clients) |
-| AROS aarch64 (Raspberry Pi) | released (v1.0.6; tested on a Raspberry Pi 400) |
+| AROS i386 `alt-abiv0` | stable (v1.0.7) |
+| AROS x86_64 (mincrt) | stable (v1.0.7; tested against OpenSSH-class clients) |
+| AROS aarch64 (Raspberry Pi) | released (v1.0.7; tested on a Raspberry Pi 400) |
 
 What works: the SSH server (`bebbosshd`) and client (`bebbossh`), Ed25519
 key generation (`bebbosshkeygen`), non-interactive remote command execution,
@@ -39,9 +39,9 @@ remote shell redirection or pipes (`>`, `<`, `|`).
 
 Latest public runtime releases:
 
-- i386 `alt-abiv0`: https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.6-aros-i386-abiv0
-- x86_64 `mincrt`: https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.6-aros-x86_64
-- aarch64 (Raspberry Pi): https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.6-aros-aarch64
+- i386 `alt-abiv0`: https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.7-aros-i386-abiv0
+- x86_64 `mincrt`: https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.7-aros-x86_64
+- aarch64 (Raspberry Pi): https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.7-aros-aarch64
 
 ### Roadmap
 
