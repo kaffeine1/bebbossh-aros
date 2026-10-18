@@ -699,6 +699,11 @@ int SftpChannel::handleRequests(char *data, unsigned outerLen) {
 			uint8_t *inHandle = reqString(p, p0);
 			if (p > p0) // out of bounds
 				return -1;
+			// findHandle() compares a whole handle: other lengths are no handle of ours
+			if ((size_t)(p - inHandle) != sizeof(Handle::handle) + 4) {
+				result = SSH_FX_INVALID_HANDLE;
+				goto Status;
+			}
 
 			handle = findHandle(inHandle);
 
@@ -748,7 +753,7 @@ int SftpChannel::handleRequests(char *data, unsigned outerLen) {
 
 		case SSH_FXP_OPEN: {
 			uint8_t *path = reqString(p, p0);
-			if (p > p0) // out of bounds
+			if (p > p0 || p0 - p < 4) // out of bounds, or no pflags
 				return -1;
 			*p = 0;
 
@@ -888,12 +893,12 @@ printf("locked dir %s = %08lx\n", path, dir);
 		}
 
 		case SSH_FXP_READ: {
+			if (p0 - p < 12) // offset and length must be in the request
+				return -1;
 			p += 4; // no support for >4GB
 			uint32_t offset = getInt32(p);
 			p += 4;
 			uint32_t len = getInt32(p);
-			if (p > p0) // out of bounds
-				return -1;
 
 			logme(L_DEBUG, "@%ld:%ld sftp SSH_FXP_READ for %s @%ld:%ld", server->getSockFd(), channel, handle->filename, offset, len);
 
@@ -943,6 +948,8 @@ printf("locked dir %s = %08lx\n", path, dir);
 		}
 
 		case SSH_FXP_WRITE: {
+			if (p0 - p < 12) // offset and length must be in the request
+				return -1;
 			p += 4; // no support for >4GB
 			uint32_t offset = getInt32(p);
 			p += 4;
