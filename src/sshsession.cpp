@@ -1090,9 +1090,13 @@ int SshSession::consumeSocketData(char *indata, int len) {
 		case SSH_MSG_CHANNEL_SUCCESS:
 			logme(L_FINE, "@%ld got SSH_MSG_CHANNEL_SUCCESS", sockFd);
 			break;
-		case SSH_MSG_DISCONNECT:
-			logme(L_FINE, "@%ld got SSH_MSG_DISCONNECT", sockFd);
-			break;
+		case SSH_MSG_DISCONNECT: {
+			// the peer ends the connection, and RFC 4253 (11.1) allows no data
+			// after it: drop the session as on a TCP close, in AUTH as well
+			uint32_t reason = bu32(p);
+			logme(L_FINE, "@%ld got SSH_MSG_DISCONNECT, reason %ld", (long) sockFd, (long) reason);
+			return -1;
+		}
 		case SSH_MSG_IGNORE:
 		case SSH_MSG_UNIMPLEMENTED:
 		case SSH_MSG_DEBUG:
