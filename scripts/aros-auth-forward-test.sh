@@ -17,6 +17,9 @@ forward_target_port=${BEBBOSSH_AROS_FORWARD_TARGET_PORT:-}
 forward_local_host=${BEBBOSSH_AROS_FORWARD_LOCAL_HOST:-127.0.0.1}
 forward_local_port=${BEBBOSSH_AROS_FORWARD_LOCAL_PORT:-23922}
 forward_payload=${BEBBOSSH_AROS_FORWARD_PAYLOAD:-}
+auth_helper=${BEBBOSSH_AROS_AUTH_HELPER:-sshpass}
+askpass_file=
+askpass_script=
 
 password_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=$known_hosts -o ConnectTimeout=8 -o ExitOnForwardFailure=yes -o PreferredAuthentications=password -o PubkeyAuthentication=no"
 pubkey_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=$known_hosts -o ConnectTimeout=8 -o ExitOnForwardFailure=yes -o PreferredAuthentications=publickey -o PasswordAuthentication=no -o IdentitiesOnly=yes"
@@ -39,14 +42,54 @@ cleanup() {
     if [ -n "$tmpdir" ]; then
         rm -rf "$tmpdir"
     fi
+    rm -f "$askpass_file" "$askpass_script"
+}
+
+run_auth() {
+    if [ "$auth_helper" = "askpass" ]; then
+        DISPLAY=${DISPLAY:-none} \
+        SSH_ASKPASS="$askpass_script" \
+        SSH_ASKPASS_REQUIRE=force \
+        BEBBOSSH_AROS_ASKPASS_FILE="$askpass_file" \
+            "$@"
+    else
+        sshpass -p "$pass" "$@"
+    fi
+}
+
+setup_auth() {
+    case "$auth_helper" in
+        sshpass)
+            need sshpass
+            ;;
+        askpass)
+            # install_key and test_forward both call this: create the files once
+            if [ -n "$askpass_script" ]; then
+                return 0
+            fi
+            askpass_file=$(mktemp "${TMPDIR:-/tmp}/bebbossh-askpass-secret.XXXXXX")
+            askpass_script=$(mktemp "${TMPDIR:-/tmp}/bebbossh-askpass.XXXXXX")
+            printf '%s\n' "$pass" > "$askpass_file"
+            cat > "$askpass_script" <<'EOF'
+#!/bin/sh
+cat "$BEBBOSSH_AROS_ASKPASS_FILE"
+EOF
+            chmod 600 "$askpass_file"
+            chmod 700 "$askpass_script"
+            ;;
+        *)
+            echo "unsupported BEBBOSSH_AROS_AUTH_HELPER: $auth_helper" >&2
+            exit 1
+            ;;
+    esac
 }
 
 password_ssh() {
-    sshpass -p "$pass" ssh $password_opts -p "$port" "$user@$host" "$@"
+    run_auth ssh $password_opts -p "$port" "$user@$host" "$@"
 }
 
 password_scp() {
-    sshpass -p "$pass" scp $password_opts -P "$port" "$@"
+    run_auth scp $password_opts -P "$port" "$@"
 }
 
 pubkey_ssh() {
@@ -73,7 +116,7 @@ resolve_public_key_file() {
 }
 
 install_key() {
-    need sshpass
+    setup_auth
     need scp
     if [ -z "$identity_file" ]; then
         need ssh-keygen
@@ -106,8 +149,8 @@ test_forward() {
             -L "$forward_local_host:$forward_local_port:$forward_target_host:$forward_target_port" \
             -p "$port" "$user@$host" &
     else
-        need sshpass
-        sshpass -p "$pass" ssh -N $password_opts \
+        setup_auth
+        run_auth ssh -N $password_opts \
             -L "$forward_local_host:$forward_local_port:$forward_target_host:$forward_target_port" \
             -p "$port" "$user@$host" &
     fi
