@@ -150,9 +150,21 @@ test_forward() {
             -p "$port" "$user@$host" &
     else
         setup_auth
-        run_auth ssh -N $password_opts \
-            -L "$forward_local_host:$forward_local_port:$forward_target_host:$forward_target_port" \
-            -p "$port" "$user@$host" &
+        # start the command itself in the background, not run_auth(): $! must be
+        # the process that cleanup() kills, or the tunnel would stay open
+        if [ "$auth_helper" = "askpass" ]; then
+            DISPLAY=${DISPLAY:-none} \
+            SSH_ASKPASS="$askpass_script" \
+            SSH_ASKPASS_REQUIRE=force \
+            BEBBOSSH_AROS_ASKPASS_FILE="$askpass_file" \
+                ssh -N $password_opts \
+                -L "$forward_local_host:$forward_local_port:$forward_target_host:$forward_target_port" \
+                -p "$port" "$user@$host" &
+        else
+            sshpass -p "$pass" ssh -N $password_opts \
+                -L "$forward_local_host:$forward_local_port:$forward_target_host:$forward_target_port" \
+                -p "$port" "$user@$host" &
+        fi
     fi
     ssh_pid=$!
 
