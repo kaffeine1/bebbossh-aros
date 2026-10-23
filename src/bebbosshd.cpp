@@ -527,6 +527,8 @@ void pruneDeadClients() {
 	int sz = clients.getMax();
 	for (int i = 0; i < sz; ++i) {
 		SshSession * cs = clients[i];
+		if (cs && cs->dead && cs->isOpen())
+			cs->close();
 		if (!cs || cs->isOpen() || cs->isAlive())
 			continue;
 
@@ -1240,6 +1242,8 @@ __stdargs int main(int argc, char *argv[]) {
 				logme(L_DEBUG, "stopped=%ld", stopped);
 			}
 
+			pruneDeadClients();
+
 			static fd_set readfds;
 			FD_ZERO(&readfds);
 			int selectMax = acceptSock;
@@ -1274,18 +1278,21 @@ __stdargs int main(int argc, char *argv[]) {
 			}
 
 #if BEBBOSSH_AMIGA_API
-			ULONG signales = SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | portMask | timerMask;
+			ULONG mask = SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | portMask | timerMask;
+			ULONG signales = mask;
 #if BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT)
 				struct timeval waitTimeout;
 				waitTimeout.tv_sec = 1;
 				waitTimeout.tv_usec = 0;
-				WaitSelect(selectMax + 1, &readfds, NULL, NULL, &waitTimeout, &signales);
+				int selected = WaitSelect(selectMax + 1, &readfds, NULL, NULL, &waitTimeout, &signales);
+				int selectErrno = selected < 0 ? Errno() : 0;
 				// Ctrl-C (Break) stops the daemon; the timer branch collects the
 				// timer reply through the GetMsg/GetSysTime/SendIO wrappers, so
 				// timerOn clears and the stop can complete. The packet port stays
 				// masked: nothing sends to it on x86_64 and handleMsg() still makes
 				// inline DOS calls.
-				signales &= SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | timerMask;
+				mask &= SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | timerMask;
+				signales &= mask;
 				checkFinished();
 				pruneDeadClients();
 #elif BEBBOSSH_AROS
@@ -1293,10 +1300,24 @@ __stdargs int main(int argc, char *argv[]) {
 			struct timeval stopWait;
 			stopWait.tv_sec = 1;
 			stopWait.tv_usec = 0;
-			WaitSelect(selectMax + 1, &readfds, NULL, NULL, stopped ? &stopWait : 0, &signales);
+			int selected = WaitSelect(selectMax + 1, &readfds, NULL, NULL, stopped ? &stopWait : 0, &signales);
+			int selectErrno = selected < 0 ? Errno() : 0;
 #else
-			WaitSelect(selectMax + 1, &readfds, NULL, NULL, 0, &signales);
+			int selected = WaitSelect(selectMax + 1, &readfds, NULL, NULL, 0, &signales);
+			int selectErrno = selected < 0 ? Errno() : 0;
 #endif
+
+			static bool selectFailed = false;
+			if (selected < 0) {
+				if (!selectFailed)
+					logme(L_ERROR, "WaitSelect failed: errno=%ld", selectErrno);
+				selectFailed = true;
+				FD_ZERO(&readfds);
+				signales = SetSignal(0, 0) & mask;
+				Delay(1);
+			} else {
+				selectFailed = false;
+			}
 
 			logme(L_ULTRA, "got signal mask %08lX", signales);
 
@@ -1483,6 +1504,15 @@ __stdargs int main(int argc, char *argv[]) {
 						if (isFdReady(&readfds, l->getSockFd())) {
 							//Receive a message from server
 					int readSize = recv(l->getSockFd(), theBuffer, CHUNKSIZE, 0);
+					if (readSize < 0) {
+						int err = Errno();
+						if (err == EAGAIN
+#ifdef EWOULDBLOCK
+							|| err == EWOULDBLOCK
+#endif
+							)
+							continue;
+					}
 					logme(L_FINE, "read %ld from fd=%ld", readSize, l->getSockFd());
 
 					if (readSize > 0) {
