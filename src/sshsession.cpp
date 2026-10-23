@@ -253,12 +253,14 @@ static uint32_t max_duration = 0;
 
     struct timeval diff;
     timersub(&end, start, &diff);
-    uint32_t dt = diff.tv_sec * 20 + diff.tv_usec / 50000;
+    uint32_t dt = 0;
+    if (timercmp(&end, start, >=))
+        dt = diff.tv_sec >= 5 ? 100 : diff.tv_sec * 20 + diff.tv_usec / 50000;
 
     /* Pad if shorter than max */
     if (dt < max_duration) {
         uint32_t pad = max_duration - dt;
-        Delay(pad);
+        Delay(pad * 5 / 2);
         dt = max_duration; /* normalized */
     }
 
@@ -301,11 +303,31 @@ SSH_MSG_USERAUTH_SUCCESS, };
  * Return true on success.
  */
 bool mysend(int fd, void const *data, int len) {
+	bool stalled = false;
+	struct timeval stallStart;
 	for (uint8_t * p = (uint8_t *)data;;) {
 		int sent = send(fd, p, len, 0);
 		if (sent < 0) {
 			int _errno = Errno();
 			if (_errno == EAGAIN) {
+#if BEBBOSSH_AMIGA_API
+				if (SetSignal(0, 0) & SIGBREAKF_CTRL_C) {
+					logme(L_ERROR, "send interrupted on socket %ld", fd);
+					return false;
+				}
+#endif
+				struct timeval now;
+				gettimeofday(&now, nullptr);
+				if (!stalled || timercmp(&now, &stallStart, <)) {
+					stallStart = now;
+					stalled = true;
+				}
+				struct timeval elapsed;
+				timersub(&now, &stallStart, &elapsed);
+				if (elapsed.tv_sec >= 30) {
+					logme(L_ERROR, "send timed out on socket %ld", fd);
+					return false;
+				}
 				logme(L_DEBUG, "failed to send %ld bytes on socket %ld: sent %ld, errno=%ld, retrying", len, fd, sent, _errno);
 				Delay(2);
 				continue;
@@ -316,6 +338,7 @@ bool mysend(int fd, void const *data, int len) {
 		if (sent == 0) {
 			return false;
 		}
+		stalled = false;
 		len -= sent;
 		if (!len)
 			break;
@@ -558,12 +581,18 @@ void SshSession::closeChannel(Channel *channel, uint32_t exitStatus) {
 }
 
 void SshSession::noop() {
-	if (isOpen() && channels.getCount() > 0) {
+	if (!isOpen())
+		return;
+	for (int i = 0; i < channels.getMax(); ++i) {
+		Channel *c = channels[i];
+		if (!c)
+			continue;
 		logme(L_FINE, "@%ld sending noop", sockFd);
 		outdata[5] = SSH_MSG_CHANNEL_DATA;
-		putInt32Aligned(&outdata[6] , channels[0]->getChannel());
+		putInt32Aligned(&outdata[6] , c->getChannel());
 		putInt32Aligned(&outdata[10] , 0);
 		write(outdata + 5, 9);
+		break;
 	}
 }
 
@@ -628,6 +657,7 @@ int SshSession::write(void const *data, int len) {
 	logme(L_TRACE, "@%ld sending length=%ld", sockFd, len);
 	if (mysend(sockFd, data, len))
 		return len - sub;
+	dead = true; // close after the channel callback returns
 	return -1;
 }
 
