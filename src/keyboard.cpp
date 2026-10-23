@@ -64,10 +64,10 @@
 #define KBD_DELETE_IO(r) bebbossh_aros_delete_iorequest(r)
 #define KBD_OPEN_DEVICE(n, u, r, f) bebbossh_aros_open_device((n), (u), (r), (f))
 #define KBD_CLOSE_DEVICE(r) bebbossh_aros_close_device(r)
-#elif defined(__AROS__) && defined(__aarch64__)
-// aarch64: clib/alib_protos.h declares CreatePort() and CreateExtIO(), so the
-// calls would bind to amiga.lib while the local DeletePort() below frees with
-// FreeMem through *(APTR *)4: use the exec calls on both sides.
+#elif defined(__AROS__)
+// Every AROS build except x86_64/mincrt uses the exec calls here: the AROS SDK
+// declares CreatePort() and CreateExtIO() in clib/alib_protos.h, so on i386 too
+// the calls bind to amiga.lib, whose CreateExtIO() request is never freed.
 #define KBD_CREATE_PORT() CreateMsgPort()
 #define KBD_DELETE_PORT(p) DeleteMsgPort(p)
 #define KBD_CREATE_IO(p, s) CreateIORequest((p), (s))

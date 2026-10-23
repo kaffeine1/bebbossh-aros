@@ -18,6 +18,9 @@ user=${BEBBOSSH_AROS_USER:-test}
 pass=${BEBBOSSH_AROS_PASS:-test}
 workdir=${BEBBOSSH_AROS_WORKDIR:-T:}
 known_hosts=${BEBBOSSH_AROS_KNOWN_HOSTS:-${TMPDIR:-/tmp}/bebbossh_release_x86_64_known_hosts_${port:-none}}
+auth_helper=${BEBBOSSH_AROS_AUTH_HELPER:-sshpass}
+askpass_file=
+askpass_script=
 
 tmpdir=
 
@@ -32,6 +35,7 @@ cleanup() {
     if [ -n "$tmpdir" ]; then
         rm -rf "$tmpdir"
     fi
+    rm -f "$askpass_file" "$askpass_script"
 }
 trap cleanup EXIT HUP INT TERM
 
@@ -90,8 +94,43 @@ check_package_contents() {
     echo "ok: package content"
 }
 
+run_auth() {
+    if [ "$auth_helper" = "askpass" ]; then
+        DISPLAY=${DISPLAY:-none} \
+        SSH_ASKPASS="$askpass_script" \
+        SSH_ASKPASS_REQUIRE=force \
+        BEBBOSSH_AROS_ASKPASS_FILE="$askpass_file" \
+            "$@"
+    else
+        sshpass -p "$pass" "$@"
+    fi
+}
+
+setup_auth() {
+    case "$auth_helper" in
+        sshpass)
+            need sshpass
+            ;;
+        askpass)
+            askpass_file=$(mktemp "${TMPDIR:-/tmp}/bebbossh-askpass-secret.XXXXXX")
+            askpass_script=$(mktemp "${TMPDIR:-/tmp}/bebbossh-askpass.XXXXXX")
+            printf '%s\n' "$pass" > "$askpass_file"
+            cat > "$askpass_script" <<'EOF'
+#!/bin/sh
+cat "$BEBBOSSH_AROS_ASKPASS_FILE"
+EOF
+            chmod 600 "$askpass_file"
+            chmod 700 "$askpass_script"
+            ;;
+        *)
+            echo "unsupported BEBBOSSH_AROS_AUTH_HELPER: $auth_helper" >&2
+            exit 1
+            ;;
+    esac
+}
+
 run_ssh() {
-    sshpass -p "$pass" ssh \
+    run_auth ssh \
         -o StrictHostKeyChecking=no \
         -o UserKnownHostsFile="$known_hosts" \
         -o ConnectTimeout=8 \
@@ -101,7 +140,7 @@ run_ssh() {
 }
 
 run_scp() {
-    sshpass -p "$pass" scp \
+    run_auth scp \
         -o StrictHostKeyChecking=no \
         -o UserKnownHostsFile="$known_hosts" \
         -o ConnectTimeout=8 \
@@ -111,7 +150,7 @@ run_scp() {
 }
 
 run_sftp() {
-    sshpass -p "$pass" sftp \
+    run_auth sftp \
         -o StrictHostKeyChecking=no \
         -o UserKnownHostsFile="$known_hosts" \
         -o ConnectTimeout=8 \
@@ -135,7 +174,7 @@ runtime_smoke() {
     need ssh
     need scp
     need sftp
-    need sshpass
+    setup_auth
 
     rm -f "$known_hosts"
     echo "runtime smoke: $host:$port workdir=$workdir"
