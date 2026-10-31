@@ -12,6 +12,12 @@
 
 ---
 
+<!-- patreon-support:start -->
+## Support development
+
+You can [support my work on the AROS port through Patreon](https://www.patreon.com/c/kaffeine1). Contributions help me dedicate time to porting, testing and documentation. The port remains free and open source; no subscription is required to use it. BebboSSH is originally by Stefan "Bebbo" Franke, whose authorship and upstream license are unchanged.
+<!-- patreon-support:end -->
+
 ## AROS port status
 
 This repository is a derivative work / fork of the original BebboSSH project by
