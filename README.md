@@ -4,7 +4,7 @@
 **Author:** s.franke@bebbosoft.de
 **Uploader:** s.franke@bebbosoft.de
 **Upstream architecture:** m68k-amigaos
-**AROS fork targets:** i386 `alt-abiv0` stable, x86_64 (mincrt) stable, aarch64 (Raspberry Pi) released
+**AROS fork targets:** i386 `alt-abiv0`, x86_64 (mincrt), aarch64 (Raspberry Pi)
 **Type:** comm/net
 **Version:** 1.45
 **Required:** bsdsocket.library (e.g. AmiTCP)
@@ -15,56 +15,55 @@
 <!-- patreon-support:start -->
 ## Support development
 
-You can [support my work on the AROS port through Patreon](https://www.patreon.com/c/kaffeine1). Contributions help me dedicate time to porting, testing and documentation. The port remains free and open source; no subscription is required to use it. BebboSSH is originally by Stefan "Bebbo" Franke, whose authorship and upstream license are unchanged.
-
-If you prefer a one-time contribution, you can [support my work on the AROS port on Ko-fi](https://ko-fi.com/kaffeine1).
+You can support my work on the AROS port on [Patreon](https://www.patreon.com/c/kaffeine1), or with a one-time contribution on [Ko-fi](https://ko-fi.com/kaffeine1). Contributions are voluntary; no subscription is required to use the software. BebboSSH is by Stefan "Bebbo" Franke; his authorship and the upstream license are unchanged.
 <!-- patreon-support:end -->
 
-## AROS port status
+## AROS port
 
-This repository is a derivative work / fork of the original BebboSSH project by
-Stefan "Bebbo" Franke (upstream BebboSSH 1.45, commit
-`5d68dd169cfbb701c5fe8debda8df0a8d896320e`). AROS porting changes are
-Copyright (C) 2026 Michele Dipace <michele.dipace@kaffeine.net> and are
-licensed under GNU GPL v3 or later, consistent with the upstream license.
+This repository is a fork of BebboSSH by Stefan "Bebbo" Franke, based on
+upstream 1.45 (commit `5d68dd169cfbb701c5fe8debda8df0a8d896320e`) with the
+security fixes of bebbossh 1.46.1 by Matthias Münch. The AROS changes are
+Copyright (C) 2026 Michele Dipace <michele.dipace@kaffeine.net>, GNU GPL v3
+or later like the upstream code.
 
-A single source tree builds all AROS targets, with a separate makefile entry
-point per architecture:
+One source tree builds three AROS targets:
 
-| Target | Status |
-| --- | --- |
-| AROS i386 `alt-abiv0` | stable (v1.0.8) |
-| AROS x86_64 (mincrt) | stable (v1.0.8; tested against OpenSSH-class clients) |
-| AROS aarch64 (Raspberry Pi) | released (v1.0.8; tested on a Raspberry Pi 400) |
+| Target | Makefile | Latest release |
+| --- | --- | --- |
+| i386 `alt-abiv0` (AROS One 32-bit) | `Makefile.aros` | [v1.0.9](https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.9-aros-i386-abiv0) |
+| x86_64 `mincrt` (AROS One 64-bit) | `Makefile.aros-x86_64` | [v1.0.9](https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.9-aros-x86_64) |
+| aarch64 (AROS on the Raspberry Pi) | `Makefile.aros-aarch64` | [v1.0.9](https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.9-aros-aarch64) |
 
-What works: the SSH server (`bebbosshd`) and client (`bebbossh`), Ed25519
-key generation (`bebbosshkeygen`), non-interactive remote command execution,
-and SCP/SFTP file transfers. A minimal interactive shell handles short
-commands.
+The kits are also on Aminet (`comm/net/bebbossh.*-aros.lha`) and on the AROS
+Archives (`network/misc`).
 
-What does not work yet: full interactive PTY programs (stdin-driven), and
-remote shell redirection or pipes (`>`, `<`, `|`).
+What works: the server (`bebbosshd`) with password and Ed25519 public-key
+login, remote commands, SFTP, OpenSSH `scp` and `direct-tcpip` forwarding; the
+client (`bebbossh`), `bebboscp` and `bebbosshkeygen`. A minimal interactive
+shell runs simple commands.
 
-Latest public runtime releases:
+Not supported: interactive programs that read their input, and redirection
+or pipes (`>`, `<`, `|`) in remote commands.
 
-- i386 `alt-abiv0`: https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.8-aros-i386-abiv0
-- x86_64 `mincrt`: https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.8-aros-x86_64
-- aarch64 (Raspberry Pi): https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.8-aros-aarch64
+Open work:
 
-### Roadmap
+- A command typed in the interactive shell runs inside the daemon, so other
+  connections wait until it ends and Ctrl-C does not stop it. On i386 and
+  aarch64 it could run in a child task, as `ssh host command` already does.
+- i386 and aarch64: a remote command still running after 30 seconds gets a
+  timeout notice and exit status 124, but it is not stopped.
+- x86_64: remote commands run synchronously, and an SFTP path on a missing
+  volume opens a DOS requester.
+- SFTP: apply the times from `FSETSTAT` after `CLOSE` (OpenSSH `put -p`).
 
-- Interactive shell: a command typed at the prompt runs inside the daemon,
-  so other connections wait until it ends and Ctrl-C does not stop it. On
-  i386 it could run in a child task, as `ssh host command` already does.
-- i386: a remote command still running after 30 seconds gets a timeout
-  notice and exit status 124, but it is not stopped: Ctrl-C cannot reach a
-  command whose output goes to a file.
-- SFTP: apply the times from `FSETSTAT` after `CLOSE` (OpenSSH `put -p`),
-  following the next upstream BebboSSH release.
-- x86_64: suppress the DOS requester for a missing volume.
+Documentation:
 
-Build/packaging: see `AROS_PORTING.md` · Installation/use: see
-`packaging/aros/README.AROS.txt` · Testing: see `docs/AROS_TESTER.md`.
+- Install and use: `packaging/aros/README.AROS.txt` (`README.AROS.txt` in
+  the kits).
+- Build and port notes: `AROS_PORTING.md`.
+- Release checklists: `docs/AROS_I386_RELEASE.md`,
+  `docs/AROS_X86_64_RELEASE.md`, `docs/AROS_AARCH64_RELEASE.md`.
+- Test scripts: `docs/AROS_TESTER.md`.
 
 ## Overview
 

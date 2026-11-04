@@ -1,36 +1,23 @@
 # AROS aarch64 Release Checklist
 
-This checklist is for the AROS aarch64 runtime kit, built for the Raspberry Pi
-port of AROS (`raspi-aarch64`). It mirrors `docs/AROS_I386_RELEASE.md` and
-`docs/AROS_X86_64_RELEASE.md`.
+For the runtime kit of the Raspberry Pi port of AROS (`raspi-aarch64`). The
+i386 and x86_64 kits have their own checklists (`docs/AROS_I386_RELEASE.md`,
+`docs/AROS_X86_64_RELEASE.md`); the kits are not interchangeable.
 
-## Scope
-
-The aarch64 runtime kit contains:
-
-- `bebbossh`
-- `bebboscp`
-- `bebbosshd`
-- `bebbosshkeygen`
-- AROS README and example configuration files
-- GPL and upstream license files
-
-The aarch64 binaries use the same code paths as i386 (full AROS SDK, remote
-commands in child tasks), not the x86_64 `mincrt` runtime. The kits of the
-three targets are not interchangeable.
+The kit contains `bebbossh`, `bebboscp`, `bebbosshd`, `bebbosshkeygen`, the
+AROS README, example configuration, test scripts and the license files. The
+binaries use the i386 code paths (full AROS SDK, remote commands in child
+tasks), not the x86_64 `mincrt` runtime.
 
 Release naming (see `AROS_PORTING.md`):
 
 ```text
-v1.0.8-aros-aarch64
+v1.0.9-aros-aarch64
 bebbossh-aros-aarch64-<version>.zip
 bebbossh-aros-aarch64-<version>.tar.gz
 ```
 
 ## Build
-
-The build uses the `aarch64-aros` crosstools (GCC 6.5.0) with the `Developer`
-directory of an AROS `raspi-aarch64` build as sysroot:
 
 ```sh
 make -f Makefile.aros-aarch64 all \
@@ -39,38 +26,32 @@ make -f Makefile.aros-aarch64 all \
 ./scripts/package-aros-runtime.sh aros-aarch64 dist/bebbossh-aros-aarch64-<version>
 ```
 
-The compiler flags and the reasons for them are in `Makefile.aros-aarch64`.
-The binaries are stripped; the strip keeps the AROS OS/ABI tag in the ELF
-header.
+The compiler flags are explained in `Makefile.aros-aarch64` and
+`AROS_PORTING.md`.
 
-## Public Asset Gate
+## Public asset gate
 
-After publishing a release, verify the assets from GitHub rather than the local
-`dist/` directory:
+After publishing, check the assets from GitHub, not from `dist/`, and run the
+SSH/SCP/SFTP smoke against a Pi on the local network:
 
 ```sh
+BEBBOSSH_RELEASE_TAG=v1.0.10-aros-aarch64 \
+BEBBOSSH_RELEASE_VERSION=v1.0.10 \
 BEBBOSSH_RELEASE_ZIP_SHA256=<sha256> \
 BEBBOSSH_RELEASE_TGZ_SHA256=<sha256> \
-./scripts/aros-aarch64-public-release-smoke.sh
-```
-
-The script downloads the release archive, verifies the expected SHA256 values
-(skipped if unset), checks that the kit contains the required
-binaries/docs/licenses, and rejects any package that contains `hosted`
-artifacts. To also run the SSH/SCP/SFTP smoke against a Raspberry Pi on the
-local network, set its address and port:
-
-```sh
 BEBBOSSH_AROS_HOST=<pi address> \
 BEBBOSSH_AROS_PORT=22 \
 BEBBOSSH_AROS_WORKDIR=RAM: \
 ./scripts/aros-aarch64-public-release-smoke.sh
 ```
 
+Without `BEBBOSSH_AROS_PORT` only the archives are checked.
+`BEBBOSSH_AROS_AUTH_HELPER=askpass` passes the password through `SSH_ASKPASS`
+instead of `sshpass`.
+
 ## Install on the Raspberry Pi
 
-1. Copy the unpacked directory to the AROS system volume, for example
-   `SYS:BebboSSH`.
+1. Copy the unpacked kit to the system volume, for example `SYS:BebboSSH`.
 2. In an AROS shell:
 
    ```text
@@ -84,17 +65,17 @@ BEBBOSSH_AROS_WORKDIR=RAM: \
    bebbosshd
    ```
 
-3. Replace the test credentials in `passwd` before the Pi is reachable from
-   other machines.
+3. Replace the test login in `passwd` before the Pi is reachable from other
+   machines.
 
-`SYS:` on the Raspberry Pi image is a FAT volume. `protect` reports an error
-there; the files still run, so the error can be ignored.
+`SYS:` is a FAT volume: `protect` reports an error there, which can be
+ignored.
 
 ## Autostart
 
-Validated on the Raspberry Pi 400: AROSTCP starts at boot when
-`ENVARC:AROSTCP/AutoRun` contains `True`, and `S:User-Startup` starts the
-daemon a few seconds later in its own console window:
+AROSTCP starts at boot when `ENVARC:AROSTCP/AutoRun` contains `True`.
+`S:User-Startup` then starts the daemon a few seconds later in its own console
+window:
 
 ```text
 ; S:User-Startup
@@ -121,81 +102,61 @@ Wait 5 SECS
 SYS:BebboSSH/bebbosshd -p 22 -A SYS:BebboSSH/passwd -K SYS:BebboSSH/ssh_host_ed25519_key -H SYS:
 ```
 
-Keep the default log level here (see Known limits).
+Keep the default log level (see Known limits).
 
-## Validation status
+## Checks for every release
 
-First aarch64 release, on a Raspberry Pi 400 (AROS `raspi-aarch64` of
-2026-09-12, `bcmgenet.device` Ethernet, DHCP), with the daemon at the default
-log level unless noted:
+On a Raspberry Pi 400 with Ethernet and DHCP, the daemon at the default log
+level:
 
-1. The five crypto self-tests (`testAES`, `testGCM`, `testChacha20`,
-   `testSHA512`, `testEd25519`) and `testRandpool` pass.
-2. OpenSSH login and command execution; 100 sequential logins.
-3. SFTP upload and download of 200 KB and 1 MiB, and OpenSSH `scp` of 1 MiB
-   both ways with `aes128-gcm@openssh.com`, byte-identical. SFTP overwrite
-   with a shorter file, also on the FAT system volume. An SFTP READ above the
-   limit returns the capped size.
-4. Zero-delay transfer stress (`BEBBOSSH_AROS_STRESS_DELAY=0`), 20 iterations,
-   80 transfers up to 1 MiB.
-5. Two daemons at once, a command on one while the other runs `Wait 12`,
-   reconnect during a dropped command, no leftover `T:bebbosshd-*` files.
+1. The five crypto self-tests and `testRandpool`.
+2. OpenSSH login and commands; 100 sequential logins.
+3. SFTP uploads up to 16 MiB, OpenSSH `scp` of 4 MiB both ways with each
+   cipher, `bebboscp` over loopback with each cipher, byte-identical. SFTP
+   overwrite with a shorter file, also on the FAT system volume; a READ above
+   the limit returns the capped size.
+4. Zero-delay transfer stress (`BEBBOSSH_AROS_STRESS_DELAY=0`), 80 transfers.
+5. Two daemons, a command on one while the other runs `Wait 12`, a reconnect
+   during a dropped command, no leftover `T:bebbosshd-*` files.
 6. Refused commands answer with exit status 2 (redirection, stdin-driven
    command) and 127 (unknown command); a second shell request and unknown
-   subsystem names are rejected.
-7. `direct-tcpip` forwarding with a session channel open, 4 of 4.
-8. Native clients over loopback with public-key login: `bebboscp` upload and
-   download (byte-identical) and a `bebbossh` remote command.
-9. Native client on the Pi 400 console (`bebbossh` in an AROS shell, password
-   login): the host key question waits for the answer and saves the key, so
-   the next connection does not ask again; in the daemon's shell the history,
-   the cursor keys, Shift+cursor and Ctrl+cursor (word jump) work; `exit`
-   returns to the local shell.
-10. Interactive shell: `C:Vers<TAB>` completes to `C:Version` and `C:Li<TAB>`
-    lists the matches; a cursor sequence and the next character sent in one
-    packet are both applied.
-11. An SFTP path or a command on a missing volume (`FOO:`, `DF0:`) fails at
-    once; no requester blocks the daemon.
-12. `Break` (Ctrl-C) on the daemon: an idle daemon exits at once; with a
-    running command or a parked session it exits when the command ends; each
-    time it restarts right away.
-13. Entropy: `randfill()` is the SHA-512 pool of `src/aros_randpool.cpp`. It
-    times a 64 KiB memory walk with the generic timer count `cntvct_el0`
-    (54 MHz on the Pi 400), adds timer.device wake-ups, and keeps the seed
-    file `ENVARC:.ssh/random_seed` across reboots, which matters because the
-    Pi 400 has no battery-backed clock.
+   subsystem names are rejected; a channel close sent first by the client is
+   answered.
+7. `direct-tcpip` forwarding with a session channel open, and a 4 MiB upload
+   through it.
+8. Native clients over loopback with public-key login; on the Pi console the
+   host key question waits for the answer, and history, cursor keys,
+   Shift+cursor and Ctrl+cursor work in the daemon's shell.
+9. An SFTP path or a command on a missing volume fails at once, with no
+   requester.
+10. A client that stops reading during a long command output: a new login
+    works after the 30-second bound, and Ctrl-C during the stall stops the
+    daemon within 2 seconds.
+11. `Break` (Ctrl-C): an idle daemon exits at once; with a running command or
+    a parked session it exits when the command ends; each time it restarts
+    right away.
 
-In QEMU (`raspi3b`, AROS nightly of 2026-10-05) the daemon also exits without
-a kernel trap after a duplicate channel id and after `Break`, and the battery
-of items 2 and 5 to 8 passes.
+## QEMU
+
+QEMU `raspi3b` with `usb-net` runs the kit, but the guest receives about 340
+bytes per second, and one large upload failed with a packet signature
+mismatch that the Pi does not show. Use it for functional checks (login,
+commands, channel handling, daemon exit without a kernel trap), not for
+transfer tests.
 
 ## Ciphers
 
-Without a `Ciphers` line the daemon offers `chacha20-poly1305@openssh.com`
-as well as `aes128-gcm@openssh.com` (v1.0.5 offered only AES-GCM), and
-`bebbossh`/`bebboscp` try ChaCha20-Poly1305 first; `--ciphers` and
-`ssh_config` still set the order. AES-GCM is plain C on aarch64, without
-AES instructions. Checked on the Pi 400:
-
-- OpenSSH negotiates `chacha20-poly1305@openssh.com` without `-c`.
-- 4 MiB with OpenSSH `scp` both ways, and with `bebboscp` over loopback,
-  byte-identical with each cipher. Both ciphers take the same time: about
-  0.5 s up and 2 s down with `scp`, 0.7 s each way with `bebboscp`.
-- The daemon log shows `using chacha20-poly1305@openssh.com` for
-  `bebboscp`, and `using aes128-gcm@openssh.com` with `--ciphers 1`.
-- The release battery passes with ChaCha20-Poly1305 as the OpenSSH
-  default, including 100 logins and the zero-delay transfer stress.
+AES-GCM is plain C on aarch64, without AES instructions. Without a `Ciphers`
+line the daemon offers `chacha20-poly1305@openssh.com` and
+`aes128-gcm@openssh.com`, and `bebbossh`/`bebboscp` try ChaCha20-Poly1305
+first; `--ciphers` and `ssh_config` still set the order. On the Pi 400 both
+ciphers take the same time: 4 MiB with `scp` in about 0.5 s up and 2 s down,
+with `bebboscp` 0.7 s each way.
 
 ## Known limits
 
 - Raspberry Pi 400: a daemon logging at debug level (`-v5`) into a console
-  window during the transfer stress froze the system twice (first the
-  display, then the network). The same stress passes at the default log
-  level, so keep `DebugLevel 1` and use `-v5` only for short diagnostics.
-- QEMU `raspi3b` with `usb-net`: the guest receives about 340 bytes per
-  second and one large upload failed with a packet signature mismatch, while
-  the same uploads pass on the Pi 400. Use real hardware for transfer tests.
-- The limits of the i386 daemon apply too (see
-  `packaging/aros/README.AROS.txt`): commands typed in the interactive shell
-  run inside the daemon, and a remote command still running after 30 seconds
-  gets a timeout notice but is not stopped.
+  window during the transfer stress froze the system twice. The same stress
+  passes at the default level, so keep `DebugLevel 1` and use `-v5` only for
+  short diagnostics.
+- The limits of the i386 daemon apply too (see `README.AROS.txt`).

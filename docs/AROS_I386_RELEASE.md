@@ -1,63 +1,47 @@
 # AROS i386 Release Checklist
 
-This checklist is for public AROS One i386 `alt-abiv0` runtime kits. It keeps
-release validation separate from local development VMs, which may contain
-experimental binaries or stale startup scripts.
+For the AROS One i386 `alt-abiv0` runtime kit. The x86_64 and aarch64 kits
+have their own checklists (`docs/AROS_X86_64_RELEASE.md`,
+`docs/AROS_AARCH64_RELEASE.md`); the kits are not interchangeable.
 
-## Scope
+The kit contains `bebbossh`, `bebboscp`, `bebbosshd`, `bebbosshkeygen`, the
+AROS README, example configuration, test scripts and the license files.
 
-The i386 runtime kit is the stable AROS One / VMware 32-bit package. It
-contains:
-
-- `bebbossh`
-- `bebboscp`
-- `bebbosshd`
-- `bebbosshkeygen`
-- AROS README and example configuration files
-- GPL and upstream license files
-
-AROS x86_64 is a separate release target with its own gate
-(`docs/AROS_X86_64_RELEASE.md`) and tag (`v1.0.8-aros-x86_64`); it is not part
-of the i386 release gate.
-
-The latest complete public i386 runtime release is published on GitHub
-Releases, next to the repository tag list:
+Release naming (see `AROS_PORTING.md`):
 
 ```text
-https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.8-aros-i386-abiv0
+v1.0.9-aros-i386-abiv0
+bebbossh-aros-i386-abiv0-<version>.zip
+bebbossh-aros-i386-abiv0-<version>.tar.gz
 ```
 
-## Public Asset Gate
+Latest release:
+https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.9-aros-i386-abiv0
 
-After publishing a release, verify the assets from GitHub rather than the local
-`dist/` directory:
+## Public asset gate
 
-```sh
-./scripts/aros-i386-public-release-smoke.sh
-```
-
-The script downloads the release archive, verifies the expected SHA256 values,
-checks that the runtime kit contains the required binaries/docs/licenses, and
-rejects any public package that contains `hosted` artifacts.
-
-For a future version, override the defaults:
+After publishing, check the assets from GitHub, not from `dist/`:
 
 ```sh
-BEBBOSSH_RELEASE_TAG=v1.0.9-aros-i386-abiv0 \
-BEBBOSSH_RELEASE_VERSION=v1.0.9 \
+BEBBOSSH_RELEASE_TAG=v1.0.10-aros-i386-abiv0 \
+BEBBOSSH_RELEASE_VERSION=v1.0.10 \
 BEBBOSSH_RELEASE_ZIP_SHA256=<sha256> \
 BEBBOSSH_RELEASE_TGZ_SHA256=<sha256> \
 ./scripts/aros-i386-public-release-smoke.sh
 ```
 
-## Clean VM Install Gate
+The script downloads the archives, checks the SHA256 values and the kit
+content, and rejects packages with `hosted` artifacts. With
+`BEBBOSSH_AROS_PORT` set it also runs the SSH/SCP/SFTP smoke against that
+port. `BEBBOSSH_AROS_AUTH_HELPER=askpass` passes the password through
+`SSH_ASKPASS` instead of `sshpass`.
 
-Use a fresh or explicitly reset AROS One i386 VM. Do not use a long-lived lab
-VM as the only release proof.
+## Clean VM install
 
-1. Download the public release archive.
-2. Copy the unpacked directory to `DH0:BSSHPKG`.
-3. In an AROS shell:
+Use a fresh or reset AROS One i386 VM, not a long-lived lab VM.
+
+1. Copy the unpacked kit to `DH0:BSSHPKG`.
+2. In an AROS shell:
 
    ```text
    cd DH0:BSSHPKG
@@ -70,7 +54,7 @@ VM as the only release proof.
    bebbosshd
    ```
 
-4. From the host, run the runtime smoke against the forwarded SSH port:
+3. From the host, against the forwarded port:
 
    ```sh
    BEBBOSSH_AROS_PORT=10022 \
@@ -78,81 +62,11 @@ VM as the only release proof.
    ./scripts/aros-i386-public-release-smoke.sh
    ```
 
-5. If the VM uses another forwarded port or credentials, override:
+   `BEBBOSSH_AROS_USER` and `BEBBOSSH_AROS_PASS` override the `test` login.
 
-   ```sh
-   BEBBOSSH_AROS_PORT=11022 \
-   BEBBOSSH_AROS_USER=test \
-   BEBBOSSH_AROS_PASS=test \
-   BEBBOSSH_AROS_WORKDIR=T: \
-   ./scripts/aros-i386-public-release-smoke.sh
-   ```
-
-## Optional C: Command Install
-
-AROS normally searches `C:` for shell commands. The client-side tools can be
-copied there and then called without a full path:
-
-```text
-copy DH0:BSSHPKG/bebbossh C:
-copy DH0:BSSHPKG/bebboscp C:
-copy DH0:BSSHPKG/bebbosshkeygen C:
-protect C:bebbossh +e
-protect C:bebboscp +e
-protect C:bebbosshkeygen +e
-```
-
-Then these work from any AROS Shell:
-
-```text
-bebbossh user@host
-bebboscp localfile user@host:remotefile
-bebbosshkeygen -f DH0:BSSHPKG/ssh_host_ed25519_key
-```
-
-For `bebbosshd`, prefer keeping the daemon and its config together in
-`DH0:BSSHPKG`. The package defaults use `PROGDIR:` paths, and when a program is
-run from `C:`, `PROGDIR:` becomes `C:`. If the daemon is installed in `C:`, pass
-explicit config paths:
-
-```text
-bebbosshd -A DH0:BSSHPKG/passwd -K DH0:BSSHPKG/ssh_host_ed25519_key -H DH0:
-```
-
-## AROS Native Client Gate
-
-The public host-side smoke proves the daemon, OpenSSH SCP, and OpenSSH SFTP.
-The AROS-native client tools also need one real AROS shell validation before a
-release is considered complete:
-
-```text
-cd DH0:BSSHPKG
-makedir ENV:.ssh
-makedir ENVARC:.ssh
-; The first connection asks to trust the host key: answer yes.
-
-bebbossh -c client-loop-config loop echo vncok to BSSHPKG/client-vnc-touch
-type BSSHPKG/client-vnc-touch
-```
-
-For `bebboscp`, copy a small file over loopback and compare the source and
-destination:
-
-```text
-echo scpok to BSSHPKG/scp-src
-bebboscp -c client-loop-config BSSHPKG/scp-src loop:BSSHPKG/scp-dst
-type BSSHPKG/scp-src
-type BSSHPKG/scp-dst
-```
-
-This gate needs an AROS console. In QEMU it can be driven from the host: start
-the client in its own window through the daemon (`NewShell
-CON:0/20/800/500/CLIENT FROM <script>`; the new window gets the input focus)
-and type with the monitor's `sendkey`.
-
-## Autostart Gate
-
-For integration images, add this block to `S:User-Startup`:
+For autostart, add to `S:User-Startup` and check that the smoke passes after a
+reboot. If it fails, make sure the VM runs the release binary and not an older
+one left in `DH0:BSSHPKG`.
 
 ```text
 ;BEGIN BebboSSHd AROS
@@ -163,26 +77,55 @@ EndIf
 ;END BebboSSHd AROS
 ```
 
-After reboot, the host-side runtime smoke should pass without opening VNC:
+## Native clients
 
-```sh
-BEBBOSSH_AROS_PORT=10022 ./scripts/aros-i386-public-release-smoke.sh
+The host-side smoke covers the daemon with OpenSSH. The AROS clients need a
+console:
+
+```text
+cd DH0:BSSHPKG
+makedir ENV:.ssh
+makedir ENVARC:.ssh
+; the first connection asks to trust the host key: answer yes
+bebbossh -c client-loop-config loop echo vncok to BSSHPKG/client-vnc-touch
+type BSSHPKG/client-vnc-touch
+echo scpok to BSSHPKG/scp-src
+bebboscp -c client-loop-config BSSHPKG/scp-src loop:BSSHPKG/scp-dst
+type BSSHPKG/scp-dst
 ```
 
-If it fails, first confirm that the VM is actually running the public release
-binary and not an older lab `bebbosshd` left in `DH0:BSSHPKG`.
+Check also that a second connection does not ask again and that a changed
+host key is refused. In QEMU, start the client in its own window through the
+daemon (`NewShell CON:0/20/800/500/CLIENT FROM <script>`) and type with the
+monitor's `sendkey`.
 
-## Daemon Stop Gate
+## Checks for every release
 
-Start `bebbosshd -v5`, then check that `Break <process>` (Ctrl-C) frees nothing
-a command still uses:
+1. 100 sequential logins and the zero-delay transfer stress
+   (`BEBBOSSH_AROS_STRESS_DELAY=0 scripts/aros-transfer-stress-test.sh`).
+2. SFTP uploads up to 16 MiB, OpenSSH `scp` both ways, SFTP times and
+   overwrite with a shorter file, a READ above the limit, a missing volume
+   (an error, no requester).
+3. Two daemons at once, a reconnect during a dropped command, no leftover
+   `T:bebbosshd-*` files.
+4. Malformed channel requests get CHANNEL_FAILURE and the daemon keeps
+   serving; a channel close sent first by the client is answered.
+5. A client that stops reading during a long command output: a new login
+   works after the 30-second bound, and Ctrl-C during the stall stops the
+   daemon within 2 seconds. With `SendNoop many`, keep-alives go to channel 1
+   after the daemon closed channel 0.
+6. Public-key login, `AllowTcpForwarding off`, `direct-tcpip` forwarding.
+7. The six self-tests of the same build, run in the VM (`testAES`,
+   `testChacha20`, `testEd25519`, `testGCM`, `testSHA512`, `testRandpool`).
+8. Daemon stop: start `bebbosshd -v5` and send `Break` (Ctrl-C):
+   - idle, and with an idle client: it exits within a second or two and
+     starts again at once;
+   - during `ssh ... Wait 20`: the command runs to its end (Break cannot reach
+     a command whose output goes to a file), the log shows "waiting for N busy
+     sessions to end their commands", then "exiting main loop", no guru;
+   - the same with the connection dropped during `Wait 20` and a new
+     connection on the same socket: the daemon also waits for the parked
+     command.
 
-1. Idle daemon, and with an idle connected client: the daemon exits within a
-   second or two and can be started again at once.
-2. A running command (`ssh ... Wait 20`): the command still runs to its end,
-   since the Break cannot reach a command whose output goes to a file. Until
-   then the log shows "waiting for N busy sessions to end their commands",
-   then "exiting main loop"; no guru.
-3. The same with the connection dropped while `Wait 20` runs and a new
-   connection opened on the same socket (a parked session): the daemon waits
-   for the parked command too.
+After the release: point `scripts/aros-i386-public-release-smoke.sh` at the
+new tag, version and SHA256 values.

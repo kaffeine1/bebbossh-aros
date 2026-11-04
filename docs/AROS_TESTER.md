@@ -1,93 +1,37 @@
-# AROS Hosted Tester Notes
+# AROS Test Scripts
 
-These notes describe the hosted AROS SSH test setup used by downstream
-automation such as telegram-amiga.
+The scripts in `scripts/` drive a running `bebbosshd` from the host with
+OpenSSH. They do not start VMs: boot the guest, start the daemon, forward its
+port, then pass the port.
 
-## Runtime Targets
+## Where to test
 
-Use OpenSSH with password authentication and an isolated known-hosts file.
+- Hosted AROS i386 and x86_64: the fast development loop (smoke, SCP/SFTP,
+  stress). It does not replace a release test.
+- QEMU AROS One i386 and x86_64: required before every i386 and x86_64 kit
+  (clean install, startup, package layout). Use an rtl8139 or pcnet card on
+  x86_64 (see `docs/AROS_X86_64_RELEASE.md`).
+- Raspberry Pi: required before every aarch64 kit. QEMU `raspi3b` is fine for
+  functional checks, too slow for transfers.
 
-```sh
-sshpass -p test ssh \
-  -o StrictHostKeyChecking=no \
-  -o UserKnownHostsFile=/tmp/bebbossh_aros_known_hosts \
-  -o PreferredAuthentications=password \
-  -o PubkeyAuthentication=no \
-  -p 20022 test@127.0.0.1 \
-  'SYS:TGTEST/telegram-test --help'
+The release checklists are `docs/AROS_I386_RELEASE.md`,
+`docs/AROS_X86_64_RELEASE.md` and `docs/AROS_AARCH64_RELEASE.md`.
+
+## Common variables
+
+```text
+BEBBOSSH_AROS_HOST         default 127.0.0.1
+BEBBOSSH_AROS_PORT         forwarded SSH port (lab convention: 10022 i386, 20022 x86_64)
+BEBBOSSH_AROS_USER/PASS    default test/test
+BEBBOSSH_AROS_WORKDIR      AROS directory for transfers, for example T: or SYS:TGTEST
+BEBBOSSH_AROS_AUTH_HELPER  sshpass (default) or askpass
 ```
 
-Current hosted target ports:
+`askpass` passes the password through `SSH_ASKPASS`. Prefer it for long runs:
+`sshpass` can miss the password prompt when connections follow each other
+without delay. With `sshpass`, `sftp -b` needs `-oBatchMode=no`.
 
-- x86_64 hosted AROS: local tunnel port `20022`.
-- i386 hosted AROS: local tunnel port `10022`.
-
-The hosted test work directory is `SYS:TGTEST`. Do not assume `DH0:` exists in
-hosted runs. Avoid `RAM:` for automated transfer tests.
-
-## Test Tiers
-
-Use hosted AROS for the fast development loop and QEMU AROS One VMs for release
-validation.
-
-- Hosted i386/x86_64: required for routine smoke, SCP/SFTP, and zero-delay
-  connection-churn regression tests.
-- QEMU AROS One i386: required before publishing an i386 runtime kit, because
-  it validates the release-style filesystem, startup path, and package layout.
-- QEMU AROS One x86_64: required for every x86_64 runtime kit; hosted x86_64
-  does not prove the non-hosted AROS One daemon path.
-- Raspberry Pi: required for every aarch64 runtime kit; the network of the
-  QEMU `raspi3b` machine is too slow for transfer tests.
-
-The release gate does not start QEMU VMs. Boot the VM, start or autostart
-`bebbosshd`, expose its guest SSH port through QEMU forwarding, then pass the
-forwarded port to `scripts/aros-release-gate.sh`.
-
-For public i386 runtime kits, use `docs/AROS_I386_RELEASE.md` first. For
-x86_64 kits, use the parallel `docs/AROS_X86_64_RELEASE.md`, and for aarch64
-kits `docs/AROS_AARCH64_RELEASE.md`. Each
-checklist verifies the GitHub release assets and then, when `BEBBOSSH_AROS_PORT`
-is set, runs a focused SSH/SCP/SFTP smoke against a clean AROS One VM (the
-x86_64 hosted/QEMU port convention is `20022`). Use `scripts/aros-release-gate.sh`
-afterward for broader development and downstream automation gates.
-
-```sh
-BEBBOSSH_GATE_QEMU_I386_PORT=10022 \
-BEBBOSSH_GATE_QEMU_X64_PORT=20022 \
-./scripts/aros-release-gate.sh
-```
-
-If the QEMU VM uses different paths, override them explicitly:
-
-```sh
-BEBBOSSH_GATE_QEMU_I386_WORKDIR=DH0:TGTEST
-BEBBOSSH_GATE_QEMU_I386_SHELL_HOME=DH0:
-BEBBOSSH_GATE_QEMU_I386_TELEGRAM_TEST=DH0:TGTEST/telegram-test
-BEBBOSSH_GATE_QEMU_X64_WORKDIR=AROS:TGTEST
-BEBBOSSH_GATE_QEMU_X64_SHELL_HOME=AROS:
-BEBBOSSH_GATE_QEMU_X64_TELEGRAM_TEST=AROS:TGTEST/telegram-test
-```
-
-QEMU paced transfer stress is optional and disabled by default because it is
-slower than hosted stress:
-
-```sh
-BEBBOSSH_GATE_QEMU_STRESS=1 ./scripts/aros-release-gate.sh
-```
-
-## Expected BebboSSHd Behavior
-
-- Non-interactive commands return complete output and preserve exit status.
-- SFTP and OpenSSH scp work on `SYS:TGTEST`.
-- `ssh -tt ... version` works for simple bounded commands.
-- The minimal interactive shell can run `dir`, `cd`, `version`, and `exit`.
-- Shell redirection and pipes are rejected with exit status `2`.
-- Stdin-driven interactive programs are rejected with exit status `2` until a
-  stable AROS console/file-handle backend exists.
-
-## Smoke Test
-
-From this repository:
+## Smoke test
 
 ```sh
 BEBBOSSH_AROS_PORT=20022 \
@@ -97,11 +41,16 @@ BEBBOSSH_AROS_TELEGRAM_TEST=SYS:TGTEST/telegram-test \
 ./scripts/aros-ssh-smoke-test.sh
 ```
 
-Use `BEBBOSSH_AROS_PORT=10022` for hosted i386.
+Expected daemon behavior:
 
-## Transfer Stress
+- Commands return their whole output and exit status.
+- SFTP and OpenSSH `scp` work in the work directory.
+- `ssh -tt ... version` works for short commands; the interactive shell runs
+  `dir`, `cd`, `version` and `exit`.
+- Redirection, pipes and programs that read their input are rejected with
+  exit status 2; an unknown command gives 127.
 
-For repeated SCP/SFTP validation:
+## Transfer stress
 
 ```sh
 BEBBOSSH_AROS_PORT=10022 \
@@ -117,17 +66,10 @@ BEBBOSSH_AROS_STRESS_SIZES="257 4096 65536 1048576"
 BEBBOSSH_AROS_STRESS_DELAY=1
 ```
 
-Keep the default delay for downstream automation. Zero-delay mode is available
-as an explicit regression stress test:
+`BEBBOSSH_AROS_STRESS_DELAY=0` is the zero-delay regression test of the
+release checklists; keep the default delay for routine automation.
 
-```sh
-BEBBOSSH_AROS_STRESS_DELAY=0 ./scripts/aros-transfer-stress-test.sh
-```
-
-## Public-Key Auth And Forwarding
-
-`scripts/aros-auth-forward-test.sh` validates OpenSSH public-key login and,
-when a reachable target is supplied, `direct-tcpip` forwarding.
+## Public-key login and forwarding
 
 ```sh
 BEBBOSSH_AROS_PORT=10022 \
@@ -139,31 +81,36 @@ BEBBOSSH_AROS_FORWARD_PAYLOAD=bebbossh-forward-i386 \
 ./scripts/aros-auth-forward-test.sh
 ```
 
-The target service must already be listening from the guest's network view. In
-the hosted lab this is normally a host-side `nc -l` bound to the TAP gateway
-address. For disposable runtimes, the script can generate a temporary Ed25519
-key and install the public key to `ENVARC:.ssh/authorized_keys` when
-`BEBBOSSH_AROS_INSTALL_AUTHORIZED_KEYS=1` is set.
+The forward target must already listen where the guest can reach it, for
+example a host `nc -l` on the gateway address. With
+`BEBBOSSH_AROS_INSTALL_AUTHORIZED_KEYS=1` the script creates a temporary
+Ed25519 key and installs it in `ENVARC:.ssh/authorized_keys`.
 
-The release gate can run the same checks when the identity and target are
-provided:
+## Release gate
+
+`scripts/aros-release-gate.sh` runs the scripts above against several
+daemons:
 
 ```sh
-BEBBOSSH_GATE_IDENTITY_FILE=/path/to/id_ed25519 \
-BEBBOSSH_GATE_I386_FORWARD_TARGET_HOST=10.255.223.1 \
-BEBBOSSH_GATE_I386_FORWARD_TARGET_PORT=39123 \
-BEBBOSSH_GATE_I386_FORWARD_PAYLOAD=bebbossh-forward-i386 \
+BEBBOSSH_GATE_QEMU_I386_PORT=10022 \
+BEBBOSSH_GATE_QEMU_X64_PORT=20022 \
 ./scripts/aros-release-gate.sh
 ```
 
-## Current Validation
+Paths in the VMs:
 
-The hosted x86_64 and i386 runtimes pass this smoke test on
-`SYS:TGTEST`, including SCP/SFTP round-trips, transfer stress, public-key
-authentication, and `direct-tcpip` forwarding. Both also pass the
-telegram-amiga offline checks (JSON, getUpdates, inbox, sendMessage,
-client-state, TLS-status).
+```text
+BEBBOSSH_GATE_QEMU_I386_WORKDIR=DH0:TGTEST
+BEBBOSSH_GATE_QEMU_I386_SHELL_HOME=DH0:
+BEBBOSSH_GATE_QEMU_I386_TELEGRAM_TEST=DH0:TGTEST/telegram-test
+BEBBOSSH_GATE_QEMU_X64_WORKDIR=AROS:TGTEST
+BEBBOSSH_GATE_QEMU_X64_SHELL_HOME=AROS:
+BEBBOSSH_GATE_QEMU_X64_TELEGRAM_TEST=AROS:TGTEST/telegram-test
+```
 
-Known limit: x86_64 has an intermittent password-auth failure during
-zero-delay connection churn. Keep paced stress enabled for routine automation,
-and run zero-delay stress as an explicit short-session robustness regression.
+`BEBBOSSH_GATE_QEMU_STRESS=1` adds the slower paced stress on the VMs.
+Public-key and forwarding checks run when `BEBBOSSH_GATE_IDENTITY_FILE` and
+the `BEBBOSSH_GATE_I386_FORWARD_TARGET_*` variables are set.
+
+The public release smoke scripts (`scripts/aros-*-public-release-smoke.sh`)
+are described in the release checklists.

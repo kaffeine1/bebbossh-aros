@@ -1,376 +1,222 @@
-BebboSSH AROS Runtime Kit
-=========================
+BebboSSH for AROS
+=================
 
-This kit contains BebboSSH runtime tools for AROS:
+SSH2 server and client suite with SFTP:
 
-- bebbossh
-- bebboscp
-- bebbosshd
-- bebbosshkeygen
-- sshd_config.example
-- passwd.example
-- README.AROS.txt
-- COPYING, LICENSE, README.md, AROS_PORTING.md
+- bebbosshd       SSH2 server (remote commands, SFTP, scp, forwarding)
+- bebbossh        SSH2 client
+- bebboscp        scp client
+- bebbosshkeygen  Ed25519 key generator
 
-The CPU architecture is determined by the release asset name and the binaries
-inside the kit:
+Also in the kit: sshd_config.example, passwd.example, test scripts, the
+release checklist of the target (docs/), README.md, AROS_PORTING.md, COPYING
+and LICENSE.
 
-- bebbossh-aros-i386-abiv0-* is for 32-bit AROS One / VMware i386 systems.
-- bebbossh-aros-x86_64-* is for 64-bit AROS systems.
-- bebbossh-aros-aarch64-* is for AROS on the Raspberry Pi (aarch64).
+Pick the kit for your system; the binaries are not interchangeable:
 
-Archives with "hosted" in their name are internal validation artifacts, not
-public runtime kits. Do not use a hosted i386 binary on AROS One / VMware i386;
-use the i386-abiv0 kit instead.
+- bebbossh-aros-i386-abiv0-*  AROS One i386 (alt-abiv0)
+- bebbossh-aros-x86_64-*      AROS One x86_64 (ABIv11)
+- bebbossh-aros-aarch64-*     AROS on the Raspberry Pi (aarch64)
 
-Legal and Attribution
----------------------
+The crypto is linked into each program; no libcryptossh.library is needed.
 
-This is a derivative of Stefan "Bebbo" Franke's BebboSSH project:
+License and source
+------------------
 
-  https://franke.ms/git/bebbo/bebbossh
+BebboSSH is by Stefan "Bebbo" Franke: https://franke.ms/git/bebbo/bebbossh
+The AROS port is by Michele Dipace <michele.dipace@kaffeine.net>. Both are
+GNU GPL v3 or later; keep COPYING, LICENSE and the upstream notices when you
+redistribute.
 
-AROS porting changes are by Michele Dipace
-<michele.dipace@kaffeine.net> and are licensed under GPLv3 or later,
-consistent with the upstream project. Keep COPYING, LICENSE, and upstream
-notices with redistributions.
+The source of each release is the matching tag, for example:
 
-Corresponding source code for this binary release is available from the
-matching Git tag in the public repository:
-
-  https://github.com/kaffeine1/bebbossh-aros/releases
-
-For example, release v0.2.1-aros-i386-abiv0 corresponds to:
-
-  https://github.com/kaffeine1/bebbossh-aros/tree/v0.2.1-aros-i386-abiv0
-
-The binaries in this kit are statically linked with libcryptossh.a. There is
-no separate libcryptossh.library requirement for the current AROS port.
+  https://github.com/kaffeine1/bebbossh-aros/tree/v1.0.9-aros-i386-abiv0
 
 Install
 -------
 
-1. Copy this directory to an AROS volume, for example:
+1. Copy this directory to a persistent volume, for example DH0:BebboSSH
+   (AROS: on AROS One x86_64, SYS: on the Raspberry Pi).
 
-     DH0:BebboSSH/
-
-2. Rename the example config files:
+2. Create the configuration and change the password:
 
      copy sshd_config.example sshd_config
      copy passwd.example passwd
+     ed passwd
 
-3. Edit passwd and replace the example credentials.
-
-4. Generate a host key in the same directory. On a fresh system there is no
-   random seed yet (see Random Numbers): let a throwaway key create it first,
-   then make the host key:
+3. Create the random seed with a throwaway key (see Random numbers), then
+   the host key:
 
      bebbosshkeygen -f T:seed_key
      delete T:seed_key T:seed_key.pub
      bebbosshkeygen -f ssh_host_ed25519_key
 
-5. Start the server from an AROS Shell:
+4. Start the server from that directory:
 
      stack 262144
      bebbosshd
 
-The example configuration uses PROGDIR: paths, so the server can find
-sshd_config, passwd, and ssh_host_ed25519_key when launched from its own
-directory.
+sshd_config uses PROGDIR: paths, so the server finds its files when it runs
+from its own directory. If ENVARC:ssh/sshd_config exists, it is read first.
 
 On the Raspberry Pi, SYS: is a FAT volume: protect reports an error there,
-but the commands still run, so the error can be ignored.
+which can be ignored.
 
-Installing Commands In C:
--------------------------
+Commands in C:
+--------------
 
-AROS normally searches C: for shell commands. If you copy the command-line
-tools there, they can be called without a full path:
+To call the clients without a path, copy them to C::
 
-  copy bebbossh C:
-  copy bebboscp C:
-  copy bebbosshkeygen C:
+  copy bebbossh bebboscp bebbosshkeygen C:
   protect C:bebbossh +e
   protect C:bebboscp +e
   protect C:bebbosshkeygen +e
 
-After that, these forms work from an AROS Shell:
+Keep bebbosshd next to its configuration. Run from C:, PROGDIR: is C:, so
+pass the paths:
 
-  bebbossh user@host
-  bebboscp localfile user@host:remotefile
-  bebbosshkeygen -f DH0:BebboSSH/ssh_host_ed25519_key
-
-You may also copy bebbosshd to C:, but the packaged sshd_config.example uses
-PROGDIR: paths. If bebbosshd is run from C:, PROGDIR: is C:, so the daemon will
-look for C:sshd_config, C:passwd, and C:ssh_host_ed25519_key unless you pass
-explicit paths. The recommended server layout is still to keep bebbosshd and
-its config files together in a directory such as DH0:BSSHPKG and start it from
-there.
-
-If you want bebbosshd in C: anyway, launch it with explicit configuration:
-
-  bebbosshd -A DH0:BSSHPKG/passwd -K DH0:BSSHPKG/ssh_host_ed25519_key -H DH0:
-
-or keep the default PROGDIR: configuration by running:
-
-  cd DH0:BSSHPKG
-  bebbosshd
-
-Client Host Keys
-----------------
-
-bebbossh and bebboscp keep the server keys in ENVARC:.ssh/known_hosts. The
-first connection to a server asks whether to trust its key, but only when the
-input is a console window. Without a console, for example when the client runs
-as a remote command through bebbosshd, an unknown server is refused: connect
-once from a Shell window first. A server whose key differs from the stored one
-is refused with a warning, as OpenSSH does. If the change is expected, remove
-the server's line from known_hosts.
-
-Random Numbers
---------------
-
-Keys, session secrets and the SSH packet padding come from a SHA-512 pool.
-Each program fills it on first use from CPU timer jitter, timer.device
-wake-ups and system counters, and from a 64-byte seed file,
-ENVARC:.ssh/random_seed, which it replaces right away (the directory is
-created if missing). The next run, also after a reboot, starts from the new
-seed.
-
-- Every machine needs its own seed. Delete ENVARC:.ssh/random_seed before
-  you copy a disk or SD card image, and never put it into a package.
-- On read-only media, such as a live CD, the seed cannot be replaced and
-  each run relies on its own timer jitter.
-- bebbosshkeygen collects more samples before it creates a key. It warns
-  when the CPU timer shows little jitter, as on a CPU emulated by QEMU
-  without hardware virtualisation; the key then relies more on the timer
-  wake-ups and on the seed. Create long-term keys after a bebbossh program
-  has run once, so that a seed exists.
-- On i386 and aarch64, bebbosshkeygen without -f asks for the file name and
-  waits for the answer. In scripts, pass -f, or redirect the input from NIL:
-  to take the defaults.
-
-Configuration Files
--------------------
-
-The runtime kit uses three local files by default:
-
-- sshd_config controls the server.
-- passwd contains the SSH login users for password authentication.
-- ssh_host_ed25519_key is the server identity generated by bebbosshkeygen.
-
-The recommended layout is to keep all three files in the same directory as
-bebbosshd and use PROGDIR: paths in sshd_config. For example:
-
-  DH0:BebboSSH/bebbosshd
-  DH0:BebboSSH/bebbossh
-  DH0:BebboSSH/bebboscp
-  DH0:BebboSSH/bebbosshkeygen
-  DH0:BebboSSH/sshd_config
-  DH0:BebboSSH/passwd
-  DH0:BebboSSH/ssh_host_ed25519_key
+  bebbosshd -A DH0:BebboSSH/passwd -K DH0:BebboSSH/ssh_host_ed25519_key -H DH0:
 
 passwd
 ------
 
-Copy passwd.example to passwd, then edit it:
-
-  copy passwd.example passwd
-  ed passwd
-
-The simple bootstrap format is one user per line:
-
-  username password
-
-For example:
+One user per line, user name and password:
 
   miki mySecretPassword
 
-Then connect from another machine with:
+The test/test entry of passwd.example is for a first test only. Change it
+before the machine is on a real network, and never publish a real passwd.
 
-  ssh miki@<aros-ip-address>
+Public-key login reads ENVARC:.ssh/authorized_keys (OpenSSH Ed25519 keys).
 
-or, when using QEMU/VMware port forwarding to the host:
+Host key
+--------
 
-  ssh -p 10022 miki@127.0.0.1
-
-The default test/test entry is only for first boot tests. Change it before
-putting the machine on any real network. Do not publish a package with a real
-local passwd file.
-
-bebbosshkeygen
---------------
-
-bebbosshkeygen creates the Ed25519 host key used by bebbosshd to identify the
-server to SSH clients. Run it once in the install directory, after the random
-seed exists (Install, step 4):
-
-  bebbosshkeygen -f ssh_host_ed25519_key
-
-You can also add a comment:
-
-  bebbosshkeygen -f ssh_host_ed25519_key -C "AROS SSH host"
-
-The private key file must stay on that AROS installation. Do not copy a test
-host key into release archives and do not reuse the same private host key for
-unrelated machines.
+bebbosshkeygen -f ssh_host_ed25519_key creates the key that identifies the
+server; -C "comment" adds a comment. The private key stays on that machine:
+do not copy it to other machines or into archives.
 
 sshd_config
 -----------
 
-Copy sshd_config.example to sshd_config and keep the default PROGDIR: paths
-unless you have a reason to centralize configuration under ENVARC:ssh:
-
-  copy sshd_config.example sshd_config
-
-The i386 and x86_64 daemons both read this file (x86_64 releases up to
-v1.0.2 ignored it). Without it, the x86_64 daemon listens on port 22, uses
-PROGDIR:passwd and PROGDIR:ssh_host_ed25519_key, and logs nothing unless
-started with -v.
-
-The most important directives are:
-
   Port 22
-      TCP port listened by the daemon. Use another value, such as 10022, if
-      port 22 is already used or if your test network forwards a different
-      port.
+      TCP port of the server.
 
   ListenAddress 0.0.0.0
-      Listen on all configured AROS network interfaces.
+      Listen on all interfaces.
 
   HostKey PROGDIR:ssh_host_ed25519_key
-      Private host key generated with bebbosshkeygen.
+      Private host key.
 
   Passwords PROGDIR:passwd
-      Password file used for login.
+      Password file.
 
   HomeDir DH0:
-      Default directory for remote exec and SFTP sessions. Use a persistent
-      writable volume. Avoid RAM: on VM setups where file operations are not
-      reliable.
+      Start directory of remote commands and SFTP. Use a writable volume.
+      On x86_64 it is used only with BEBBOSSH_AROS_X64_CD (see Known limits).
 
   Stack 262144
-      Stack used by command/shell tasks. Keep this conservative on i386.
-      Without a Stack line the daemon uses 1048576 (1 MiB).
+      Stack of command and shell tasks. Without a Stack line: 1 MiB.
 
   DebugLevel 1
-      Normal package logging. For diagnostics, use DebugLevel debug or start
-      bebbosshd with -v5. Levels are names or the numbers used by -v: 0 none,
-      1 fatal, 2 error, 3 warn, 4 info, 5 debug, 6 fine, 7 trace, 8 ultra.
+      Log level: a name or the number used by -v: 0 none, 1 fatal, 2 error,
+      3 warn, 4 info, 5 debug, 6 fine, 7 trace, 8 ultra.
+
+  SendNoop some
+      Keep-alive messages on idle connections (off without this line).
 
   Ciphers aes128-gcm@openssh.com,chacha20-poly1305@openssh.com
-      Ciphers offered by the daemon. On i386 the default is aes128-gcm only,
-      so a client that insists on chacha20-poly1305 is disconnected; add this
-      line to offer both. Without a Ciphers line the x86_64 and aarch64
-      daemons offer both; the client chooses, and OpenSSH chooses
-      chacha20-poly1305 by default.
+      Ciphers the server offers. Without this line the i386 server offers
+      only aes128-gcm, and a client that insists on chacha20-poly1305 is
+      disconnected; x86_64 and aarch64 offer both.
 
   AllowTcpForwarding yes
-      direct-tcpip forwarding (ssh -L) through the daemon, allowed by
-      default. Set it to no to refuse forwarding requests. yes, all, local,
-      true, on and 1 allow it; no, remote, false, off and 0 refuse it (the
-      daemon has no remote forwarding). Any other value also refuses it and
-      logs a warning.
+      direct-tcpip forwarding (ssh -L), allowed by default. no refuses it.
+      There is no remote forwarding.
 
-Command-line overrides are available for quick tests:
+Command-line options override the file, for example:
 
   bebbosshd -p 10022 -A PROGDIR:passwd -K PROGDIR:ssh_host_ed25519_key -H DH0:
 
 Autostart
 ---------
 
-To start the server automatically after boot, install the kit in a persistent
-directory such as DH0:BSSHPKG and add this to S:User-Startup:
+Add to S:User-Startup:
 
   ;BEGIN BebboSSHd AROS
   Stack 262144
-  If EXISTS DH0:BSSHPKG/bebbosshd
-      Run DH0:BSSHPKG/bebbosshd
+  If EXISTS DH0:BebboSSH/bebbosshd
+      Run DH0:BebboSSH/bebbosshd
   EndIf
   ;END BebboSSHd AROS
 
-This deliberately avoids >NIL: redirection while the AROS redirection path is
-being hardened. Startup status messages are logged at debug level, so the
-normal DebugLevel 1 package configuration should not leave a daemon output
-window during boot. For diagnostics, temporarily use DebugLevel debug or launch
-bebbosshd with -v5.
+With DebugLevel 1 the server opens no output window at boot.
 
-On the Raspberry Pi, start AROSTCP at boot (ENVARC:AROSTCP/AutoRun containing
-True) and start the daemon a few seconds later; the validated scripts are in
-docs/AROS_AARCH64_RELEASE.md (included in the aarch64 kit).
+On the Raspberry Pi, AROSTCP must start at boot (ENVARC:AROSTCP/AutoRun
+containing True) and the server a few seconds later; the scripts are in
+docs/AROS_AARCH64_RELEASE.md.
 
-When replacing an existing bebbosshd over SCP/SFTP, delete the old file first
-and then upload the new binary. Download it back and byte-compare it if this is
-a release or test VM update.
+Client host keys
+----------------
 
-Current Runtime Status
-----------------------
+bebbossh and bebboscp keep server keys in ENVARC:.ssh/known_hosts. The first
+connection asks whether to trust the key, but only in a console window.
+Without a console, for example in a remote command, an unknown server is
+refused: connect once from a Shell first. A changed key is refused with a
+warning; if the change is expected, remove the server's line from
+known_hosts.
 
-- i386 (AROS One / VMware i386, the i386-abiv0 kit): stable and validated.
-  SSH exec, SCP/SFTP transfers, and a clean install with host-key generation
-  all work from a real AROS shell.
-- x86_64 (AROS One / VMware 64 bit, the x86_64 kit): stable since v1.0.0.
-  SSH commands run synchronously, so keep them short. AES-GCM uses AES-NI and
-  PCLMULQDQ when the CPU (or the VM CPU model) provides them.
-- aarch64 (AROS on the Raspberry Pi, the aarch64 kit): tested on a
-  Raspberry Pi 400. It works like the i386 kit: a remote command
-  (ssh host command) runs in a child task. AES-GCM runs as plain C there,
-  without AES instructions, so the daemon also offers chacha20-poly1305 and
-  bebbossh/bebboscp try it first.
+Random numbers
+--------------
 
-A clean-VM i386 release checklist is kept in the source repository under
-docs/AROS_I386_RELEASE.md.
+Keys, session secrets and packet padding come from a SHA-512 pool, filled at
+start from CPU timer jitter, timer.device wake-ups, system counters and the
+seed file ENVARC:.ssh/random_seed, which each program replaces at once.
 
-Known Limits
+- Every machine needs its own seed. Delete ENVARC:.ssh/random_seed before you
+  copy a disk or SD card image, and never put it into a package.
+- On read-only media the seed cannot be replaced, and each run relies on its
+  own timer jitter.
+- bebbosshkeygen collects more samples before it creates a key, and warns
+  when the CPU timer shows little jitter (a CPU emulated by QEMU without
+  hardware virtualisation). Create long-term keys after a seed exists.
+- On i386 and aarch64, bebbosshkeygen without -f asks for the file name. In
+  scripts pass -f, or redirect the input from NIL: to take the defaults.
+
+Known limits
 ------------
 
-- Non-interactive SSH exec of short commands is the recommended automation
-  path.
-- Interactive SSH sessions can run simple commands (dir, cd, version, exit) and
-  return to the prompt, but full PTY-style interactive program support is not
-  complete. Stdin-driven programs are rejected with exit status 2.
-- A command typed in an interactive SSH session runs inside the daemon, on
-  both targets: other connections wait until it ends, and Ctrl-C does not
-  stop it. On i386, run long commands as `ssh host command`, which runs them
-  in a child task and keeps the daemon responsive.
-- i386: a remote command still running after 30 seconds gets a timeout
-  notice and exit status 124, but it keeps running until it ends. A daemon
-  stopped with Ctrl-C also waits for its running commands to end.
-- Shell redirection and pipes (`>`, `<`, `|`) are not supported on AROS and are
-  rejected with exit status 2.
-- x86_64: HomeDir is only used when BEBBOSSH_AROS_X64_CD is set (see the next
-  item).
-- x86_64 only: some features are opt-in flags, off unless set before starting
-  bebbosshd (setenv NAME 1): BEBBOSSH_AROS_X64_CD (cd/pwd in the interactive
-  shell), BEBBOSSH_AROS_X64_SFTP_MTIME (keep upload timestamps),
-  BEBBOSSH_AROS_X64_SFTP_LINKS (SFTP readlink/symlink).
-- x86_64: an SFTP path on an unmounted volume opens an "insert volume"
-  requester on the AROS screen and blocks the daemon until it is closed.
-- AROS One x86_64 with an Intel e1000 network card (e1000.device): under heavy
-  network load the system can halt or reboot by itself. The cause is in the
-  AROS e1000 driver, not in BebboSSH; in testing it happened only with two or
-  more daemons running. It is fixed upstream (deadwood2/AROS issue 274);
-  until AROS One ships the fixed driver, use an rtl8139 or pcnet ("vlance")
-  card and select its driver in the AROS network preferences
-  (DEVS:networks/rtl8139.device or DEVS:networks/pcnet32.device).
-- Raspberry Pi 400 (aarch64): a daemon logging at debug level (-v5) into a
-  console window during heavy transfers froze the system. Keep the default
-  DebugLevel 1 there and use -v5 only for short diagnostics.
-- The test password in passwd.example is not safe. Change it before use, and do
-  not distribute private host keys generated for local testing.
+- No interactive programs that read their input (rejected with exit status
+  2), and no redirection or pipes (>, <, |) in remote commands. The
+  interactive shell runs simple commands.
+- A command typed in the interactive shell runs inside the server: other
+  connections wait until it ends, and Ctrl-C does not stop it.
+- i386 and aarch64: run long commands as "ssh host command", which runs them
+  in a separate task. A command still running after 30 seconds gets a
+  timeout notice and exit status 124, but it runs until it ends; a server
+  stopped with Ctrl-C waits for it.
+- x86_64: every remote command blocks the server until it returns: keep
+  commands short.
+- x86_64: an SFTP path on a missing volume opens an "insert volume"
+  requester and blocks the server until it is closed.
+- x86_64: some features are off unless set before starting bebbosshd
+  (setenv NAME 1): BEBBOSSH_AROS_X64_CD (cd and pwd in the interactive shell,
+  HomeDir), BEBBOSSH_AROS_X64_SFTP_MTIME (keep upload times),
+  BEBBOSSH_AROS_X64_SFTP_LINKS (SFTP readlink and symlink).
+- AROS One x86_64 with an Intel e1000 card can halt or reboot under heavy
+  network load. The cause is the AROS e1000 driver, fixed upstream
+  (deadwood2/AROS issue 274); until AROS One ships it, use an rtl8139 or
+  pcnet card (DEVS:networks/rtl8139.device or pcnet32.device).
+- Raspberry Pi 400: a server logging at debug level (-v5) into a console
+  window during heavy transfers froze the system. Keep DebugLevel 1 there.
+- OpenSSH "put -p" sets the file time before it closes the file, and AROS
+  updates the date on close, so that time is not kept.
 
-Host Test Examples
-------------------
-
-From the host side, through QEMU/VMware port forwarding:
+Test from another machine
+-------------------------
 
   ssh -p 10022 test@127.0.0.1 version
-  sshpass -p test sftp -oBatchMode=no -P 10022 test@127.0.0.1
+  sftp -P 10022 test@127.0.0.1
 
-Use DH0: or another persistent volume for uploads; avoid RAM: in VM setups
-where RAM: file operations have shown freezes.
-
-Public-key authentication reads ENVARC:.ssh/authorized_keys. AROS SFTP uploads
-keep AmigaDOS execute protection allowed, so uploaded binaries stay runnable
-even when OpenSSH sends Unix-style 0644 permissions, and an scp/SFTP overwrite
-of a larger file by a smaller one truncates the destination correctly.
+(the port forwarded by QEMU or VMware, or 22 on a real network). With
+sshpass, sftp -b needs -oBatchMode=no.
