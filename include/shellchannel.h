@@ -164,6 +164,7 @@ public:
 	void setExec(bool e) { exec = e; }
 
 	bool isDone() const { return done;}
+	bool isRunning() const { return running; }
 	bool endCommand();
 
 	void setDimension(unsigned cols, unsigned rows) {

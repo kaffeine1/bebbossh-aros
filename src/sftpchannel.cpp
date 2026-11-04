@@ -198,6 +198,7 @@ SftpChannel::SftpChannel(SshSession *server, uint32_t channel) :
 }
 
 SftpChannel::~SftpChannel() {
+	free(queue);
 	for (int i = 0; i < handles.getMax(); ++i) {
 		Handle * h = handles[i];
 		delete h;
