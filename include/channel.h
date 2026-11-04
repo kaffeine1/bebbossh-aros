@@ -59,6 +59,7 @@ protected:
     uint32_t channel;          // Channel identifier
     uint32_t windowSize;       // Current window size in bytes
     ChannelType type;          // Channel type
+    bool peerClosed;           // Peer sent SSH_MSG_CHANNEL_CLOSE
 
 public:
     /**
@@ -71,7 +72,7 @@ public:
         : server(server_), 
           channel(channel_), 
           windowSize(0x20000000), // Initial window size (512MB)
-          type(type_) 
+          type(type_), peerClosed(false)
     {}
 
     virtual ~Channel();
@@ -111,6 +112,8 @@ public:
      * @return Channel ID
      */
     inline uint32_t getChannel() const { return channel; }
+    bool isPeerClosed() const { return peerClosed; }
+    void setPeerClosed() { peerClosed = true; }
 
     /**
      * Get the receive window: what the peer may still send on this channel.

@@ -93,6 +93,7 @@ struct SshSession : public Listener {
 	int inChannelUse;
 	int inChannelSize;
 	char * inChannelBuf;
+	uint32_t inChannelNo;
 
 	uint32_t kexLen;
 
@@ -146,6 +147,7 @@ struct SshSession : public Listener {
 	bool handleChannelRequest(uint8_t * p);
 	bool handleChannelData(uint8_t * p, int len);
 	bool handleChannelEof(uint8_t * p);
+	bool handleChannelClose(uint8_t * p);
 	bool login(uint8_t * user, uint8_t * pass);
 
 	virtual bool isBufferFree() const {

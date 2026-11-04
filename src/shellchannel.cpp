@@ -1619,6 +1619,11 @@ bool ShellChannel::endCommand(){
 		return false;
 	}
 #endif
+	if (isPeerClosed()) {
+		abort();
+		server->closeChannel(this);
+		return false;
+	}
 	if (done) {
 		server->closeChannel(this);
 		return false;

@@ -479,7 +479,7 @@ SshSession::SshSession(int _sock) :
 		readAead(0), readBc(0), readCounterBc(0),
 			writeAead(0), writeBc(0), writeCounterBc(0),
 				channels(10), windowsize(CHUNKSIZE), maxsize(CHUNKSIZE),
-				inpos(indatax), inChannelUse(0), inChannelSize(0), inChannelBuf(0),
+				inpos(indatax), inChannelUse(0), inChannelSize(0), inChannelBuf(0), inChannelNo(0),
 				kexLen(0), username(0), dead(false)
 {
 	sockFd = _sock;
@@ -541,6 +541,9 @@ void SshSession::close() {
 }
 
 int SshSession::channelWrite(uint32_t channel, void const *data, int len) {
+	Channel *c = channels[channel];
+	if (!c || c->isPeerClosed())
+		return -1;
 	logme(L_FINE, "@%ld send SSH_MSG_CHANNEL_DATA %ld", sockFd, len);
 	outdata[5] = SSH_MSG_CHANNEL_DATA;
 	putInt32Aligned(&outdata[6], channel);
@@ -551,19 +554,21 @@ int SshSession::channelWrite(uint32_t channel, void const *data, int len) {
 }
 
 void SshSession::closeChannel(Channel *channel, uint32_t exitStatus) {
-	logme(L_FINE, "@%ld:%ld send SSH_MSG_CHANNEL_REQUEST exit status %ld", sockFd, channel->getChannel(), exitStatus);
-	outdata[5] = SSH_MSG_CHANNEL_REQUEST;
-	putInt32Aligned(&outdata[6] , channel->getChannel());
-	putInt32Aligned(&outdata[10] , 11);
-	strcpy(&outdata[14], "exit-status");
-	outdata[25] = 0;
-	putInt32Aligned(&outdata[26], exitStatus);
-	write(outdata + 5, 25);
+	if (!channel->isPeerClosed()) {
+		logme(L_FINE, "@%ld:%ld send SSH_MSG_CHANNEL_REQUEST exit status %ld", sockFd, channel->getChannel(), exitStatus);
+		outdata[5] = SSH_MSG_CHANNEL_REQUEST;
+		putInt32Aligned(&outdata[6] , channel->getChannel());
+		putInt32Aligned(&outdata[10] , 11);
+		strcpy(&outdata[14], "exit-status");
+		outdata[25] = 0;
+		putInt32Aligned(&outdata[26], exitStatus);
+		write(outdata + 5, 25);
 
-	logme(L_FINE, "@%ld:%ld send SSH_MSG_CHANNEL_EOF", sockFd, channel->getChannel());
-	outdata[5] = SSH_MSG_CHANNEL_EOF;
-	putInt32Aligned(&outdata[6] , channel->getChannel());
-	write(outdata + 5, 5);
+		logme(L_FINE, "@%ld:%ld send SSH_MSG_CHANNEL_EOF", sockFd, channel->getChannel());
+		outdata[5] = SSH_MSG_CHANNEL_EOF;
+		putInt32Aligned(&outdata[6] , channel->getChannel());
+		write(outdata + 5, 5);
+	}
 
 	logme(L_FINE, "@%ld:%ld send SSH_MSG_CHANNEL_CLOSE", sockFd, channel->getChannel());
 	outdata[5] = SSH_MSG_CHANNEL_CLOSE;
@@ -574,6 +579,9 @@ void SshSession::closeChannel(Channel *channel, uint32_t exitStatus) {
 	channels.remove(channel->getChannel());
 	ReleaseSemaphore(&theLock);
 
+	// Discard an incomplete request belonging to this channel, not another one.
+	if (inChannelUse && inChannelNo == channel->getChannel())
+		inChannelUse = 0;
 	delete channel;
 
 	if (0 == channels.getCount())
@@ -585,7 +593,7 @@ void SshSession::noop() {
 		return;
 	for (int i = 0; i < channels.getMax(); ++i) {
 		Channel *c = channels[i];
-		if (!c)
+		if (!c || c->isPeerClosed())
 			continue;
 		logme(L_FINE, "@%ld sending noop", sockFd);
 		outdata[5] = SSH_MSG_CHANNEL_DATA;
@@ -1113,6 +1121,10 @@ int SshSession::consumeSocketData(char *indata, int len) {
 			logme(L_FINE, "@%ld got SSH_MSG_CHANNEL_EOF", sockFd);
 			handleChannelEof(p);
 			break;
+		case SSH_MSG_CHANNEL_CLOSE:
+			logme(L_FINE, "@%ld got SSH_MSG_CHANNEL_CLOSE", sockFd);
+			handleChannelClose(p);
+			break;
 		case SSH_MSG_CHANNEL_REQUEST:
 			logme(L_FINE, "@%ld got SSH_MSG_CHANNEL_REQUEST", sockFd);
 			handleChannelRequest(p);
@@ -1235,12 +1247,41 @@ bool SshSession::login(uint8_t *user, uint8_t *pass) {
 
 bool SshSession::handleChannelEof(uint8_t *p) {
 	uint32_t channelNo = bu32(p);
+	if (g_parseBad)
+		return false;
 	Channel * c = channels[channelNo];
-	if (c) {
+	if (c && !c->isPeerClosed()) {
 		c->abort();
 		return true;
 	}
 	return false;
+}
+
+bool SshSession::handleChannelClose(uint8_t *p) {
+	uint32_t channelNo = bu32(p);
+	if (g_parseBad)
+		return false;
+	Channel *c = channels[channelNo];
+	// Also covers the reply to our own CLOSE: closeChannel removed it.
+	if (!c || c->isPeerClosed())
+		return true;
+	c->setPeerClosed();
+	if (c->isSession()) {
+		ShellChannel *sc = (ShellChannel*) c;
+		sc->abort(); // reply to pending DOS packets before releasing the channel
+#if BEBBOSSH_AMIGA_API
+		if (sc->isRunning()) {
+			// The child and its I/O still reference sc. endCommand owns cleanup.
+			sc->sendBreak();
+			return true;
+		}
+#endif
+		closeChannel(c);
+	} else {
+		// SFTP and forward abort paths call closeChannel themselves.
+		c->abort();
+	}
+	return true;
 }
 
 bool SshSession::handleChannelData(uint8_t *p, int alen) {
@@ -1248,7 +1289,7 @@ bool SshSession::handleChannelData(uint8_t *p, int alen) {
 	p += 4;
 
 	Channel * c = channels[channelNo];
-	if (c) {
+	if (c && !c->isPeerClosed()) {
 		uint32_t len = getInt32Aligned(p);
 		p += 4;
 		// the data length is client-supplied: never read past the payload
@@ -1312,6 +1353,7 @@ bool SshSession::handleChannelData(uint8_t *p, int alen) {
 			}
 			memmove(inChannelBuf, p, rest); // p may point into inChannelBuf
 			inChannelUse = rest;
+			inChannelNo = channelNo;
 			return true;
 		}
 	}
@@ -1320,7 +1362,12 @@ bool SshSession::handleChannelData(uint8_t *p, int alen) {
 
 bool SshSession::handleChannelRequest(uint8_t *p) {
 	uint32_t channelNo = bu32(p);
+	if (g_parseBad)
+		return false;
 	Channel * c = channels[channelNo];
+	// No channel replies may follow CLOSE, including failure to a late request.
+	if (!c || c->isPeerClosed())
+		return false;
 	if (c) {
 		uint8_t *s = bstr(p);
 		if (g_parseBad) goto Error;
