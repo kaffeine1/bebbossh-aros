@@ -96,6 +96,14 @@ public:
 	}
 };
 
+// AROS i386 and aarch64: a command can have its SSH channel as console
+// (DOS packets served by the daemon). x86_64 mincrt runs commands in line.
+#if BEBBOSSH_AROS && !defined(BEBBOSSH_AROS_MINCRT)
+#define BEBBOSSH_AROS_CONSOLE 1
+#else
+#define BEBBOSSH_AROS_CONSOLE 0
+#endif
+
 extern unsigned stackSize;
 extern char const * homeDir;
 
@@ -139,6 +147,13 @@ class ShellChannel : public Channel {
 	char arosExecArgs[1024];
 	char arosExecCommandName[512];
 	struct timeval arosExecStarted;
+	// console mode: the running command has this channel as its console
+	bool arosConsole;
+	bool arosConsoleRaw;        // raw mode, set by ACTION_SCREEN_MODE
+	bool arosConsoleEof;        // Ctrl-D on an empty line: the next read gets 0 bytes
+	bool arosConsoleDead;       // the input has ended: reads get end of file
+	bool arosConsoleCR;         // the last cooked byte was CR: a following LF is dropped
+	unsigned arosConsoleReady;  // cooked mode: bytes of complete lines in line[]
 #endif
 
 #else
@@ -191,8 +206,15 @@ public:
 	bool startArosLoadedExecFile(bool closeAfterCommand);
 	bool finishArosExecImmediate(uint32_t exitStatus);
 	bool runArosExec(bool closeAfterCommand);
-	// a file-mode exec child uses this channel until it sets done
-	bool isArosExecRunning() const { return arosExecFileMode && running && !done; }
+	// an exec child (file or console mode) uses this channel until it sets done
+	bool isArosExecRunning() const { return (arosExecFileMode || arosConsole) && running && !done; }
+	bool isArosConsole() const { return arosConsole && running; }
+	bool isArosConsoleDead() const { return arosConsoleDead; }
+	void setArosConsoleRaw(bool raw);
+	bool takeArosConsoleEof() { bool e = arosConsoleEof; arosConsoleEof = false; return e; }
+	int arosConsoleInput(char * indata, unsigned len);
+	void setArosBreakPort(struct MsgPort * p) { breakPort1 = p; }
+	struct MsgPort * getArosBreakPort() const { return breakPort1; }
 #if defined(__AROS__) && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
 	bool runArosExecMincrtX64(bool closeAfterCommand);
 #endif
@@ -200,7 +222,12 @@ public:
 
 	struct MsgPort * setBreakPort(struct MsgPort * p1, struct MsgPort * p2);
 	bool hasBreakPort(struct MsgPort * p) const { return breakPort1 == p || breakPort2 == p; }
+#if BEBBOSSH_AROS
+	// cooked console mode hands out complete lines only
+	int getAvail() const { return arosConsole && !arosConsoleRaw ? (int)arosConsoleReady : (int)(xend - line); }
+#else
 	int getAvail() const { return xend - line;}
+#endif
 	struct timeval * getUntil() { return &until;}
 
 	static void startProc();

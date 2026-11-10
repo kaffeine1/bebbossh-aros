@@ -146,6 +146,12 @@ bool hasChacha = true;
 extern char const * AES128;
 extern char const * CHACHA20;
 int allowForwarding = 1; // AllowTcpForwarding (direct-tcpip); 1 = yes
+#if BEBBOSSH_AROS_CONSOLE
+// InteractiveShell: a command of the interactive shell runs in its own
+// process with the SSH channel as console. "InteractiveShell no" goes back
+// to commands without input.
+int arosConsoleCommands = 1;
+#endif
 
 /* This task and its message port */
 struct Task * thisTask;
@@ -280,6 +286,26 @@ ShellChannel * findByBreakPort(struct MsgPort * mp) {
 	ReleaseSemaphore(&theLock);
 	return sc;
 }
+
+#if BEBBOSSH_AROS_CONSOLE
+// ACTION_WAIT_CHAR and ACTION_SCREEN_MODE name no file handle: take the
+// channel whose console the sender owns, or the only one in console mode.
+static ShellChannel * findConsoleChannel(struct MsgPort * mp) {
+	ShellChannel * sc = findByBreakPort(mp);
+	if (sc)
+		return sc;
+	int count = 0;
+	ObtainSemaphore(&theLock);
+	int sz = clients.getMax();
+	for (int i = 0; i < sz; ++i) {
+		SshSession * s = clients[i];
+		if (s)
+			count += s->findArosConsoleChannels(&sc);
+	}
+	ReleaseSemaphore(&theLock);
+	return count == 1 ? sc : 0;
+}
+#endif
 /**
  * Handle the messages.
  * - end message, if a command has ended. Identified by replyport == timerPort and pri==42
@@ -297,7 +323,11 @@ void handleMsg(struct Message * msg) {
 		 * Enqueue to wait if not - don't answer that packet!
 		 */
 		case ACTION_WAIT_CHAR: {
+#if BEBBOSSH_AROS_CONSOLE
+			ShellChannel *sc = findConsoleChannel(packet->dp_Port);
+#else
 			ShellChannel *sc = findByBreakPort(packet->dp_Port);
+#endif
 			if (sc) {
 				if (!stopped || sc->isWaiting()) {
 					int timeout = packet->dp_Arg1;
@@ -324,7 +354,22 @@ void handleMsg(struct Message * msg) {
 		} break;
 		case ACTION_READ: {
 			ShellChannel * sc = (ShellChannel *) packet->dp_Arg1;
+#if BEBBOSSH_AROS_CONSOLE
+			if (!sc) {
+				packet->dp_Res1 = -1;
+				packet->dp_Res2 = ERROR_ACTION_NOT_KNOWN;
+				break;
+			}
 			sc->setPending(0);
+			// buffered input first; end of file only when nothing is left
+			if (!sc->getAvail() && (sc->isArosConsoleDead() || sc->takeArosConsoleEof())) {
+				packet->dp_Res1 = 0; // end of file
+				packet->dp_Res2 = 0;
+				break;
+			}
+#else
+			sc->setPending(0);
+#endif
 
 			char * buffer =  (char *)packet->dp_Arg2;
 			LONG len = packet->dp_Arg3;
@@ -351,6 +396,13 @@ void handleMsg(struct Message * msg) {
 			ShellChannel * sc = (ShellChannel *) packet->dp_Arg1;
 			char * buffer =  (char *)packet->dp_Arg2;
 			LONG len = packet->dp_Arg3;
+#if BEBBOSSH_AROS_CONSOLE
+			if (!sc) {
+				packet->dp_Res1 = -1;
+				packet->dp_Res2 = ERROR_ACTION_NOT_KNOWN;
+				break;
+			}
+#endif
 
 			logme(L_DEBUG, "ACTION_WRITE: %s %ld bytes %02lx", sc->getName(), len, buffer[0]);
 			int sent;
@@ -364,10 +416,35 @@ void handleMsg(struct Message * msg) {
 			break;
 		case ACTION_SCREEN_MODE:
 			logme(L_TRACE, "ACTION_SCREEN_MODE");
+#if BEBBOSSH_AROS_CONSOLE
+			{
+				ShellChannel *sc = findConsoleChannel(packet->dp_Port);
+				if (sc)
+					sc->setArosConsoleRaw(packet->dp_Arg1 != 0);
+			}
+#endif
 			packet->dp_Res1 = DOSTRUE;
 			break;
 		case ACTION_CHANGE_SIGNAL: {
 			ShellChannel *sc = (ShellChannel*) packet->dp_Arg1;
+#if BEBBOSSH_AROS_CONSOLE
+			if (sc && sc->isArosConsole()) {
+				// AROS sends a message port here, or the process itself
+				struct MsgPort * np = (struct MsgPort *) packet->dp_Arg2;
+				if (np && np->mp_Node.ln_Type == NT_PROCESS)
+					np = &((struct Process *) np)->pr_MsgPort;
+				struct MsgPort * op = sc->getArosBreakPort();
+				if (np)
+					sc->setArosBreakPort(np);
+				packet->dp_Res1 = DOSTRUE;
+				packet->dp_Res2 = (SIPTR) op;
+				break;
+			}
+			if (!sc) {
+				packet->dp_Res2 = ERROR_ACTION_NOT_KNOWN;
+				break;
+			}
+#endif
 
 				/* set new port. */
 			struct MsgPort * oport = sc->setBreakPort((struct MsgPort*) packet->dp_Arg2, (struct MsgPort*)packet->dp_Arg3);
@@ -384,11 +461,23 @@ void handleMsg(struct Message * msg) {
 			char const * name = getBSTR((BPTR) packet->dp_Arg3);
 			logme(L_DEBUG, "ACTION_FINDINPUT: %s lock=%08lX name=%s @%08lX %08lX", sc ? sc->getName() : "(no shell channel)", (void *)packet->dp_Arg2, name, fh->fh_Type, packet->dp_Port);
 
+#if BEBBOSSH_AROS_CONSOLE
+			// "*" or CONSOLE: opened by a command: AROS has prepared the handle
+			sc = findConsoleChannel(packet->dp_Port);
+			if (!sc) {
+				packet->dp_Res2 = ERROR_OBJECT_NOT_FOUND;
+				break;
+			}
+			fh->fh_Port = DOSTRUE;
+			fh->fh_Type = port;
+			fh->fh_Arg1 = (SIPTR)sc;
+#else
 			memset(fh, 0, sizeof(struct FileHandle));
 			fh->fh_Port = 1;
 			fh->fh_Type = port;
 			fh->fh_Pos = fh->fh_End = -1;
 			fh->fh_Arg1 = (SIPTR)sc;
+#endif
 
 			if (sc) {
 				packet->dp_Res1 = DOSTRUE;
@@ -901,6 +990,15 @@ void readIni() {
 		if (0 == stricmp("HomeDir", s)) {
 			homeDir = strdup(p);
 		} else
+#if BEBBOSSH_AROS_CONSOLE
+		if (0 == stricmp("InteractiveShell", s)) {
+			arosConsoleCommands = 0 == stricmp(p, "yes") || 0 == stricmp(p, "on")
+					|| 0 == stricmp(p, "true") || 0 == stricmp(p, "1");
+			if (!arosConsoleCommands && stricmp(p, "no") && stricmp(p, "off")
+					&& stricmp(p, "false") && stricmp(p, "0"))
+				logme(L_WARN, "unknown value for InteractiveShell: %s, it is off", p);
+		} else
+#endif
 		if (0 == stricmp("AllowTcpForwarding", s)) {
 			parseForwarding(p);
 		} else
@@ -1352,8 +1450,14 @@ __stdargs int main(int argc, char *argv[]) {
 				startTimer();
 
 			if (signales & portMask) {
+#if BEBBOSSH_AROS_CONSOLE
+				struct Message *msg;
+				while ((msg = GetMsg(port)))
+					handleMsg(msg);
+#else
 				struct Message *msg = GetMsg(port);
 				handleMsg(msg);
+#endif
 			}
 #else
 			int sn = listeners.getMax();

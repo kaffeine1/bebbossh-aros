@@ -25,3 +25,8 @@ Stack 262144
 
 # direct-tcpip forwarding (ssh -L) is allowed by default; this refuses it.
 #AllowTcpForwarding no
+
+# Commands of the interactive shell get the SSH session as console (input,
+# output at once, Ctrl-C). On by default on i386 and aarch64; this goes back
+# to commands without input. Not available on x86_64.
+#InteractiveShell no

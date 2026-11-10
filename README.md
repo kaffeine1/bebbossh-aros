@@ -42,14 +42,18 @@ login, remote commands, SFTP, OpenSSH `scp` and `direct-tcpip` forwarding; the
 client (`bebbossh`), `bebboscp` and `bebbosshkeygen`. A minimal interactive
 shell runs simple commands.
 
-Not supported: interactive programs that read their input, and redirection
-or pipes (`>`, `<`, `|`) in remote commands.
+On i386 and aarch64 a command of the interactive shell, or of
+`ssh -t host command`, has the SSH session as its console: it can read input,
+its output arrives at once and Ctrl-C stops it (`InteractiveShell` in
+`sshd_config`).
+
+Not supported on x86_64: interactive programs that read their input, and
+redirection or pipes (`>`, `<`, `|`) in remote commands.
 
 Open work:
 
-- A command typed in the interactive shell runs inside the daemon, so other
-  connections wait until it ends and Ctrl-C does not stop it. On i386 and
-  aarch64 it could run in a child task, as `ssh host command` already does.
+- x86_64: a command typed in the interactive shell runs inside the daemon,
+  so other connections wait until it ends and Ctrl-C does not stop it.
 - i386 and aarch64: a remote command still running after 30 seconds gets a
   timeout notice and exit status 124, but it is not stopped.
 - x86_64: remote commands run synchronously, and an SFTP path on a missing

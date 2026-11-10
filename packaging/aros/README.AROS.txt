@@ -134,6 +134,13 @@ sshd_config
       direct-tcpip forwarding (ssh -L), allowed by default. no refuses it.
       There is no remote forwarding.
 
+  InteractiveShell yes
+      A command typed in the interactive shell, or started with a terminal
+      (ssh -t host command), runs in its own task with the SSH session as
+      console: it can ask questions, its output arrives at once and Ctrl-C
+      stops it. On by default on i386 and aarch64; no goes back to commands
+      without input. Not available on x86_64.
+
 Command-line options override the file, for example:
 
   bebbosshd -p 10022 -A PROGDIR:passwd -K PROGDIR:ssh_host_ed25519_key -H DH0:
@@ -186,15 +193,17 @@ seed file ENVARC:.ssh/random_seed, which each program replaces at once.
 Known limits
 ------------
 
-- No interactive programs that read their input (rejected with exit status
-  2), and no redirection or pipes (>, <, |) in remote commands. The
-  interactive shell runs simple commands.
-- A command typed in the interactive shell runs inside the server: other
-  connections wait until it ends, and Ctrl-C does not stop it.
-- i386 and aarch64: run long commands as "ssh host command", which runs them
-  in a separate task. A command still running after 30 seconds gets a
-  timeout notice and exit status 124, but it runs until it ends; a server
-  stopped with Ctrl-C waits for it.
+- With InteractiveShell (i386, aarch64): every line of the interactive
+  shell runs in a shell of its own, so local variables and aliases do not
+  carry over to the next line. A command without a terminal ("ssh host
+  command") gets no input, and no redirection or pipes (>, <, |).
+- Without InteractiveShell (x86_64): no programs that read their input
+  (rejected with exit status 2), no redirection or pipes, and a command
+  typed in the interactive shell runs inside the server: other connections
+  wait until it ends, and Ctrl-C does not stop it.
+- i386 and aarch64: a command without a terminal that still runs after 30
+  seconds gets a timeout notice and exit status 124, but it runs until it
+  ends; a server stopped with Ctrl-C waits for it.
 - x86_64: every remote command blocks the server until it returns: keep
   commands short.
 - x86_64: an SFTP path on a missing volume opens an "insert volume"
