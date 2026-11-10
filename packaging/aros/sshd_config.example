@@ -27,6 +27,6 @@ Stack 262144
 #AllowTcpForwarding no
 
 # Commands of the interactive shell get the SSH session as console (input,
-# output at once, Ctrl-C). On by default on aarch64, off on i386 (not tested
-# there yet), not available on x86_64.
-#InteractiveShell yes
+# output at once, Ctrl-C). On by default on i386 and aarch64; this goes back
+# to commands without input. Not available on x86_64.
+#InteractiveShell no

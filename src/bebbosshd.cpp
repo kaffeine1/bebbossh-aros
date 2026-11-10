@@ -148,13 +148,9 @@ extern char const * CHACHA20;
 int allowForwarding = 1; // AllowTcpForwarding (direct-tcpip); 1 = yes
 #if BEBBOSSH_AROS_CONSOLE
 // InteractiveShell: a command of the interactive shell runs in its own
-// process with the SSH channel as console. On by default on aarch64; off on
-// i386 until it has been tested there.
-#if defined(__aarch64__)
+// process with the SSH channel as console. "InteractiveShell no" goes back
+// to commands without input.
 int arosConsoleCommands = 1;
-#else
-int arosConsoleCommands = 0;
-#endif
 #endif
 
 /* This task and its message port */

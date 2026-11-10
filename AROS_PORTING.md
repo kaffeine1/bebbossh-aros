@@ -177,8 +177,8 @@ with three differences:
 BebboSSH on AmigaOS gives a command the SSH channel as console: the daemon
 answers the DOS packets of three file handles (`handleMsg()` in
 `src/bebbosshd.cpp`). The AROS port first ran commands with `NIL:` as input
-and a file in `T:` as output. With `InteractiveShell yes` (default on aarch64,
-off on i386, not compiled on x86_64) a command of the interactive shell, or of
+and a file in `T:` as output. With `InteractiveShell yes` (the default on i386
+and aarch64, not compiled on x86_64) a command of the interactive shell, or of
 an exec request with a terminal, uses the packet console again:
 
 - The command runs through `System()` in a child process; its handles come
