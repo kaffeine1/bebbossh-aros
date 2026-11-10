@@ -77,7 +77,7 @@ ShellChannel::ShellChannel(SshSession * server, uint32_t channel, ChannelType ty
 #if BEBBOSSH_AROS
 		arosExecFileMode(false), arosExecTimedOut(false), arosExecRc(255),
 		arosConsole(false), arosConsoleRaw(false), arosConsoleEof(false),
-		arosConsoleDead(false), arosConsoleReady(0),
+		arosConsoleDead(false), arosConsoleCR(false), arosConsoleReady(0),
 #endif
 		xpos(line), xend(line),
 		inBufferLen(1024),
@@ -278,8 +278,18 @@ int ShellChannel::write(char * from, int len) {
 
 void ShellChannel::abort() {
 #if BEBBOSSH_AROS_CONSOLE
-	if (arosConsole)
-		arosConsoleDead = true; // further reads end at once
+	if (arosConsole) {
+		// The input has ended (EOF or close from the client): what is in the
+		// buffer, also an unfinished line, is still read; then reads get
+		// end of file.
+		arosConsoleDead = true;
+		arosConsoleReady = xend - line;
+		if (pending) {
+			struct Message * m = pending;
+			pending = 0;
+			handleMsg(m);
+		}
+	}
 #endif
 	if (pending) {
 		struct DosPacket *packet = getDosPacket(pending);
@@ -929,6 +939,7 @@ int ShellChannel::arosConsoleInput(char * indata, unsigned len) {
 		if (arosConsoleRaw) {
 			if (!full)
 				*xend++ = c;
+			arosConsoleCR = false;
 			continue;
 		}
 
@@ -938,6 +949,8 @@ int ShellChannel::arosConsoleInput(char * indata, unsigned len) {
 		}
 
 		char * lineStart = line + arosConsoleReady;
+		bool afterCR = arosConsoleCR;
+		arosConsoleCR = c == '\r';
 		switch (c) {
 		case 3: // Ctrl-C: break the command, drop the unfinished line
 			sendBreak();
@@ -958,8 +971,8 @@ int ShellChannel::arosConsoleInput(char * indata, unsigned len) {
 			break;
 		case '\r':
 		case '\n':
-			if (c == '\n' && i > 0 && indata[i - 1] == '\r')
-				break; // CR LF counts once
+			if (c == '\n' && afterCR)
+				break; // CR LF counts once, also across two packets
 			if (xend < line + CHUNKSIZE - 1)
 				*xend++ = '\n'; // full keeps room for the end of the line
 			arosConsoleReady = xend - line;
@@ -1765,7 +1778,7 @@ bool ShellChannel::startCommand(){
 #if BEBBOSSH_AROS_CONSOLE
 	}
 	arosExecFileMode = false;
-	arosConsoleRaw = arosConsoleEof = arosConsoleDead = false;
+	arosConsoleRaw = arosConsoleEof = arosConsoleDead = arosConsoleCR = false;
 	arosConsoleReady = 0;
 	arosExecRc = 255;
 	// what was typed ahead becomes console input of the command

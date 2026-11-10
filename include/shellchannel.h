@@ -151,7 +151,8 @@ class ShellChannel : public Channel {
 	bool arosConsole;
 	bool arosConsoleRaw;        // raw mode, set by ACTION_SCREEN_MODE
 	bool arosConsoleEof;        // Ctrl-D on an empty line: the next read gets 0 bytes
-	bool arosConsoleDead;       // the client is gone: reads end at once
+	bool arosConsoleDead;       // the input has ended: reads get end of file
+	bool arosConsoleCR;         // the last cooked byte was CR: a following LF is dropped
 	unsigned arosConsoleReady;  // cooked mode: bytes of complete lines in line[]
 #endif
 

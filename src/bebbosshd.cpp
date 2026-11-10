@@ -361,7 +361,8 @@ void handleMsg(struct Message * msg) {
 				break;
 			}
 			sc->setPending(0);
-			if (sc->isArosConsoleDead() || (!sc->getAvail() && sc->takeArosConsoleEof())) {
+			// buffered input first; end of file only when nothing is left
+			if (!sc->getAvail() && (sc->isArosConsoleDead() || sc->takeArosConsoleEof())) {
 				packet->dp_Res1 = 0; // end of file
 				packet->dp_Res2 = 0;
 				break;
