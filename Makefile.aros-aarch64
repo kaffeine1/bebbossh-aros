@@ -1,7 +1,7 @@
 # AROS aarch64 (Raspberry Pi) build wrapper.
 # Uses the aarch64-aros crosstools toolchain (GCC 6.5.0) with the sysroot of an
 # AROS raspi-aarch64 build: the compiler's default spec links startup.o, the
-# posixc/stdc libraries and libautoinit, so AROS_SDK_ROOT stays unset.
+# stdc libraries and libautoinit, so AROS_SDK_ROOT stays unset.
 #
 #   make -f Makefile.aros-aarch64 AROS_TOOLCHAIN=<toolchain dir> SYSROOT=<AROS>/Developer
 
@@ -23,6 +23,19 @@ STRIP_OUTPUTS ?= yes
 # -fno-common: the AROS loader rejects COMMON symbols in the relocatable ELF.
 # -fsigned-char: char is unsigned on aarch64; keep the signed char of the
 # other targets, which the code was written and tested with.
-TARGET_CFLAGS ?= --sysroot=$(SYSROOT) -ffixed-x18 -fno-common -fsigned-char
+# -noposixc: no posixc.library. A program that opens it loses about 160 KB
+# when it ends (the library opens stdc.library and stdcio.library for itself
+# and does not close them). The option also removes the posixc headers:
+# include/aros_noposixc has the ones the sources ask for, and
+# src/aros_noposixc.c has the posixc functions they call.
+TARGET_CFLAGS ?= --sysroot=$(SYSROOT) -ffixed-x18 -fno-common -fsigned-char \
+	-noposixc -Iinclude/aros_noposixc
+SDK_LDFLAGS ?= -noposixc
+SSHD_SOURCES ?= bebbosshd.cpp sshsession.cpp forwardchannel.cpp sftpchannel.cpp shellchannel.cpp channel.cpp stack.cpp c++support.cpp home.cpp aros_startup_flags.c aros_noposixc.c
+SSH_SOURCES ?= bebbossh.cpp console.cpp keyboard.cpp client.cpp clientchannel.cpp stack.cpp c++support.cpp home.cpp fnmatch_compat.c aros_startup_flags.c aros_noposixc.c
+SCP_SOURCES ?= bebboscp.cpp console.cpp keyboard.cpp client.cpp clientchannel.cpp stack.cpp c++support.cpp home.cpp fnmatch_compat.c aros_startup_flags.c aros_noposixc.c
+KEYGEN_SOURCES ?= bebbosshkeygen.cpp c++support.cpp home.cpp aros_startup_flags.c aros_noposixc.c
+TEST_EXTRA_OBJECTS ?= $(OUTDIR)/aros_noposixc.o
+PROBE_EXTRA_OBJECTS ?= $(OUTDIR)/aros_noposixc.o
 
 include Makefile.aros

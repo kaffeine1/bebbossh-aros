@@ -150,6 +150,12 @@ OS/ABI tag). Extra compiler flags:
 - `-ffixed-x18`: the register is reserved on AROS aarch64.
 - `-fno-common`: the AROS loader rejects COMMON symbols.
 - `-fsigned-char`: the code expects a signed `char`.
+- `-noposixc`: the programs open stdc.library and stdcio.library only. A
+  program that opens AROS posixc.library loses about 160 KB when it ends
+  (the library opens stdc.library and stdcio.library for itself and does not
+  close them). The option also removes the posixc headers:
+  `include/aros_noposixc` has the ones the sources ask for, and
+  `src/aros_noposixc.c` has `gettimeofday()`, `gmtime_r()` and `mkdir()`.
 
 aarch64 uses the i386 code paths (full SDK, remote commands in child tasks),
 with three differences:
