@@ -474,6 +474,20 @@ ShellChannel* SshSession::findShellChannelByBreakPort(struct MsgPort *mp) const 
 	return 0;
 }
 
+int SshSession::findArosConsoleChannels(ShellChannel **found) const {
+	int count = 0;
+#if BEBBOSSH_AROS_CONSOLE
+	for (int i = 0; i < channels.getMax(); ++i) {
+		Channel *c = channels[i];
+		if (c && c->isSession() && ((ShellChannel*) c)->isArosConsole()) {
+			*found = (ShellChannel*) c;
+			++count;
+		}
+	}
+#endif
+	return count;
+}
+
 SshSession::SshSession(int _sock) :
 		state(HELLO),
 		readAead(0), readBc(0), readCounterBc(0),

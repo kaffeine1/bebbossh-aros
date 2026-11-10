@@ -61,6 +61,9 @@
 
 #include "channel.h"
 #include "shellchannel.h"
+#if BEBBOSSH_AROS_CONSOLE
+#include <dos/stdio.h> // BUF_LINE
+#endif
 
 ShellChannel::ShellChannel(SshSession * server, uint32_t channel, ChannelType type)
 : Channel(server, channel, type),
@@ -73,6 +76,8 @@ ShellChannel::ShellChannel(SshSession * server, uint32_t channel, ChannelType ty
 		breakPort1(0), breakPort2(0), pending(0), waiting(0),
 #if BEBBOSSH_AROS
 		arosExecFileMode(false), arosExecTimedOut(false), arosExecRc(255),
+		arosConsole(false), arosConsoleRaw(false), arosConsoleEof(false),
+		arosConsoleDead(false), arosConsoleReady(0),
 #endif
 		xpos(line), xend(line),
 		inBufferLen(1024),
@@ -170,6 +175,9 @@ extern long theInputSize;
 extern struct FileHandle *theOutput;
 
 extern int stopped;
+#if BEBBOSSH_AROS_CONSOLE
+extern int arosConsoleCommands;
+#endif
 
 struct MsgPort * ShellChannel::setBreakPort(struct MsgPort * pnew, struct MsgPort * pold) {
 	struct MsgPort * r = 0;
@@ -198,6 +206,18 @@ int ShellChannel::read(char * to, int toReadIn) {
 
 	if (toRead) {
 	memcpy(to, line, toRead);
+#if BEBBOSSH_AROS_CONSOLE
+	if (arosConsole) {
+		// cooked mode keeps the unfinished line behind the complete ones
+		int total = xend - line;
+		if (total > toRead)
+			memmove(line, line + toRead, total - toRead);
+		xpos -= toRead;
+		xend -= toRead;
+		arosConsoleReady = arosConsoleReady > (unsigned)toRead ? arosConsoleReady - toRead : 0;
+		return toRead;
+	}
+#endif
 	xpos -= toRead;
 	xend -= toRead;
 	if (avail > toRead) {
@@ -209,6 +229,36 @@ int ShellChannel::read(char * to, int toReadIn) {
 
 int ShellChannel::write(char * from, int len) {
 	logme(L_TRACE, "@%ld:%ld ShellChannel::write %ld", server->getSockFd(), channel, len);
+#if BEBBOSSH_AROS_CONSOLE
+	if (arosConsole) {
+		// a command may write any amount at once: send it in pieces that fit
+		// the packet buffer, also after LF became CR LF
+		int left = len;
+		char prev = 0;
+		while (left > 0) {
+			int n = left > CHUNKSIZE / 2 ? CHUNKSIZE / 2 : left;
+			char * out = &server->outdata[14];
+			char * to = out;
+			if (pty) {
+				for (int i = 0; i < n; ++i) {
+					char c = from[i];
+					if (c == 0xa && prev != 0xd)
+						*to++ = 0xd;
+					*to++ = c;
+					prev = c;
+				}
+			} else {
+				memcpy(to, from, n);
+				to += n;
+			}
+			if (server->channelWrite(channel, out, to - out) < 0)
+				return -1;
+			from += n;
+			left -= n;
+		}
+		return len;
+	}
+#endif
 	if (pty) {
 		char * out = &server->outdata[14];
 		char *to = out;
@@ -227,6 +277,10 @@ int ShellChannel::write(char * from, int len) {
 }
 
 void ShellChannel::abort() {
+#if BEBBOSSH_AROS_CONSOLE
+	if (arosConsole)
+		arosConsoleDead = true; // further reads end at once
+#endif
 	if (pending) {
 		struct DosPacket *packet = getDosPacket(pending);
 		logme(L_DEBUG, "@%ld:%ld abort pending read of %s %p, packet %p, port %p", server->getSockFd(), channel, getName(), pending, packet, packet->dp_Port);
@@ -264,6 +318,15 @@ void ShellChannel::checkTimeout(struct timeval * tv) {
 }
 
 void ShellChannel::sendBreak() {
+#if BEBBOSSH_AROS_CONSOLE
+	if (arosConsole) {
+		if (running && breakPort1 && breakPort1 != port && breakPort1->mp_SigTask) {
+			logme(L_DEBUG, "@%ld:%ld signal Ctrl-C to %s", server->getSockFd(), channel, getName());
+			Signal((struct Task*)breakPort1->mp_SigTask, SIGBREAKF_CTRL_C);
+		}
+		return;
+	}
+#endif
 	if (breakPort1 && breakPort1 != port) {
 		logme(L_TRACE, "@%ld:%ld break %s with breakPort=%p", server->getSockFd(), channel, getName(), breakPort1);
 		logme(L_DEBUG, "@%ld:%ld signal BREAK to %s", server->getSockFd(), channel, getName());
@@ -600,6 +663,11 @@ int ShellChannel::handleData(char * indata, unsigned len) {
 
 	if (running) { // forward data to running program
 
+#if BEBBOSSH_AROS_CONSOLE
+		if (arosConsole)
+			return arosConsoleInput(indata, len);
+#endif
+
 		// guard: never let xpos run past the end of line[CHUNKSIZE]
 		{
 			unsigned avail = (unsigned)((line + CHUNKSIZE) - xpos);
@@ -846,6 +914,111 @@ OUT:
 }
 
 __saveds
+#if BEBBOSSH_AROS_CONSOLE
+// Console mode: what the client types while a command runs.
+// Cooked mode (the default) echoes, edits with backspace and hands out
+// complete lines; raw mode hands out every byte at once and echoes nothing.
+int ShellChannel::arosConsoleInput(char * indata, unsigned len) {
+	char echo[256];
+	unsigned e = 0;
+
+	for (unsigned i = 0; i < len; ++i) {
+		unsigned char c = indata[i];
+		bool full = xend >= line + CHUNKSIZE - 2;
+
+		if (arosConsoleRaw) {
+			if (!full)
+				*xend++ = c;
+			continue;
+		}
+
+		if (e > sizeof(echo) - 8) {
+			server->channelWrite(channel, echo, e);
+			e = 0;
+		}
+
+		char * lineStart = line + arosConsoleReady;
+		switch (c) {
+		case 3: // Ctrl-C: break the command, drop the unfinished line
+			sendBreak();
+			xend = lineStart;
+			break;
+		case 4: // Ctrl-D on an empty line: end of file
+			if (xend == lineStart)
+				arosConsoleEof = true;
+			break;
+		case 8:
+		case 0x7f: // backspace
+			if (xend > lineStart) {
+				--xend;
+				if (pty) {
+					echo[e++] = 8; echo[e++] = ' '; echo[e++] = 8;
+				}
+			}
+			break;
+		case '\r':
+		case '\n':
+			if (c == '\n' && i > 0 && indata[i - 1] == '\r')
+				break; // CR LF counts once
+			if (xend < line + CHUNKSIZE - 1)
+				*xend++ = '\n'; // full keeps room for the end of the line
+			arosConsoleReady = xend - line;
+			if (pty) {
+				echo[e++] = '\r'; echo[e++] = '\n';
+			}
+			break;
+		case 0x1b: // skip an escape sequence (cursor keys)
+			if (i + 1 < len && indata[i + 1] == '[') {
+				for (i += 2; i < len; ++i) {
+					unsigned char z = indata[i];
+					if (z >= 0x40 && z <= 0x7e)
+						break;
+				}
+			}
+			break;
+		default:
+			if ((c >= ' ' || c == '\t') && !full) {
+				*xend++ = c;
+				if (pty)
+					echo[e++] = c;
+			}
+		}
+	}
+	xpos = xend;
+	if (e)
+		server->channelWrite(channel, echo, e);
+
+	// wake up a reader that waits for data
+	if (getAvail() || arosConsoleEof) {
+		if (pending) {
+			struct Message * m = pending;
+			pending = 0;
+			handleMsg(m);
+		} else if (waiting) {
+			struct DosPacket * packet = getDosPacket(waiting);
+			waiting = 0;
+			ReplyPkt(packet, DOSTRUE, 1);
+		}
+	}
+	return 0;
+}
+
+void ShellChannel::setArosConsoleRaw(bool raw) {
+	if (raw == arosConsoleRaw)
+		return;
+	arosConsoleRaw = raw;
+	// leaving raw mode: what is in the buffer counts as typed lines
+	arosConsoleReady = raw ? 0 : xend - line;
+}
+
+static void arosConsoleHandle(struct FileHandle * fh, ShellChannel * sc) {
+	fh->fh_Port = DOSTRUE; // interactive
+	fh->fh_Type = port;
+	fh->fh_Arg1 = (SIPTR)sc;
+	SetVBuf(MKBADDR(fh), NULL, BUF_LINE, -1);
+}
+#endif
+
 void ShellChannel::endProc() {
 //	struct Process * process = (struct Process *)FindTask(0);
 //	struct CommandLineInterface * cli = (struct CommandLineInterface *)BADDR(process->pr_CLI);
@@ -910,33 +1083,19 @@ void ShellChannel::startProc() {
 		return;
 	}
 
+#if BEBBOSSH_AROS_CONSOLE
+	// console mode: the three handles send their DOS packets to the daemon
 	struct FileHandle * i = (struct FileHandle *)AllocDosObject(DOS_FILEHANDLE, 0);
 	struct FileHandle * o = (struct FileHandle *)AllocDosObject(DOS_FILEHANDLE, 0);
 	struct FileHandle * e = (struct FileHandle *)AllocDosObject(DOS_FILEHANDLE, 0);
 
 	if (i && o && e) {
-		i->fh_Flags = 5; // no buffer
-		i->fh_Port = 1; // interactive
-		i->fh_Type = port;
-		i->fh_Pos = -1;
-		i->fh_End = -1;
-		i->fh_Arg1 = (SIPTR)sc;
+		arosConsoleHandle(i, sc);
+		arosConsoleHandle(o, sc);
+		arosConsoleHandle(e, sc);
 
-		o->fh_Flags = 1; // with buffer
-		o->fh_Port = 1; // interactive
-		o->fh_Type = port;
-		o->fh_Pos = -1;
-		o->fh_End = -1;
-		o->fh_Arg1 = (SIPTR)sc;
-
-		e->fh_Flags = 1; // with buffer
-		e->fh_Port = 1; // interactive
-		e->fh_Type = port;
-		e->fh_Pos = -1;
-		e->fh_End = -1;
-		e->fh_Arg1 = (SIPTR)sc;
-
-		SystemTags(sc->xbuffer,
+		AROS_SYSTEM_HIDE_PROGDIR(progDir);
+		sc->arosExecRc = SystemTags(sc->xbuffer,
 				SYS_Input, MKBADDR(i),
 				SYS_Output, MKBADDR(o),
 				SYS_Error, MKBADDR(e),
@@ -944,14 +1103,22 @@ void ShellChannel::startProc() {
 				NP_StackSize, sc->stackSize,
 				TAG_DONE
 				);
+		AROS_SYSTEM_SHOW_PROGDIR(progDir);
+	} else {
+		sc->arosExecRc = 20;
 	}
 
+	// Close() flushes what is still buffered and frees the handle
 	if (i)
-		FreeDosObject(DOS_FILEHANDLE, i);
+		Close(MKBADDR(i));
 	if (o)
-		FreeDosObject(DOS_FILEHANDLE, o);
+		Close(MKBADDR(o));
 	if (e)
-		FreeDosObject(DOS_FILEHANDLE, e);
+		Close(MKBADDR(e));
+	// no Permit(), as in file mode: the daemon must not unload this code
+	// before the process has left it
+	Forbid();
+#endif
 #elif 1
 	struct FileHandle * i = (struct FileHandle *)AllocVec(theInputSize, MEMF_PUBLIC | MEMF_CLEAR);
 //	struct FileHandle * o = (struct FileHandle *)AllocVec(theOutputSize, MEMF_PUBLIC | MEMF_CLEAR);
@@ -1555,6 +1722,13 @@ bool ShellChannel::startCommand(){
 		return finishArosExecImmediate(127);
 	}
 
+#if BEBBOSSH_AROS_CONSOLE
+	// Console mode: a command of the interactive shell, or one asked for with
+	// a terminal (ssh -t host command), runs in its own process with this
+	// channel as console. The AROS shell handles redirection by itself.
+	arosConsole = arosConsoleCommands && (!hasExec() || hasPty());
+	if (!arosConsole) {
+#endif
 	if (hasUnsupportedArosShellSyntax(xbuffer)) {
 		static const char msg[] = "bebbosshd/AROS: shell redirection and pipes are not supported yet\r\n";
 		server->channelWrite(channel, msg, sizeof(msg) - 1);
@@ -1588,6 +1762,30 @@ bool ShellChannel::startCommand(){
 	}
 
 	return runArosExec(false);
+#if BEBBOSSH_AROS_CONSOLE
+	}
+	arosExecFileMode = false;
+	arosConsoleRaw = arosConsoleEof = arosConsoleDead = false;
+	arosConsoleReady = 0;
+	arosExecRc = 255;
+	// what was typed ahead becomes console input of the command
+	unsigned arosAhead = xend - line;
+	if (arosAhead) {
+		if (arosAhead + 1 > inBufferLen) {
+			char *newBuffer = (char *)realloc(inBuffer, arosAhead + 1);
+			if (!newBuffer) {
+				logme(L_ERROR, "out of memory for %ld of data", arosAhead + 1);
+				server->closeChannel(this);
+				return false;
+			}
+			inBuffer = newBuffer;
+			inBufferLen = arosAhead + 1;
+		}
+		memcpy(inBuffer, line, arosAhead);
+		inBuffer[arosAhead] = 0;
+	}
+	xpos = xend = line;
+#endif
 #endif
 
 	logme(L_DEBUG, "@%ld:%ld starting task %s with cmd `%s`", server->getSockFd(), channel, server->name, xbuffer);
@@ -1602,6 +1800,10 @@ bool ShellChannel::startCommand(){
 			{ TAG_DONE, 0 }
 	};
 	CreateNewProcTagList(tags);
+#if BEBBOSSH_AROS_CONSOLE
+	if (arosAhead)
+		arosConsoleInput(inBuffer, arosAhead);
+#endif
 	return true;
 }
 
@@ -1633,6 +1835,19 @@ bool ShellChannel::endCommand(){
 		uint32_t exitStatus = (arosExecRc < 0 || arosExecRc > 255) ? 255 : (uint32_t)arosExecRc;
 		server->closeChannel(this, exitStatus);
 		return false;
+	}
+#endif
+#if BEBBOSSH_AROS_CONSOLE
+	if (arosConsole) {
+		arosConsole = false;
+		arosConsoleRaw = false;
+		// keep what was typed ahead, complete or not, for the prompt
+		arosConsoleReady = 0;
+		if (exec && !isPeerClosed()) {
+			uint32_t exitStatus = (arosExecRc < 0 || arosExecRc > 255) ? 255 : (uint32_t)arosExecRc;
+			server->closeChannel(this, exitStatus);
+			return false;
+		}
 	}
 #endif
 	if (isPeerClosed()) {

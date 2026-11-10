@@ -133,6 +133,8 @@ struct SshSession : public Listener {
 	bool hasRunningCommand() const;
 #endif
 	ShellChannel * findShellChannelByBreakPort(struct MsgPort * mp) const;
+	// number of channels with a console mode command; *sc gets the last one
+	int findArosConsoleChannels(ShellChannel ** sc) const;
 	int channelWrite(uint32_t channel, void const * data, int len);
 	void closeChannel(Channel * channel, uint32_t exitStatus = 0);
 
