@@ -853,6 +853,18 @@ void ShellChannel::endProc() {
 }
 
 #if BEBBOSSH_AROS
+// AROS aarch64: System() gives its shell a copy of the caller's program
+// directory lock and nobody frees it, so that directory stays locked after
+// the daemon has ended. The shell sets PROGDIR: for the command by itself:
+// call System() without a program directory.
+#if defined(__aarch64__)
+#define AROS_SYSTEM_HIDE_PROGDIR(lock) BPTR lock = SetProgramDir(BNULL)
+#define AROS_SYSTEM_SHOW_PROGDIR(lock) SetProgramDir(lock)
+#else
+#define AROS_SYSTEM_HIDE_PROGDIR(lock)
+#define AROS_SYSTEM_SHOW_PROGDIR(lock)
+#endif
+
 void ShellChannel::endArosExecProc(IPTR rc, IPTR data) {
 	ShellChannel *sc = (ShellChannel *)data;
 	if (!sc)
@@ -873,12 +885,14 @@ void ShellChannel::startProc() {
 		BPTR output = Open(sc->arosExecOutName, MODE_NEWFILE);
 		if (output) {
 			BPTR oldDir = CurrentDir(sc->dir);
+			AROS_SYSTEM_HIDE_PROGDIR(progDir);
 			sc->arosExecRc = SystemTags(sc->xbuffer,
 					SYS_Input, input ? input : Input(),
 					SYS_Output, output,
 					SYS_Error, output,
 					SYS_UserShell, (IPTR)TRUE,
 					TAG_DONE);
+			AROS_SYSTEM_SHOW_PROGDIR(progDir);
 			CurrentDir(oldDir);
 			Close(output);
 		} else {
@@ -1285,12 +1299,14 @@ bool ShellChannel::runArosExec(bool closeAfterCommand) {
 	}
 
 	BPTR oldDir = CurrentDir(dir);
+	AROS_SYSTEM_HIDE_PROGDIR(progDir);
 	LONG rc = SystemTags(xbuffer,
 			SYS_Input, input ? input : Input(),
 			SYS_Output, output,
 			SYS_Error, output,
 			SYS_UserShell, (IPTR)TRUE,
 			TAG_DONE);
+	AROS_SYSTEM_SHOW_PROGDIR(progDir);
 	CurrentDir(oldDir);
 
 	if (input)
