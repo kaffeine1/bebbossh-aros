@@ -106,9 +106,15 @@ about this target:
   `src/aros_mincrt.c` that loads `r12` and calls the jump table. Do not add a
   direct `proto/` call to x86_64 code.
 - `Delay()` does nothing on `mincrt`.
-- Remote commands run synchronously (`SystemTagList`, output through a `T:`
-  file): the daemon serves no other client while a command runs. The child-task
-  backend of i386 crashed on `mincrt` and is not compiled.
+- A command without a terminal runs synchronously (`SystemTagList`, output
+  through a `T:` file): the daemon serves no other client while it runs. The
+  child-task backend of i386 is not compiled: its entry reads
+  `pr_ExitData`, which the crosstools headers place 240 bytes away from
+  where AROS One keeps it.
+- A console mode command (see below) runs in its own process all the same:
+  its entry, `ShellChannel::arosConsoleProcX64()`, calls only wrappers, reads
+  no field of `struct Process`, and gets its channel through `NP_UserData`
+  (`tc_UserData` of `struct Task`, which has the same layout on both sides).
 - The daemon does not set `pr_WindowPtr` (see the SMP note), so an SFTP path
   on a missing volume opens a DOS requester.
 - `HomeDir` is used only with `BEBBOSSH_AROS_X64_CD` (the daemon does not
@@ -177,9 +183,9 @@ with three differences:
 BebboSSH on AmigaOS gives a command the SSH channel as console: the daemon
 answers the DOS packets of three file handles (`handleMsg()` in
 `src/bebbosshd.cpp`). The AROS port first ran commands with `NIL:` as input
-and a file in `T:` as output. With `InteractiveShell yes` (the default on i386
-and aarch64, not compiled on x86_64) a command of the interactive shell, or of
-an exec request with a terminal, uses the packet console again:
+and a file in `T:` as output. With `InteractiveShell yes` (the default) a
+command of the interactive shell, or of an exec request with a terminal, uses
+the packet console again:
 
 - The command runs through `System()` in a child process; its handles come
   from `AllocDosObject()` and are closed with `Close()`.
@@ -191,6 +197,11 @@ an exec request with a terminal, uses the packet console again:
   channel is found by the sender's port, or it is the only one in console
   mode.
 - An exec request without a terminal keeps the file mode.
+- x86_64: the daemon loop also waits for the packet port, the replies go
+  through the `ReplyPkt` wrapper, the process port named by
+  `ACTION_CHANGE_SIGNAL` follows `struct Task` (as on AROS One), and
+  `SetProgramDir(BNULL)` around `System()` keeps the program directory
+  unlocked, also for commands without a terminal.
 
 ## Runtime kit
 

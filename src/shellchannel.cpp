@@ -307,7 +307,13 @@ void ShellChannel::abort() {
 }
 
 void ShellChannel::checkTimeout(struct timeval * tv) {
+#if BEBBOSSH_AROS_CONSOLE_X64
+	// CmpTime() by hand: timer.device has no wrapper for it
+	if (waiting && (until.tv_secs < tv->tv_secs
+			|| (until.tv_secs == tv->tv_secs && until.tv_micro <= tv->tv_micro))) {
+#else
 	if (waiting && CmpTime(&until, tv) >= 0) {
+#endif
 		logme(L_DEBUG, "@%ld:%ld WaitForChar timeout of %s", server->getSockFd(), channel, getName());
 		struct DosPacket *packet = (struct DosPacket*) waiting->mn_Node.ln_Name;
 		waiting = 0;
@@ -332,7 +338,11 @@ void ShellChannel::sendBreak() {
 	if (arosConsole) {
 		if (running && breakPort1 && breakPort1 != port && breakPort1->mp_SigTask) {
 			logme(L_DEBUG, "@%ld:%ld signal Ctrl-C to %s", server->getSockFd(), channel, getName());
+#if BEBBOSSH_AROS_CONSOLE_X64
+			bebbossh_aros_signal_task((struct Task*)breakPort1->mp_SigTask, SIGBREAKF_CTRL_C);
+#else
 			Signal((struct Task*)breakPort1->mp_SigTask, SIGBREAKF_CTRL_C);
+#endif
 		}
 		return;
 	}
@@ -1032,6 +1042,90 @@ static void arosConsoleHandle(struct FileHandle * fh, ShellChannel * sc) {
 }
 #endif
 
+#if BEBBOSSH_AROS_CONSOLE_X64
+// x86_64: the process of a console mode command. It runs outside the mincrt
+// runtime of the daemon, so it only calls the r12 wrappers and reads no field
+// of struct Process: the crosstools headers place those fields elsewhere than
+// AROS One does (pr_ExitData is 240 bytes off). The channel comes through
+// tc_UserData; struct Task has the same layout on both sides.
+void ShellChannel::arosConsoleProcX64() {
+	struct Task * me = bebbossh_aros_find_task(NULL);
+	ShellChannel * sc = (ShellChannel *)me->tc_UserData;
+	LONG rc = 20;
+
+	struct FileHandle * i = (struct FileHandle *)bebbossh_aros_alloc_dos_object(DOS_FILEHANDLE, 0);
+	struct FileHandle * o = (struct FileHandle *)bebbossh_aros_alloc_dos_object(DOS_FILEHANDLE, 0);
+	struct FileHandle * e = (struct FileHandle *)bebbossh_aros_alloc_dos_object(DOS_FILEHANDLE, 0);
+
+	if (i && o && e) {
+		arosConsoleHandle(i, sc);
+		arosConsoleHandle(o, sc);
+		arosConsoleHandle(e, sc);
+
+		struct TagItem tags[] = {
+				{ SYS_Input, (IPTR)MKBADDR(i) },
+				{ SYS_Output, (IPTR)MKBADDR(o) },
+				{ SYS_Error, (IPTR)MKBADDR(e) },
+				{ SYS_UserShell, (IPTR)TRUE },
+				{ NP_StackSize, (IPTR)sc->stackSize },
+				{ TAG_DONE, 0 }
+		};
+		// without a program directory: System() would leave it locked
+		BPTR progDir = bebbossh_aros_set_program_dir(BNULL);
+		rc = bebbossh_aros_system_tag_list((CONST_STRPTR)sc->xbuffer, tags);
+		bebbossh_aros_set_program_dir(progDir);
+	}
+
+	// Close() flushes what is still buffered and frees the handle
+	if (i)
+		bebbossh_aros_close(MKBADDR(i));
+	if (o)
+		bebbossh_aros_close(MKBADDR(o));
+	if (e)
+		bebbossh_aros_close(MKBADDR(e));
+
+	// no Permit(): the daemon must not unload this code before the process
+	// has left it
+	bebbossh_aros_forbid();
+	sc->arosExecRc = rc;
+	sc->done = 1;
+	bebbossh_aros_signal_task(thisTask, SIGBREAKF_CTRL_F);
+}
+
+bool ShellChannel::startArosConsoleX64(unsigned ahead) {
+	logme(L_DEBUG, "@%ld:%ld starting console task %s with cmd `%s`", server->getSockFd(), channel, server->name, xbuffer);
+	struct TagItem tags[8];
+	int n = 0;
+	tags[n].ti_Tag = NP_Entry; tags[n++].ti_Data = (IPTR)arosConsoleProcX64;
+	tags[n].ti_Tag = NP_StackSize; tags[n++].ti_Data = (IPTR)stackSize;
+	tags[n].ti_Tag = NP_Cli; tags[n++].ti_Data = (IPTR)TRUE;
+	tags[n].ti_Tag = NP_Name; tags[n++].ti_Data = (IPTR)server->name;
+	tags[n].ti_Tag = NP_UserData; tags[n++].ti_Data = (IPTR)this;
+	BPTR cd = dir ? bebbossh_aros_dup_lock(dir) : 0;
+	if (cd) {
+		tags[n].ti_Tag = NP_CurrentDir; tags[n++].ti_Data = (IPTR)cd;
+	}
+	tags[n].ti_Tag = TAG_DONE; tags[n].ti_Data = 0;
+
+	running = true;
+	if (!bebbossh_aros_create_new_proc(tags)) {
+		running = false;
+		arosConsole = false;
+		if (cd)
+			bebbossh_aros_unlock(cd);
+		static const char msg[] = "bebbosshd/AROS: cannot start the command\r\n";
+		server->channelWrite(channel, msg, sizeof(msg) - 1);
+		if (hasExec())
+			return finishArosExecImmediate(20);
+		prompt();
+		return drainBufferedInput();
+	}
+	if (ahead)
+		arosConsoleInput(inBuffer, ahead);
+	return true;
+}
+#endif
+
 void ShellChannel::endProc() {
 //	struct Process * process = (struct Process *)FindTask(0);
 //	struct CommandLineInterface * cli = (struct CommandLineInterface *)BADDR(process->pr_CLI);
@@ -1096,7 +1190,7 @@ void ShellChannel::startProc() {
 		return;
 	}
 
-#if BEBBOSSH_AROS_CONSOLE
+#if BEBBOSSH_AROS_CONSOLE && !BEBBOSSH_AROS_CONSOLE_X64
 	// console mode: the three handles send their DOS packets to the daemon
 	struct FileHandle * i = (struct FileHandle *)AllocDosObject(DOS_FILEHANDLE, 0);
 	struct FileHandle * o = (struct FileHandle *)AllocDosObject(DOS_FILEHANDLE, 0);
@@ -1559,7 +1653,10 @@ bool ShellChannel::runArosExecMincrtX64(bool closeAfterCommand) {
 	BPTR oldDir = 0;
 	if (dir)
 		oldDir = CurrentDir(dir);
+	// without a program directory: System() would leave it locked
+	BPTR progDir = SetProgramDir(BNULL);
 	LONG rc = bebbossh_aros_system_tag_list((CONST_STRPTR)xbuffer, tags);
+	SetProgramDir(progDir);
 	if (dir)
 		CurrentDir(oldDir);
 
@@ -1798,6 +1895,9 @@ bool ShellChannel::startCommand(){
 		inBuffer[arosAhead] = 0;
 	}
 	xpos = xend = line;
+#if BEBBOSSH_AROS_CONSOLE_X64
+	return startArosConsoleX64(arosAhead);
+#endif
 #endif
 #endif
 
