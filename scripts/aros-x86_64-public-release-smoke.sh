@@ -5,12 +5,12 @@
 set -eu
 
 repo=${BEBBOSSH_RELEASE_REPO:-kaffeine1/bebbossh-aros}
-tag=${BEBBOSSH_RELEASE_TAG:-v1.0.9-aros-x86_64}
-version=${BEBBOSSH_RELEASE_VERSION:-v1.0.9}
+tag=${BEBBOSSH_RELEASE_TAG:-v1.0.10-aros-x86_64}
+version=${BEBBOSSH_RELEASE_VERSION:-v1.0.10}
 base="bebbossh-aros-x86_64-$version"
-# Defaults match the v1.0.9 release archives. Override at release time.
-expected_zip=${BEBBOSSH_RELEASE_ZIP_SHA256:-b3282db69f5bd8648944acc2eca97e91b7c7d46efaa6a9a8eca284b7e43a256e}
-expected_tgz=${BEBBOSSH_RELEASE_TGZ_SHA256:-ed2b1a4c6259212537dfdae1a9e4be8dcdf2f3a67419daf0c4895cb862b54a39}
+# Defaults match the v1.0.10 release archives. Override at release time.
+expected_zip=${BEBBOSSH_RELEASE_ZIP_SHA256:-afee13381bf0ad4d3c3f21d8c59ae326f27bcc0c01745d935aebb7d7ec776a99}
+expected_tgz=${BEBBOSSH_RELEASE_TGZ_SHA256:-b630bda08ce2eb6d2e18ec5582e9c877db667b6830da1f704fdfe951b14464cd}
 
 host=${BEBBOSSH_AROS_HOST:-127.0.0.1}
 port=${BEBBOSSH_AROS_PORT:-}
