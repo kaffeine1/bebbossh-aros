@@ -2171,4 +2171,151 @@ int bebbossh_aros_x64_flag(const char *name)
     return 1;
 }
 
+/* Console mode on x86_64 (InteractiveShell): the DOS and exec calls of the
+ * packet console and of the command process. LVO numbers from the AROS SDK
+ * defines/dos.h and defines/exec.h. */
+
+APTR bebbossh_aros_alloc_dos_object(ULONG type, struct TagItem *tags)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 38);
+    APTR save;
+    APTR ret;
+
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((APTR (*)(ULONG, struct TagItem *))func)(type, tags);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return AllocDosObject(type, tags);
+#endif
+}
+
+void bebbossh_aros_free_dos_object(ULONG type, APTR ptr)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 39);
+    APTR save;
+
+    if (!ptr)
+        return;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ((void (*)(ULONG, APTR))func)(type, ptr);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+#else
+    FreeDosObject(type, ptr);
+#endif
+}
+
+LONG bebbossh_aros_set_vbuf(BPTR file, STRPTR buffer, LONG type, LONG size)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 61);
+    APTR save;
+    LONG ret;
+
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((LONG (*)(BPTR, STRPTR, LONG, LONG))func)(file, buffer, type, size);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return SetVBuf(file, buffer, type, size);
+#endif
+}
+
+void bebbossh_aros_reply_pkt(struct DosPacket *packet, SIPTR res1, SIPTR res2)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 43);
+    APTR save;
+
+    if (!packet)
+        return;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ((void (*)(struct DosPacket *, SIPTR, SIPTR))func)(packet, res1, res2);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+#else
+    ReplyPkt(packet, res1, res2);
+#endif
+}
+
+BPTR bebbossh_aros_set_program_dir(BPTR lock)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 99);
+    APTR save;
+    BPTR ret;
+
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((BPTR (*)(BPTR))func)(lock);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return SetProgramDir(lock);
+#endif
+}
+
+struct Process * bebbossh_aros_create_new_proc(struct TagItem *tags)
+{
+#if defined(__x86_64__)
+    APTR base = DOSBase;
+    APTR func = __AROS_GETVECADDR(base, 83);
+    APTR save;
+    struct Process * ret;
+
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ret = ((struct Process * (*)(struct TagItem *))func)(tags);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+    return ret;
+#else
+    return CreateNewProc(tags);
+#endif
+}
+
+/* Signal() that does signal: bebbossh_aros_signal() is a no-op on x86_64. */
+void bebbossh_aros_signal_task(struct Task *task, ULONG signalSet)
+{
+#if defined(__x86_64__)
+    APTR base = SysBase;
+    APTR func = __AROS_GETVECADDR(base, 54);
+    APTR save;
+
+    if (!task)
+        return;
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ((void (*)(struct Task *, ULONG))func)(task, signalSet);
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+#else
+    Signal(task, signalSet);
+#endif
+}
+
+void bebbossh_aros_forbid(void)
+{
+#if defined(__x86_64__)
+    APTR base = SysBase;
+    APTR func = __AROS_GETVECADDR(base, 22);
+    APTR save;
+
+    __asm__ __volatile__("movq %%r12, %0\n\tmovq %1, %%r12"
+                         : "=&rm"(save) : "rm"(base) : "r12");
+    ((void (*)(void))func)();
+    __asm__ __volatile__("movq %0, %%r12" : : "rm"(save) : "r12");
+#else
+    Forbid();
+#endif
+}
+
 #endif

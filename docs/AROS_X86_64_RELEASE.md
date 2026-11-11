@@ -130,7 +130,13 @@ rtl8139 card:
     download, `bebbossh` remote command.
 11. Interactive shell: `C:Vers<TAB>` completes to `C:Version`, `C:Li<TAB>`
     lists the matches.
-12. Entropy: `bebbosshkeygen` and the daemon create and replace
+12. Console mode (`InteractiveShell`, on by default): a question with a
+    typed answer, output while a script runs, Ctrl-C, redirection, the
+    console opened as a file, a nested `bebbossh` session, a second session
+    during a long command, `ssh -t host command` with the exit status, a
+    dropped connection and a daemon stop during a question; with
+    `InteractiveShell no` the shell refuses programs that read their input.
+13. Entropy: `bebbosshkeygen` and the daemon create and replace
     `ENVARC:.ssh/random_seed`, and keys differ across identical snapshot
     boots.
 
@@ -142,6 +148,6 @@ new tag, version and SHA256 values.
 
 ## Known differences from i386
 
-Remote commands run synchronously, `HomeDir` needs `BEBBOSSH_AROS_X64_CD`,
-an SFTP path on a missing volume opens a DOS requester, and some features are
-opt-in flags. Details in `AROS_PORTING.md`.
+Commands without a terminal run synchronously, `HomeDir` needs
+`BEBBOSSH_AROS_X64_CD`, an SFTP path on a missing volume opens a DOS
+requester, and some features are opt-in flags. Details in `AROS_PORTING.md`.

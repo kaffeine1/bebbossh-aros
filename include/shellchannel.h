@@ -96,12 +96,18 @@ public:
 	}
 };
 
-// AROS i386 and aarch64: a command can have its SSH channel as console
-// (DOS packets served by the daemon). x86_64 mincrt runs commands in line.
+// AROS: a command can have its SSH channel as console (DOS packets served
+// by the daemon). On x86_64 (mincrt) every system call goes through a wrapper
+// and the command process has its own entry code.
 #if BEBBOSSH_AROS && !defined(BEBBOSSH_AROS_MINCRT)
 #define BEBBOSSH_AROS_CONSOLE 1
+#define BEBBOSSH_AROS_CONSOLE_X64 0
+#elif BEBBOSSH_AROS && defined(BEBBOSSH_AROS_MINCRT) && defined(__x86_64__)
+#define BEBBOSSH_AROS_CONSOLE 1
+#define BEBBOSSH_AROS_CONSOLE_X64 1
 #else
 #define BEBBOSSH_AROS_CONSOLE 0
+#define BEBBOSSH_AROS_CONSOLE_X64 0
 #endif
 
 extern unsigned stackSize;
@@ -232,6 +238,10 @@ public:
 
 	static void startProc();
 	static void endProc();
+#if BEBBOSSH_AROS_CONSOLE_X64
+	static void arosConsoleProcX64();
+	bool startArosConsoleX64(unsigned ahead);
+#endif
 #if BEBBOSSH_AROS
 	static void endArosExecProc(IPTR rc, IPTR data);
 #endif

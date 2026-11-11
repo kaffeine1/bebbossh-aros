@@ -105,6 +105,14 @@ struct DosList *bebbossh_aros_attempt_lock_dos_list(ULONG flags);
 struct DosList *bebbossh_aros_next_dos_entry(struct DosList *dlist, ULONG flags);
 void bebbossh_aros_unlock_dos_list(ULONG flags);
 void bebbossh_aros_get_sys_time(struct Device *timerBase, void *tv);
+APTR bebbossh_aros_alloc_dos_object(ULONG type, struct TagItem *tags);
+void bebbossh_aros_free_dos_object(ULONG type, APTR ptr);
+LONG bebbossh_aros_set_vbuf(BPTR file, STRPTR buffer, LONG type, LONG size);
+void bebbossh_aros_reply_pkt(struct DosPacket *packet, SIPTR res1, SIPTR res2);
+BPTR bebbossh_aros_set_program_dir(BPTR lock);
+struct Process *bebbossh_aros_create_new_proc(struct TagItem *tags);
+void bebbossh_aros_signal_task(struct Task *task, ULONG signalSet);
+void bebbossh_aros_forbid(void);
 
 #ifdef __cplusplus
 }
@@ -178,6 +186,11 @@ void bebbossh_aros_get_sys_time(struct Device *timerBase, void *tv);
 #undef GetSysTime
 #undef ReadLink
 #undef MakeLink
+#undef AllocDosObject
+#undef FreeDosObject
+#undef SetVBuf
+#undef ReplyPkt
+#undef SetProgramDir
 
 #define socket(domain, type, protocol) bebbossh_aros_socket(SocketBase, (domain), (type), (protocol))
 #define bind(s, name, namelen) bebbossh_aros_bind(SocketBase, (s), (name), (namelen))
@@ -251,6 +264,11 @@ void bebbossh_aros_get_sys_time(struct Device *timerBase, void *tv);
 #define ReadLink(port, lock, path, buffer, size) \
 	bebbossh_aros_read_link((port), (lock), (const char *)(path), (char *)(buffer), (size))
 #define MakeLink(name, dest, soft) bebbossh_aros_make_link((const char *)(name), (SIPTR)(dest), (soft))
+#define AllocDosObject(type, tags) bebbossh_aros_alloc_dos_object((type), (struct TagItem *)(tags))
+#define FreeDosObject(type, ptr) bebbossh_aros_free_dos_object((type), (ptr))
+#define SetVBuf(file, buffer, type, size) bebbossh_aros_set_vbuf((file), (buffer), (type), (size))
+#define ReplyPkt(packet, res1, res2) bebbossh_aros_reply_pkt((packet), (res1), (res2))
+#define SetProgramDir(lock) bebbossh_aros_set_program_dir((lock))
 
 #endif
 

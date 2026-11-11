@@ -432,7 +432,12 @@ void handleMsg(struct Message * msg) {
 				// AROS sends a message port here, or the process itself
 				struct MsgPort * np = (struct MsgPort *) packet->dp_Arg2;
 				if (np && np->mp_Node.ln_Type == NT_PROCESS)
+#if BEBBOSSH_AROS_CONSOLE_X64
+					// pr_MsgPort follows the task; the crosstools struct Process is laid out differently
+					np = (struct MsgPort *) ((char *) np + sizeof(struct Task));
+#else
 					np = &((struct Process *) np)->pr_MsgPort;
+#endif
 				struct MsgPort * op = sc->getArosBreakPort();
 				if (np)
 					sc->setArosBreakPort(np);
@@ -1386,10 +1391,10 @@ __stdargs int main(int argc, char *argv[]) {
 				int selectErrno = selected < 0 ? Errno() : 0;
 				// Ctrl-C (Break) stops the daemon; the timer branch collects the
 				// timer reply through the GetMsg/GetSysTime/SendIO wrappers, so
-				// timerOn clears and the stop can complete. The packet port stays
-				// masked: nothing sends to it on x86_64 and handleMsg() still makes
-				// inline DOS calls.
-				mask &= SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | timerMask;
+				// timerOn clears and the stop can complete. The packet port serves
+				// the console of the commands (InteractiveShell); handleMsg() answers
+				// through the ReplyPkt wrapper.
+				mask &= SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | timerMask | portMask;
 				signales &= mask;
 				checkFinished();
 				pruneDeadClients();
