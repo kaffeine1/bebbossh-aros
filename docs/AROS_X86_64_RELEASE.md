@@ -10,7 +10,7 @@ AROS README, example configuration, test scripts and the license files.
 Release naming (see `AROS_PORTING.md`):
 
 ```text
-v1.0.9-aros-x86_64
+v1.0.10-aros-x86_64
 bebbossh-aros-x86_64-<version>.zip
 bebbossh-aros-x86_64-<version>.tar.gz
 ```
@@ -41,8 +41,8 @@ A halt in an e1000 run is not by itself a BebboSSH regression.
 After publishing, check the assets from GitHub, not from `dist/`:
 
 ```sh
-BEBBOSSH_RELEASE_TAG=v1.0.10-aros-x86_64 \
-BEBBOSSH_RELEASE_VERSION=v1.0.10 \
+BEBBOSSH_RELEASE_TAG=v1.0.11-aros-x86_64 \
+BEBBOSSH_RELEASE_VERSION=v1.0.11 \
 BEBBOSSH_RELEASE_ZIP_SHA256=<sha256> \
 BEBBOSSH_RELEASE_TGZ_SHA256=<sha256> \
 ./scripts/aros-x86_64-public-release-smoke.sh

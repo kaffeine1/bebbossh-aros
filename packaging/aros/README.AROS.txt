@@ -30,7 +30,7 @@ redistribute.
 
 The source of each release is the matching tag, for example:
 
-  https://github.com/kaffeine1/bebbossh-aros/tree/v1.0.9-aros-i386-abiv0
+  https://github.com/kaffeine1/bebbossh-aros/tree/v1.0.10-aros-i386-abiv0
 
 Install
 -------

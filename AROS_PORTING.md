@@ -219,15 +219,15 @@ keys or real passwords.
 Release tags and asset names:
 
 ```text
-v1.0.9-aros-i386-abiv0
+v1.0.10-aros-i386-abiv0
 bebbossh-aros-i386-abiv0-<version>.zip
 bebbossh-aros-i386-abiv0-<version>.tar.gz
 
-v1.0.9-aros-x86_64
+v1.0.10-aros-x86_64
 bebbossh-aros-x86_64-<version>.zip
 bebbossh-aros-x86_64-<version>.tar.gz
 
-v1.0.9-aros-aarch64
+v1.0.10-aros-aarch64
 bebbossh-aros-aarch64-<version>.zip
 bebbossh-aros-aarch64-<version>.tar.gz
 ```

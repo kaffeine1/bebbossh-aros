@@ -12,7 +12,7 @@ tasks), not the x86_64 `mincrt` runtime.
 Release naming (see `AROS_PORTING.md`):
 
 ```text
-v1.0.9-aros-aarch64
+v1.0.10-aros-aarch64
 bebbossh-aros-aarch64-<version>.zip
 bebbossh-aros-aarch64-<version>.tar.gz
 ```
@@ -35,8 +35,8 @@ After publishing, check the assets from GitHub, not from `dist/`, and run the
 SSH/SCP/SFTP smoke against a Pi on the local network:
 
 ```sh
-BEBBOSSH_RELEASE_TAG=v1.0.10-aros-aarch64 \
-BEBBOSSH_RELEASE_VERSION=v1.0.10 \
+BEBBOSSH_RELEASE_TAG=v1.0.11-aros-aarch64 \
+BEBBOSSH_RELEASE_VERSION=v1.0.11 \
 BEBBOSSH_RELEASE_ZIP_SHA256=<sha256> \
 BEBBOSSH_RELEASE_TGZ_SHA256=<sha256> \
 BEBBOSSH_AROS_HOST=<pi address> \

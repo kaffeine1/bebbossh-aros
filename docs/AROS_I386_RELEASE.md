@@ -10,21 +10,21 @@ AROS README, example configuration, test scripts and the license files.
 Release naming (see `AROS_PORTING.md`):
 
 ```text
-v1.0.9-aros-i386-abiv0
+v1.0.10-aros-i386-abiv0
 bebbossh-aros-i386-abiv0-<version>.zip
 bebbossh-aros-i386-abiv0-<version>.tar.gz
 ```
 
 Latest release:
-https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.9-aros-i386-abiv0
+https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.10-aros-i386-abiv0
 
 ## Public asset gate
 
 After publishing, check the assets from GitHub, not from `dist/`:
 
 ```sh
-BEBBOSSH_RELEASE_TAG=v1.0.10-aros-i386-abiv0 \
-BEBBOSSH_RELEASE_VERSION=v1.0.10 \
+BEBBOSSH_RELEASE_TAG=v1.0.11-aros-i386-abiv0 \
+BEBBOSSH_RELEASE_VERSION=v1.0.11 \
 BEBBOSSH_RELEASE_ZIP_SHA256=<sha256> \
 BEBBOSSH_RELEASE_TGZ_SHA256=<sha256> \
 ./scripts/aros-i386-public-release-smoke.sh

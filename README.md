@@ -30,9 +30,9 @@ One source tree builds three AROS targets:
 
 | Target | Makefile | Latest release |
 | --- | --- | --- |
-| i386 `alt-abiv0` (AROS One 32-bit) | `Makefile.aros` | [v1.0.9](https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.9-aros-i386-abiv0) |
-| x86_64 `mincrt` (AROS One 64-bit) | `Makefile.aros-x86_64` | [v1.0.9](https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.9-aros-x86_64) |
-| aarch64 (AROS on the Raspberry Pi) | `Makefile.aros-aarch64` | [v1.0.9](https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.9-aros-aarch64) |
+| i386 `alt-abiv0` (AROS One 32-bit) | `Makefile.aros` | [v1.0.10](https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.10-aros-i386-abiv0) |
+| x86_64 `mincrt` (AROS One 64-bit) | `Makefile.aros-x86_64` | [v1.0.10](https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.10-aros-x86_64) |
+| aarch64 (AROS on the Raspberry Pi) | `Makefile.aros-aarch64` | [v1.0.10](https://github.com/kaffeine1/bebbossh-aros/releases/tag/v1.0.10-aros-aarch64) |
 
 The kits are also on Aminet (`comm/net/bebbossh.*-aros.lha`) and on the AROS
 Archives (`network/misc`).
